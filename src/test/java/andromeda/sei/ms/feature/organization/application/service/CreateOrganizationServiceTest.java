@@ -5,7 +5,6 @@ import andromeda.sei.ms.feature.organization.adapter.in.web.dto.CreateOrganizati
 import andromeda.sei.ms.feature.organization.application.port.out.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.role.application.port.out.RoleRepository;
-import andromeda.sei.ms.feature.role.domain.Permission;
 import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.user.application.port.out.UserRepository;
 import andromeda.sei.ms.feature.user.domain.User;

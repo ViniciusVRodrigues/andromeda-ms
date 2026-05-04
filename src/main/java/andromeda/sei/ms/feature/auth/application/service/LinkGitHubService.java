@@ -15,8 +15,8 @@ public class LinkGitHubService implements LinkGitHubUseCase {
 
     @Override
     public void execute(String code, UUID userId, UUID organizationId) {
-        // In a real implementation, exchange code for GitHub access token and get GitHub user id
-        // For now, store the code as githubId (placeholder)
+        // TODO: In production, exchange code for GitHub access token via OAuth2 flow,
+        // retrieve GitHub user ID, then store it. Current implementation is a placeholder only.
         userAuthRepository.updateGithubId(userId, code);
     }
 }
