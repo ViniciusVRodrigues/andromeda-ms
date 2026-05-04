@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.role.adapter.in.web.dto;
 
+import andromeda.sei.ms.feature.role.domain.Permission;
 import andromeda.sei.ms.feature.role.domain.Role;
 import java.util.List;
 import java.util.UUID;
