@@ -1,6 +1,8 @@
 spring:
   application:
     name: andromeda-ms
+  config:
+    import: optional:file:./.env[.properties]  # carrega segredos locais; ignorado se o arquivo não existir
   data:
     mongodb:
       uri: mongodb://admin:secret@localhost:27018/andromeda?authSource=admin
