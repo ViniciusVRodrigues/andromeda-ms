@@ -1,0 +1,43 @@
+spring:
+  application:
+    name: andromeda-ms
+  config:
+    import: optional:file:./.env[.properties]
+  data:
+    mongodb:
+      uri: mongodb://admin:secret@localhost:27018/andromeda?authSource=admin
+      database: andromeda
+  security:
+    oauth2:
+      client:
+        registration:
+          github:
+            client-id: ${GITHUB_CLIENT_ID}
+            client-secret: ${GITHUB_CLIENT_SECRET}
+            scope: read:org,repo,user:email
+
+server:
+  port: ${SERVER_PORT:9090}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration-ms: 86400000  # 24h
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  data:
+    mongodb:
+      uri: mongodb://admin:secret@localhost:27018/andromeda?authSource=admin
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev,prod
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}
