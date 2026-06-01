@@ -1,5 +1,7 @@
 package andromeda.sei.ms.shared.infrastructure.config;
 
+import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2AuthorizationRequestResolver;
+import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -11,6 +13,7 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
@@ -21,9 +24,13 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/login",
+            "/api/v1/auth/invite/complete",
+            "/api/v1/auth/github",
+            "/api/v1/auth/github/callback",
             "/api/v1/organizations",    // onboarding — cria org + primeiro admin
             "/actuator/health",
             "/v3/api-docs/**",
@@ -32,17 +39,22 @@ public class SecurityConfig {
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   ClientRegistrationRepository clientRegistrationRepository) throws Exception {
+        GitHubOAuth2AuthorizationRequestResolver resolver =
+                new GitHubOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
+
         return http
                 .csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/api/v1/auth/github")
-                        .defaultSuccessUrl("/api/v1/auth/github/callback")
+                        .authorizationEndpoint(ep -> ep
+                                .authorizationRequestResolver(resolver))
+                        .successHandler(gitHubOAuth2SuccessHandler)
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
