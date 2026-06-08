@@ -10,6 +10,7 @@ public class User {
     private String passwordHash;
     private String name;
     private String roleId;
+    private String seniority;
     private String githubId;
     private String inviteToken;
     private boolean confirmed;
@@ -19,7 +20,7 @@ public class User {
     private Instant updatedAt;
 
     public User(String id, String organizationId, String email, String passwordHash,
-                String name, String roleId, String githubId, String inviteToken,
+                String name, String roleId, String seniority, String githubId, String inviteToken,
                 boolean confirmed, boolean active,
                 long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
@@ -28,6 +29,7 @@ public class User {
         this.passwordHash = passwordHash;
         this.name = name;
         this.roleId = roleId;
+        this.seniority = seniority;
         this.githubId = githubId;
         this.inviteToken = inviteToken;
         this.confirmed = confirmed;
@@ -54,6 +56,9 @@ public class User {
 
     public String getRoleId() { return roleId; }
     public void setRoleId(String roleId) { this.roleId = roleId; }
+
+    public String getSeniority() { return seniority; }
+    public void setSeniority(String seniority) { this.seniority = seniority; }
 
     public String getGithubId() { return githubId; }
     public void setGithubId(String githubId) { this.githubId = githubId; }

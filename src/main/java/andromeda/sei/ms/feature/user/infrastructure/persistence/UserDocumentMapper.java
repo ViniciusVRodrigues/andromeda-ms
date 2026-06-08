@@ -14,6 +14,7 @@ public class UserDocumentMapper {
                 doc.getPasswordHash(),
                 doc.getName(),
                 doc.getRoleId(),
+                doc.getSeniority(),
                 doc.getGithubId(),
                 doc.getInviteToken(),
                 doc.isConfirmed(),
@@ -32,6 +33,7 @@ public class UserDocumentMapper {
                 .passwordHash(user.getPasswordHash())
                 .name(user.getName())
                 .roleId(user.getRoleId())
+                .seniority(user.getSeniority())
                 .githubId(user.getGithubId())
                 .inviteToken(user.getInviteToken())
                 .confirmed(user.isConfirmed())

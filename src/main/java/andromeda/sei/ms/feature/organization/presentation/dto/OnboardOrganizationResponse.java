@@ -5,6 +5,9 @@ public record OnboardOrganizationResponse(
         String orgName,
         String orgSlug,
         String adminEmail,
+        String projectId,
+        String projectName,
+        int inviteCount,
         String token
 ) {
 }

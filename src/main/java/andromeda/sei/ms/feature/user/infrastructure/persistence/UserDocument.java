@@ -34,6 +34,7 @@ public class UserDocument {
     private String passwordHash;
     private String name;
     private String roleId;
+    private String seniority;
     private String githubId;
     private String inviteToken;
     private boolean confirmed;

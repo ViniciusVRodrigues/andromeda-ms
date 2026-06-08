@@ -37,6 +37,7 @@ public class CreateUserUseCase {
                 null,
                 input.roleId(),
                 null,
+                null,
                 inviteToken,
                 false,
                 true,

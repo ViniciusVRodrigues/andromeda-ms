@@ -8,6 +8,9 @@ public record OnboardOrganizationOutput(
         String orgSlug,
         String userId,
         String adminEmail,
+        String projectId,
+        String projectName,
+        int inviteCount,
         List<String> permissionCodes
 ) {
 }

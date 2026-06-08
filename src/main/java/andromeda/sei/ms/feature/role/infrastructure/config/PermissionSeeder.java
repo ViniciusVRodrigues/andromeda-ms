@@ -31,7 +31,8 @@ public class PermissionSeeder implements ApplicationRunner {
             new String[]{"DASHBOARD_STRATEGIC",            "Acessar dashboard estratégico",                  "Dashboard"},
             new String[]{"PRICE_TABLE_MANAGE",             "Gerenciar tabela de preços de IA",               "Preços"},
             new String[]{"CONNECTOR_TOKEN_MANAGE_OWN",     "Gerenciar próprio token de conector",            "Conector"},
-            new String[]{"CONNECTOR_TOKEN_MANAGE_ALL",     "Gerenciar tokens de conector de toda a org",     "Conector"}
+            new String[]{"CONNECTOR_TOKEN_MANAGE_ALL",     "Gerenciar tokens de conector de toda a org",     "Conector"},
+            new String[]{"PROJECT_MANAGE",                 "Gerenciar projetos da organização",               "Projetos"}
     );
 
     @Override

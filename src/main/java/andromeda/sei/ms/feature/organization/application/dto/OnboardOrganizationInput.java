@@ -1,12 +1,18 @@
 package andromeda.sei.ms.feature.organization.application.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 
 public record OnboardOrganizationInput(
-        @NotBlank String name,
-        @NotBlank @Email String adminEmail,
-        @NotBlank String adminName,
-        @NotBlank String adminPassword
+        OrgData org,
+        AdminData admin,
+        ProjectData project,
+        List<String> seniorities,
+        List<RoleData> roles,
+        List<InviteData> invites
 ) {
+    public record OrgData(String name, String sector, String country) {}
+    public record AdminData(String email, String name, String password) {}
+    public record ProjectData(String name, String description) {}
+    public record RoleData(String name, List<String> permissionCodes) {}
+    public record InviteData(String email, String roleName, String seniority) {}
 }

@@ -8,11 +8,30 @@ import andromeda.sei.ms.feature.organization.presentation.dto.OnboardOrganizatio
 import andromeda.sei.ms.feature.organization.presentation.dto.OrganizationResponse;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 public class OrganizationPresentationMapper {
 
     public OnboardOrganizationInput toInput(OnboardOrganizationRequest request) {
-        return new OnboardOrganizationInput(request.name(), request.adminEmail(), request.adminName(), request.adminPassword());
+        List<OnboardOrganizationInput.RoleData> roles = request.roles() == null ? List.of() :
+                request.roles().stream()
+                        .map(r -> new OnboardOrganizationInput.RoleData(r.name(), r.permissionCodes()))
+                        .toList();
+
+        List<OnboardOrganizationInput.InviteData> invites = request.invites() == null ? List.of() :
+                request.invites().stream()
+                        .map(i -> new OnboardOrganizationInput.InviteData(i.email(), i.roleName(), i.seniority()))
+                        .toList();
+
+        return new OnboardOrganizationInput(
+                new OnboardOrganizationInput.OrgData(request.org().name(), request.org().sector(), request.org().country()),
+                new OnboardOrganizationInput.AdminData(request.admin().email(), request.admin().name(), request.admin().password()),
+                new OnboardOrganizationInput.ProjectData(request.project().name(), request.project().description()),
+                request.seniorities(),
+                roles,
+                invites
+        );
     }
 
     public OnboardOrganizationResponse toResponse(OnboardOrganizationOutput output, String token) {
@@ -21,6 +40,9 @@ public class OrganizationPresentationMapper {
                 output.orgName(),
                 output.orgSlug(),
                 output.adminEmail(),
+                output.projectId(),
+                output.projectName(),
+                output.inviteCount(),
                 token
         );
     }

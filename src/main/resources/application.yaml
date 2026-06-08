@@ -12,9 +12,21 @@ spring:
       client:
         registration:
           github:
-            client-id: ${GITHUB_CLIENT_ID}
-            client-secret: ${GITHUB_CLIENT_SECRET}
+            client-id: ${GITHUB_CLIENT_ID:disabled}
+            client-secret: ${GITHUB_CLIENT_SECRET:disabled}
             scope: read:org,repo,user:email
+          azure:
+            client-id: ${AZURE_CLIENT_ID:disabled}
+            client-secret: ${AZURE_CLIENT_SECRET:disabled}
+            scope: offline_access,499b84ac-1321-427f-aa17-267ca6975798/user_impersonation
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/azure"
+        provider:
+          azure:
+            authorization-uri: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+            token-uri: https://login.microsoftonline.com/common/oauth2/v2.0/token
+            user-info-uri: https://graph.microsoft.com/oidc/userinfo
+            user-name-attribute: sub
 
 server:
   port: ${SERVER_PORT:9090}
@@ -23,6 +35,11 @@ security:
   jwt:
     secret: ${JWT_SECRET}  # Obrigatório — defina em .env (local) ou na env da plataforma (dev/prod)
     expiration-ms: 86400000  # 24h
+
+azure:
+  encryption-key: ${AZURE_ENCRYPTION_KEY}
+  client-id: ${AZURE_CLIENT_ID:disabled}
+  client-secret: ${AZURE_CLIENT_SECRET:disabled}
 
 ---
 spring:

@@ -30,7 +30,7 @@ class CreateOrganizationUseCaseTest {
     @Test
     void shouldCreateOrganizationWithGeneratedSlug() {
         var now = Instant.now();
-        var saved = new Organization("org-1", "Minha Empresa", "minha-empresa", true, 0L, now, now);
+        var saved = new Organization("org-1", "Minha Empresa", "minha-empresa", null, null, null, true, 0L, now, now);
 
         when(repository.existsBySlug("minha-empresa")).thenReturn(false);
         when(repository.save(any())).thenReturn(saved);
@@ -55,7 +55,7 @@ class CreateOrganizationUseCaseTest {
     @Test
     void shouldGenerateSlugFromSpecialCharacterName() {
         var now = Instant.now();
-        var saved = new Organization("org-2", "Acme & Co.", "acme-and-co", true, 0L, now, now);
+        var saved = new Organization("org-2", "Acme & Co.", "acme-and-co", null, null, null, true, 0L, now, now);
 
         when(repository.existsBySlug("acme-and-co")).thenReturn(false);
         when(repository.save(any())).thenReturn(saved);

@@ -1,5 +1,9 @@
 package andromeda.sei.ms.shared.infrastructure.config;
 
+import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2AuthorizationRequestResolver;
+import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2SuccessHandler;
+import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2AuthorizationRequestResolver;
+import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2AuthorizationRequestResolver;
 import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
@@ -25,6 +29,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
+    private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
 
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/login",
@@ -35,14 +40,17 @@ public class SecurityConfig {
             "/actuator/health",
             "/v3/api-docs/**",
             "/swagger-ui/**",
-            "/swagger-ui.html"
+            "/swagger-ui.html",
+            "/login/oauth2/code/azure"
     };
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    ClientRegistrationRepository clientRegistrationRepository) throws Exception {
-        GitHubOAuth2AuthorizationRequestResolver resolver =
+        GitHubOAuth2AuthorizationRequestResolver githubResolver =
                 new GitHubOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
+        AzureOAuth2AuthorizationRequestResolver azureResolver =
+                new AzureOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
 
         return http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -53,8 +61,10 @@ public class SecurityConfig {
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(ep -> ep
-                                .authorizationRequestResolver(resolver))
-                        .successHandler(gitHubOAuth2SuccessHandler)
+                                .authorizationRequestResolver(new CompositeOAuth2AuthorizationRequestResolver(
+                                        githubResolver, azureResolver)))
+                        .successHandler(new CompositeOAuth2SuccessHandler(
+                                gitHubOAuth2SuccessHandler, azureOAuth2SuccessHandler))
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

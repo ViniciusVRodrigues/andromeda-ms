@@ -1,0 +1,71 @@
+package andromeda.sei.ms.feature.azure.infrastructure.persistence;
+
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.mongodb.core.index.CompoundIndex;
+import org.springframework.data.mongodb.core.index.CompoundIndexes;
+import org.springframework.data.mongodb.core.mapping.Document;
+
+import java.time.Instant;
+import java.util.List;
+
+@Document(collection = "azure_project_bindings")
+@CompoundIndexes({
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'active': 1}")
+})
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class AzureProjectBindingDocument {
+
+    @Id
+    private String id;
+
+    private String organizationId;
+    private String projectId;
+    private String azureProjectId;
+    private String azureProjectName;
+    private boolean syncEnabled;
+    private Instant lastSyncAt;
+    private WorkflowConfigDocument workflowConfig;
+    private boolean active = true;
+    private Instant createdAt;
+    private Instant updatedAt;
+
+    @Version
+    private Long version;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WorkflowConfigDocument {
+        private List<StatusMappingDocument> statusMappings;
+        private List<TypeMappingDocument> typeMappings;
+        private String configSource;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class StatusMappingDocument {
+        private String rawStatus;
+        private WorkItem.ResolvedStatus resolvedStatus;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TypeMappingDocument {
+        private String rawType;
+        private WorkItem.ResolvedType resolvedType;
+    }
+}

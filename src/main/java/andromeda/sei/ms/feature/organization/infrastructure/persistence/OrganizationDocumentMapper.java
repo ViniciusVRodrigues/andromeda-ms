@@ -11,6 +11,9 @@ public class OrganizationDocumentMapper {
                 doc.getId(),
                 doc.getName(),
                 doc.getSlug(),
+                doc.getSector(),
+                doc.getCountry(),
+                doc.getSeniorities(),
                 doc.isActive(),
                 doc.getVersion() != null ? doc.getVersion() : 0L,
                 doc.getCreatedAt(),
@@ -23,6 +26,9 @@ public class OrganizationDocumentMapper {
                 .id(org.getId())
                 .name(org.getName())
                 .slug(org.getSlug())
+                .sector(org.getSector())
+                .country(org.getCountry())
+                .seniorities(org.getSeniorities())
                 .active(org.isActive())
                 .version(org.getVersion())
                 .createdAt(org.getCreatedAt())

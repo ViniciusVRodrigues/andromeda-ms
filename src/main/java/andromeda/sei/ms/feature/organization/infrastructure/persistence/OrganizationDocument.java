@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.util.List;
 
 @Document(collection = "organizations")
 @CompoundIndex(def = "{'slug': 1}", unique = true)
@@ -24,6 +25,9 @@ public class OrganizationDocument {
 
     private String name;
     private String slug;
+    private String sector;
+    private String country;
+    private List<String> seniorities;
     private boolean active = true;
 
     @Version

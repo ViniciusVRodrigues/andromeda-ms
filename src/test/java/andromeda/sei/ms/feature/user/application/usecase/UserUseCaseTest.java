@@ -47,7 +47,7 @@ class UserUseCaseTest {
     private static final Instant NOW = Instant.now();
 
     private User activeUser(String id) {
-        return new User(id, ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, true, 0L, NOW, NOW);
+        return new User(id, ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, true, true, 0L, NOW, NOW);
     }
 
     // ── CreateUserUseCase ────────────────────────────────────────────────────
@@ -55,27 +55,25 @@ class UserUseCaseTest {
     @Test
     void createUser_shouldReturnTempPassword() {
         var saved = activeUser("user-1");
-        when(userRepository.existsByEmailAndOrganizationId("user@test.com", ORG_ID)).thenReturn(false);
-        when(passwordHasher.hash(anyString())).thenReturn("hashed-pw");
+        when(userRepository.existsByEmail("user@test.com")).thenReturn(false);
         when(userRepository.save(any(User.class))).thenReturn(saved);
 
         CreateUserOutput output = createUserUseCase.execute(
-                new CreateUserInput("user@test.com", "John Doe", "role-dev"), ORG_ID);
+                new CreateUserInput("user@test.com", "role-dev"), ORG_ID);
 
         assertThat(output.id()).isEqualTo("user-1");
         assertThat(output.email()).isEqualTo("user@test.com");
-        assertThat(output.tempPassword()).isNotBlank();
-        assertThat(output.tempPassword()).hasSize(12);
-        verify(passwordHasher).hash(anyString());
+        assertThat(output.inviteToken()).isNotBlank();
+        assertThat(output.inviteToken()).hasSize(32);
         verify(userRepository).save(any(User.class));
     }
 
     @Test
     void createUser_shouldThrowEmailConflict() {
-        when(userRepository.existsByEmailAndOrganizationId("user@test.com", ORG_ID)).thenReturn(true);
+        when(userRepository.existsByEmail("user@test.com")).thenReturn(true);
 
         assertThatThrownBy(() -> createUserUseCase.execute(
-                new CreateUserInput("user@test.com", "John Doe", "role-dev"), ORG_ID))
+                new CreateUserInput("user@test.com", "role-dev"), ORG_ID))
                 .isInstanceOf(UserEmailConflictException.class)
                 .hasMessageContaining("user@test.com");
     }
@@ -85,7 +83,7 @@ class UserUseCaseTest {
     @Test
     void updateUser_shouldUpdateNameAndRoleId() {
         var existing = activeUser("user-1");
-        var updated = new User("user-1", ORG_ID, "user@test.com", "hash", "Jane Doe", "role-lead", null, true, 1L, NOW, NOW);
+        var updated = new User("user-1", ORG_ID, "user@test.com", "hash", "Jane Doe", "role-lead", null, null, null, true, true, 1L, NOW, NOW);
 
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(updated);
@@ -111,7 +109,7 @@ class UserUseCaseTest {
     @Test
     void deactivateUser_shouldSoftDelete() {
         var existing = activeUser("user-1");
-        var deactivated = new User("user-1", ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, false, 1L, NOW, NOW);
+        var deactivated = new User("user-1", ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, true, false, 1L, NOW, NOW);
 
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(deactivated);
