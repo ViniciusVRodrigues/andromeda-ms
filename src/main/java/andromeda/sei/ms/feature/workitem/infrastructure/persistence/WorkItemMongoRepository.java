@@ -12,4 +12,7 @@ public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocumen
             String organizationId, String externalId, WorkItem.Source source);
 
     List<WorkItemDocument> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
+
+    List<WorkItemDocument> findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+            String organizationId, String sprintId, String assigneeUserId, WorkItem.ResolvedStatus resolvedStatus);
 }

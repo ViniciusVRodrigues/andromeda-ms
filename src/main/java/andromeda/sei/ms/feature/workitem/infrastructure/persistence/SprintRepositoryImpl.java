@@ -75,4 +75,13 @@ public class SprintRepositoryImpl implements SprintRepository {
         return mongoRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId)
                 .stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public List<Sprint> findCurrentSprintsByOrganizationId(String organizationId) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("timeFrame").is(Sprint.TimeFrame.CURRENT)
+                .and("active").is(true));
+        return mongoTemplate.find(query, SprintDocument.class)
+                .stream().map(mapper::toDomain).toList();
+    }
 }

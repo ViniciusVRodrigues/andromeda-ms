@@ -13,4 +13,6 @@ public interface SprintRepository {
             String organizationId, String externalId, String teamId);
 
     Optional<Sprint> findByOrganizationIdAndExternalId(String organizationId, String externalId);
+
+    List<Sprint> findCurrentSprintsByOrganizationId(String organizationId);
 }

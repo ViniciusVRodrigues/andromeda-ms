@@ -13,4 +13,7 @@ public interface WorkItemRepository {
     List<WorkItem> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 
     void updateMetrics(String id, Double cycleTimeHours, Double leadTimeHours);
+
+    List<WorkItem> findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+            String organizationId, String sprintId, String assigneeUserId, WorkItem.ResolvedStatus status);
 }

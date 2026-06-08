@@ -78,6 +78,14 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     }
 
     @Override
+    public List<WorkItem> findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+            String organizationId, String sprintId, String assigneeUserId, WorkItem.ResolvedStatus status) {
+        return mongoRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                        organizationId, sprintId, assigneeUserId, status)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public void updateMetrics(String id, Double cycleTimeHours, Double leadTimeHours) {
         Query query = Query.query(Criteria.where("_id").is(id));
         Update update = new Update()
