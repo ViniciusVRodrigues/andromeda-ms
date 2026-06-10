@@ -41,7 +41,13 @@ public class SecurityConfig {
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",
-            "/login/oauth2/code/azure"
+            "/login/oauth2/code/azure",
+            "/connector/*/health"       // connector health — public, no auth
+    };
+
+    // Connector endpoints authenticated by ConnectorTokenAuthFilter — not by JWT
+    private static final String[] CONNECTOR_ENDPOINTS = {
+            "/connector/**"
     };
 
     @Bean
@@ -57,6 +63,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PUBLIC_ENDPOINTS).permitAll()
+                        .requestMatchers(CONNECTOR_ENDPOINTS).permitAll() // ConnectorTokenAuthFilter handles auth
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(oauth2 -> oauth2

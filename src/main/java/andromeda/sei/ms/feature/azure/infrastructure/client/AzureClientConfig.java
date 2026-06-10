@@ -8,8 +8,8 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class AzureClientConfig {
 
     @Bean
-    public WebClient azureWebClient(WebClient.Builder builder) {
-        return builder
+    public WebClient azureWebClient() {
+        return WebClient.builder()
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .build();
     }
