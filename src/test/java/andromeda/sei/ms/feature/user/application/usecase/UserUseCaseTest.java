@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.user.application.usecase;
 
+import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.user.application.dto.CreateUserInput;
 import andromeda.sei.ms.feature.user.application.dto.CreateUserOutput;
 import andromeda.sei.ms.feature.user.application.dto.UpdateUserInput;
@@ -34,6 +35,9 @@ class UserUseCaseTest {
     @Mock
     private PasswordHasher passwordHasher;
 
+    @Mock
+    private ProjectRepository projectRepository;
+
     @InjectMocks
     private CreateUserUseCase createUserUseCase;
 
@@ -47,7 +51,7 @@ class UserUseCaseTest {
     private static final Instant NOW = Instant.now();
 
     private User activeUser(String id) {
-        return new User(id, ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, true, true, 0L, NOW, NOW);
+        return new User(id, ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, null, null, true, true, 0L, NOW, NOW);
     }
 
     // ── CreateUserUseCase ────────────────────────────────────────────────────
@@ -83,7 +87,7 @@ class UserUseCaseTest {
     @Test
     void updateUser_shouldUpdateNameAndRoleId() {
         var existing = activeUser("user-1");
-        var updated = new User("user-1", ORG_ID, "user@test.com", "hash", "Jane Doe", "role-lead", null, null, null, true, true, 1L, NOW, NOW);
+        var updated = new User("user-1", ORG_ID, "user@test.com", "hash", "Jane Doe", "role-lead", null, null, null, null, null, true, true, 1L, NOW, NOW);
 
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(updated);
@@ -109,7 +113,7 @@ class UserUseCaseTest {
     @Test
     void deactivateUser_shouldSoftDelete() {
         var existing = activeUser("user-1");
-        var deactivated = new User("user-1", ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, true, false, 1L, NOW, NOW);
+        var deactivated = new User("user-1", ORG_ID, "user@test.com", "hash", "John Doe", "role-dev", null, null, null, null, null, true, false, 1L, NOW, NOW);
 
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(deactivated);

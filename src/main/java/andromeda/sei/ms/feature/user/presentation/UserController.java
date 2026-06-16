@@ -2,15 +2,21 @@ package andromeda.sei.ms.feature.user.presentation;
 
 import andromeda.sei.ms.feature.user.application.dto.CreateUserInput;
 import andromeda.sei.ms.feature.user.application.dto.UpdateUserInput;
+import andromeda.sei.ms.feature.user.application.dto.InviteUserInput;
 import andromeda.sei.ms.feature.user.application.usecase.CreateUserUseCase;
+import andromeda.sei.ms.feature.user.application.usecase.LinkAzureIdentityUseCase;
 import andromeda.sei.ms.feature.user.application.usecase.DeactivateUserUseCase;
+import andromeda.sei.ms.feature.user.application.usecase.InviteUserUseCase;
 import andromeda.sei.ms.feature.user.application.usecase.ListUsersUseCase;
 import andromeda.sei.ms.feature.user.application.usecase.UpdateUserUseCase;
 import andromeda.sei.ms.feature.user.presentation.dto.CreateUserRequest;
+import andromeda.sei.ms.feature.user.presentation.dto.LinkAzureIdentityRequest;
 import andromeda.sei.ms.feature.user.presentation.dto.CreateUserResponse;
+import andromeda.sei.ms.feature.user.presentation.dto.InviteUserRequest;
 import andromeda.sei.ms.feature.user.presentation.dto.UpdateUserRequest;
 import andromeda.sei.ms.feature.user.presentation.dto.UserResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -32,10 +38,12 @@ import java.util.List;
 public class UserController {
 
     private final CreateUserUseCase createUserUseCase;
+    private final InviteUserUseCase inviteUserUseCase;
     private final ListUsersUseCase listUsersUseCase;
     private final UpdateUserUseCase updateUserUseCase;
     private final DeactivateUserUseCase deactivateUserUseCase;
     private final UserPresentationMapper mapper;
+    private final LinkAzureIdentityUseCase linkAzureIdentityUseCase;
 
     @PostMapping
     @PreAuthorize("hasAuthority('USER_MANAGE')")
@@ -44,6 +52,15 @@ public class UserController {
         CreateUserInput input = new CreateUserInput(request.email(), request.roleId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(mapper.toCreateResponse(createUserUseCase.execute(input, orgId)));
+    }
+
+    @PostMapping("/invite")
+    @PreAuthorize("hasAuthority('USER_MANAGE')")
+    public ResponseEntity<CreateUserResponse> inviteUser(@Valid @RequestBody InviteUserRequest request) {
+        String orgId = TenantContextHolder.get();
+        InviteUserInput input = new InviteUserInput(request.email(), request.roleName(), request.seniority());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(mapper.toCreateResponse(inviteUserUseCase.execute(input, orgId)));
     }
 
     @GetMapping
@@ -72,6 +89,15 @@ public class UserController {
     public ResponseEntity<Void> deactivateUser(@PathVariable String id) {
         String orgId = TenantContextHolder.get();
         deactivateUserUseCase.execute(id, orgId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/azure-identity")
+    @PreAuthorize("hasAuthority('USER_MANAGE')")
+    public ResponseEntity<Void> linkAzureIdentity(@PathVariable String id,
+                                                   @RequestBody @Valid LinkAzureIdentityRequest request) {
+        String orgId = TenantContextHolder.get();
+        linkAzureIdentityUseCase.execute(orgId, id, request.azureId(), request.azureEmail());
         return ResponseEntity.noContent().build();
     }
 }

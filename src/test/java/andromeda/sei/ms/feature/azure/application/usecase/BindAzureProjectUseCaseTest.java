@@ -9,8 +9,8 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoProjectCapabilitiesDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshService;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,7 +35,7 @@ class BindAzureProjectUseCaseTest {
     @Mock private AzureConnectionRepository azureConnectionRepository;
     @Mock private AzureDevOpsClient azureDevOpsClient;
     @Mock private AzureTokenRefreshService azureTokenRefreshService;
-    @Mock private EncryptionService encryptionService;
+    @Mock private AzureAuthStrategyResolver authStrategyResolver;
 
     @InjectMocks
     private BindAzureProjectUseCase useCase;
@@ -48,8 +48,9 @@ class BindAzureProjectUseCaseTest {
         TenantContextHolder.set("org-1");
         connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
                 "enc-access", "enc-refresh", NOW.plusSeconds(3600),
-                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null);
-        when(encryptionService.decrypt("enc-access")).thenReturn("plain-access");
+                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
+        when(authStrategyResolver.resolve(any())).thenReturn("Bearer plain-access");
     }
 
     @AfterEach

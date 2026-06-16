@@ -25,7 +25,8 @@ public class GetAzureConnectionStatusUseCase {
                 connection.getAzureOrgUrl(),
                 connection.getAuthorizedByUserId(),
                 connection.getLastSuccessAt(),
-                connection.getConsecutiveFailures()
+                connection.getConsecutiveFailures(),
+                connection.getAuthMethod()
         );
     }
 }

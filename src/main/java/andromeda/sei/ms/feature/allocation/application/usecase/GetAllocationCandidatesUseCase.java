@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -19,13 +20,19 @@ public class GetAllocationCandidatesUseCase {
     private final WorkItemRepository workItemRepository;
 
     public List<WorkItemCandidateOutput> execute(String organizationId, String userId, LocalDate day) {
-        List<Sprint> currentSprints = sprintRepository.findCurrentSprintsByOrganizationId(organizationId);
+        List<Sprint> currentSprints = new ArrayList<>(
+                sprintRepository.findByOrganizationIdAndDay(organizationId, day));
+        if (currentSprints.isEmpty()) {
+            sprintRepository.findClosestSprintByOrganizationIdAndDay(organizationId, day)
+                    .ifPresent(currentSprints::add);
+        }
 
         return currentSprints.stream()
                 .flatMap(sprint -> workItemRepository
-                        .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                                organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS)
+                        .findByOrganizationIdAndAssigneeUserIdAndSprintId(
+                                organizationId, userId, sprint.getId())
                         .stream()
+                        .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.STORY)
                         .map(wi -> new WorkItemCandidateOutput(wi.getId(), wi.getTitle(), sprint.getName())))
                 .toList();
     }

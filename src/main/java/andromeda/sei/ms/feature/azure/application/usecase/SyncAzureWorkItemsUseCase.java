@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.azure.domain.StatusMapping;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemUpdateDto;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
 import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
@@ -20,10 +21,11 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransition;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransitionRepository;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
+import andromeda.sei.ms.feature.user.domain.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -38,11 +40,12 @@ import java.util.Optional;
 public class SyncAzureWorkItemsUseCase {
 
     private final IntegrationSyncLogRepository syncLogRepository;
-    private final EncryptionService encryptionService;
+    private final AzureAuthStrategyResolver authStrategyResolver;
     private final WorkItemRepository workItemRepository;
     private final WorkItemTransitionRepository workItemTransitionRepository;
     private final SprintRepository sprintRepository;
     private final AzureDevOpsClient azureDevOpsClient;
+    private final UserRepository userRepository;
 
     public void execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
         Instant startedAt = Instant.now();
@@ -57,7 +60,7 @@ public class SyncAzureWorkItemsUseCase {
 
         try {
             String orgUrl = connection.getAzureOrgUrl();
-            String accessToken = encryptionService.decrypt(connection.getAccessToken());
+            String authHeader = authStrategyResolver.resolve(connection);
             String orgId = connection.getOrganizationId();
             String projectId = binding.getProjectId();
             String azureProjectId = binding.getAzureProjectId();
@@ -71,7 +74,7 @@ public class SyncAzureWorkItemsUseCase {
                     fullSync ? "FULL" : "INCREMENTAL");
 
             List<Integer> ids = azureDevOpsClient.queryWorkItemIds(
-                    orgUrl, azureProjectId, accessToken, binding.getLastSyncAt());
+                    orgUrl, azureProjectId, authHeader, binding.getLastSyncAt());
 
             if (ids.isEmpty()) {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
@@ -80,11 +83,11 @@ public class SyncAzureWorkItemsUseCase {
                 return;
             }
 
-            List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, accessToken);
+            List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
 
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
-                    processWorkItem(orgId, projectId, adoItem, config, orgUrl, accessToken, fullSync);
+                    processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader, fullSync);
                     processed++;
                 } catch (Exception e) {
                     log.warn("Failed to process work item id={}: {}", adoItem.id(), e.getMessage());
@@ -102,6 +105,9 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setItemsProcessed(processed);
             syncLog.setItemsFailed(failed);
             syncLogRepository.save(syncLog);
+            log.info("Work item sync completed: org={} project={} status={} processed={} failed={} durationMs={}",
+                    connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
+                    finishedAt.toEpochMilli() - startedAt.toEpochMilli());
 
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
@@ -112,13 +118,20 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setItemsFailed(failed);
             syncLog.setErrorCode("AZURE_SYNC_WORK_ITEMS_FAILED");
             syncLog.setErrorMessage(e.getMessage());
+            if (e instanceof WebClientResponseException wex) {
+                syncLog.setHttpStatus(wex.getStatusCode().value());
+                String body = wex.getResponseBodyAsString();
+                syncLog.setErrorDetail(body.length() > 2000 ? body.substring(0, 2000) : body);
+                log.error("Azure API HTTP error during work item sync: status={} body={}",
+                        wex.getStatusCode().value(), syncLog.getErrorDetail());
+            }
             syncLogRepository.save(syncLog);
             throw e;
         }
     }
 
     private void processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
-                                  WorkflowConfig config, String orgUrl, String accessToken,
+                                  WorkflowConfig config, String orgUrl, String authHeader,
                                   boolean fullSync) {
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String externalId = String.valueOf(adoItem.id());
@@ -133,8 +146,8 @@ public class SyncAzureWorkItemsUseCase {
         WorkItem.ResolvedType resolvedType = resolveType(rawType, config);
         WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawStatus, config);
 
-        String iterationId = getString(fields, "System.IterationId");
-        String sprintId = resolveSprintId(orgId, iterationId);
+        String iterationPath = getString(fields, "System.IterationPath");
+        String sprintId = resolveSprintId(orgId, iterationPath);
 
         String tagsRaw = getString(fields, "System.Tags");
         List<String> labels = tagsRaw != null
@@ -146,8 +159,8 @@ public class SyncAzureWorkItemsUseCase {
         WorkItem workItem = existing.orElseGet(() -> new WorkItem(
                 null, orgId, projectId, WorkItem.Source.AZURE_DEVOPS,
                 externalId, null, null, null, null, null, null,
-                null, null, null, null, null, null,
-                null, null, null, null, null, true, null, now));
+                null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, true, null, now));
 
         workItem.setProjectId(projectId);
         workItem.setExternalUpdatedAt(parseInstant(fields, "System.ChangedDate"));
@@ -161,6 +174,14 @@ public class SyncAzureWorkItemsUseCase {
         workItem.setLabels(labels);
         workItem.setSprintId(sprintId);
         workItem.setAssigneeExternalId(getAssigneeId(fields));
+        workItem.setAssigneeEmail(getAssigneeEmail(fields));
+        Object parentField = fields.get("System.Parent");
+        String parentExternalId = null;
+        if (parentField instanceof Number num) {
+            parentExternalId = String.valueOf(num.intValue());
+        }
+        workItem.setParentExternalId(parentExternalId);
+        resolveAssigneeUserId(orgId, workItem);
         if (workItem.getCreatedAt() == null) {
             workItem.setCreatedAt(parseInstant(fields, "System.CreatedDate"));
         }
@@ -168,7 +189,7 @@ public class SyncAzureWorkItemsUseCase {
         // Save first to ensure workItemId is set before building transitions
         WorkItem saved = workItemRepository.save(workItem);
 
-        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, accessToken);
+        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader);
 
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(saved.getId());
         saved.setStartedAt(deriveStartedAt(transitions));
@@ -176,27 +197,54 @@ public class SyncAzureWorkItemsUseCase {
         workItemRepository.save(saved);
     }
 
+    /**
+     * Rebuilds the complete transition history for a work item from the Azure DevOps updates API.
+     * Clears existing transitions and rebuilds from full ADO history.
+     * This method is reusable by both the initial full-sync path and ForceResyncProjectUseCase.
+     */
+    public void rebuildTransitionHistory(WorkItem item, WorkflowConfig config, String orgUrl, String authHeader) {
+        String workItemId = item.getId();
+        if (workItemId == null) return;
+
+        WorkflowConfig effectiveConfig = config != null ? config : DefaultWorkflowConfigFactory.fallback();
+
+        buildFullTransitionHistoryById(workItemId, item.getOrganizationId(), item.getExternalId(),
+                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt());
+
+        List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(workItemId);
+        item.setStartedAt(deriveStartedAt(transitions));
+        item.setCompletedAt(deriveCompletedAt(transitions));
+        workItemRepository.save(item);
+    }
+
     private void buildTransitions(WorkItem workItem, String storedRawStatus, AdoWorkItemDto adoItem,
-                                   WorkflowConfig config, String orgUrl, String accessToken) {
+                                   WorkflowConfig config, String orgUrl, String authHeader) {
         String workItemId = workItem.getId();
         if (workItemId == null) return;
 
         boolean hasTransitions = workItemTransitionRepository.existsByWorkItemId(workItemId);
 
         if (!hasTransitions) {
-            buildFullTransitionHistory(workItemId, workItem.getOrganizationId(), adoItem,
-                    config, orgUrl, accessToken, workItem.getRawStatus(),
-                    workItem.getCreatedAt());
+            buildFullTransitionHistoryById(workItemId, workItem.getOrganizationId(),
+                    String.valueOf(adoItem.id()), config, orgUrl, authHeader,
+                    workItem.getRawStatus(), workItem.getCreatedAt());
         } else {
             appendIncrementalTransition(workItemId, workItem.getOrganizationId(),
                     storedRawStatus, adoItem, config);
         }
     }
 
-    private void buildFullTransitionHistory(String workItemId, String orgId, AdoWorkItemDto adoItem,
-                                             WorkflowConfig config, String orgUrl, String accessToken,
-                                             String currentRawStatus, Instant createdAt) {
-        List<AdoWorkItemUpdateDto> updates = azureDevOpsClient.getWorkItemUpdates(orgUrl, adoItem.id(), accessToken);
+    private void buildFullTransitionHistoryById(String workItemId, String orgId, String externalId,
+                                                 WorkflowConfig config, String orgUrl, String authHeader,
+                                                 String currentRawStatus, Instant createdAt) {
+        int adoItemId;
+        try {
+            adoItemId = Integer.parseInt(externalId);
+        } catch (NumberFormatException e) {
+            log.warn("rebuildTransitionHistory: invalid externalId={} for workItemId={}", externalId, workItemId);
+            return;
+        }
+        List<AdoWorkItemUpdateDto> updates = azureDevOpsClient.getWorkItemUpdates(orgUrl, adoItemId, authHeader);
 
         List<WorkItemTransition> transitions = new ArrayList<>();
         String prevStatus = null;
@@ -292,9 +340,9 @@ public class SyncAzureWorkItemsUseCase {
                 .orElse(WorkItem.ResolvedStatus.TODO);
     }
 
-    private String resolveSprintId(String orgId, String iterationId) {
-        if (iterationId == null) return null;
-        return sprintRepository.findByOrganizationIdAndExternalId(orgId, iterationId)
+    private String resolveSprintId(String orgId, String iterationPath) {
+        if (iterationPath == null) return null;
+        return sprintRepository.findByOrganizationIdAndPath(orgId, iterationPath)
                 .map(Sprint::getId)
                 .orElse(null);
     }
@@ -324,6 +372,29 @@ public class SyncAzureWorkItemsUseCase {
             return id != null ? id.toString() : null;
         }
         return null;
+    }
+
+    private String getAssigneeEmail(Map<String, Object> fields) {
+        Object val = fields.get("System.AssignedTo");
+        if (val == null) return null;
+        if (val instanceof Map<?, ?> identity) {
+            Object uniqueName = identity.get("uniqueName");
+            return uniqueName != null ? uniqueName.toString() : null;
+        }
+        return null;
+    }
+
+    private void resolveAssigneeUserId(String orgId, WorkItem workItem) {
+        String externalId = workItem.getAssigneeExternalId();
+        String email = workItem.getAssigneeEmail();
+        if (externalId != null) {
+            userRepository.findByOrganizationIdAndAzureId(orgId, externalId)
+                    .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
+        } else if (email != null) {
+            userRepository.findByEmail(email)
+                    .filter(user -> orgId.equals(user.getOrganizationId()))
+                    .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
+        }
     }
 
     private void finishSuccess(IntegrationSyncLog syncLog, Instant startedAt, int processed, int failed) {

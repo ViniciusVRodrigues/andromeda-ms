@@ -11,7 +11,7 @@ import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,7 +36,7 @@ import static org.mockito.Mockito.when;
 class SyncAzureSprintsUseCaseTest {
 
     @Mock private IntegrationSyncLogRepository syncLogRepository;
-    @Mock private EncryptionService encryptionService;
+    @Mock private AzureAuthStrategyResolver authStrategyResolver;
     @Mock private SprintRepository sprintRepository;
     @Mock private AzureDevOpsClient azureDevOpsClient;
 
@@ -51,7 +51,8 @@ class SyncAzureSprintsUseCaseTest {
         Instant now = Instant.now();
         connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
                 "enc-access", "enc-refresh", now.plusSeconds(3600),
-                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, now, now, null);
+                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, now, now, null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
 
         binding = new AzureProjectBinding("bind-1", "org-1", "proj-1", "azure-proj-1", "My Project",
                 true, null, null, true, now, now, null);
@@ -60,7 +61,7 @@ class SyncAzureSprintsUseCaseTest {
                 "log-1", "org-1", null, null, SyncStatus.RUNNING, null, "proj-1",
                 now, null, null, 0, 0, null, null);
         when(syncLogRepository.save(any())).thenReturn(syncLog);
-        when(encryptionService.decrypt("enc-access")).thenReturn("plain-access");
+        when(authStrategyResolver.resolve(any())).thenReturn("Bearer plain-access");
     }
 
     @Test
@@ -75,8 +76,8 @@ class SyncAzureSprintsUseCaseTest {
 
         useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
 
-        verify(azureDevOpsClient).getTeams("https://dev.azure.com/org", "azure-proj-1", "plain-access");
-        verify(azureDevOpsClient).getIterations("https://dev.azure.com/org", "azure-proj-1", "team-1", "plain-access");
+        verify(azureDevOpsClient).getTeams("https://dev.azure.com/org", "azure-proj-1", "Bearer plain-access");
+        verify(azureDevOpsClient).getIterations("https://dev.azure.com/org", "azure-proj-1", "team-1", "Bearer plain-access");
     }
 
     @Test

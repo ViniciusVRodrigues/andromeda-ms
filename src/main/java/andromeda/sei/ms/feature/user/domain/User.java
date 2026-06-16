@@ -12,17 +12,21 @@ public class User {
     private String roleId;
     private String seniority;
     private String githubId;
+    private String azureId;
+    private String azureEmail;
     private String inviteToken;
     private boolean confirmed;
     private boolean active;
-    private long version;
+    private Long version;
     private Instant createdAt;
     private Instant updatedAt;
 
     public User(String id, String organizationId, String email, String passwordHash,
-                String name, String roleId, String seniority, String githubId, String inviteToken,
+                String name, String roleId, String seniority, String githubId,
+                String azureId, String azureEmail,
+                String inviteToken,
                 boolean confirmed, boolean active,
-                long version, Instant createdAt, Instant updatedAt) {
+                Long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
         this.email = email;
@@ -31,6 +35,8 @@ public class User {
         this.roleId = roleId;
         this.seniority = seniority;
         this.githubId = githubId;
+        this.azureId = azureId;
+        this.azureEmail = azureEmail;
         this.inviteToken = inviteToken;
         this.confirmed = confirmed;
         this.active = active;
@@ -63,6 +69,12 @@ public class User {
     public String getGithubId() { return githubId; }
     public void setGithubId(String githubId) { this.githubId = githubId; }
 
+    public String getAzureId() { return azureId; }
+    public void setAzureId(String azureId) { this.azureId = azureId; }
+
+    public String getAzureEmail() { return azureEmail; }
+    public void setAzureEmail(String azureEmail) { this.azureEmail = azureEmail; }
+
     public String getInviteToken() { return inviteToken; }
     public void setInviteToken(String inviteToken) { this.inviteToken = inviteToken; }
 
@@ -72,8 +84,8 @@ public class User {
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
 
-    public long getVersion() { return version; }
-    public void setVersion(long version) { this.version = version; }
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

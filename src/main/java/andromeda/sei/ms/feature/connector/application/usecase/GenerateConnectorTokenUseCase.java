@@ -33,7 +33,7 @@ public class GenerateConnectorTokenUseCase {
                 label,
                 tokenHash,
                 true,
-                0L,
+                null,
                 now,
                 now
         );

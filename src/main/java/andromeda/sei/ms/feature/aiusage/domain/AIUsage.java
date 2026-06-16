@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.aiusage.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -19,6 +20,9 @@ public class AIUsage {
     private long inputTokens;
     private long outputTokens;
     private int interactions;
+    private String editor;
+    private String allocationId;
+    private BigDecimal costUsd;
     private Instant uploadedAt;
     private boolean active;
     private Long version;
@@ -30,6 +34,8 @@ public class AIUsage {
                    String workspaceId, String workspaceName,
                    String machineId, String machineName,
                    long inputTokens, long outputTokens, int interactions,
+                   String editor, String allocationId,
+                   BigDecimal costUsd,
                    Instant uploadedAt, boolean active, Long version,
                    Instant createdAt, Instant updatedAt) {
         this.id = id;
@@ -46,6 +52,9 @@ public class AIUsage {
         this.inputTokens = inputTokens;
         this.outputTokens = outputTokens;
         this.interactions = interactions;
+        this.editor = editor;
+        this.allocationId = allocationId;
+        this.costUsd = costUsd;
         this.uploadedAt = uploadedAt;
         this.active = active;
         this.version = version;
@@ -94,6 +103,15 @@ public class AIUsage {
 
     public int getInteractions() { return interactions; }
     public void setInteractions(int interactions) { this.interactions = interactions; }
+
+    public String getEditor() { return editor; }
+    public void setEditor(String editor) { this.editor = editor; }
+
+    public String getAllocationId() { return allocationId; }
+    public void setAllocationId(String allocationId) { this.allocationId = allocationId; }
+
+    public BigDecimal getCostUsd() { return costUsd; }
+    public void setCostUsd(BigDecimal costUsd) { this.costUsd = costUsd; }
 
     public Instant getUploadedAt() { return uploadedAt; }
     public void setUploadedAt(Instant uploadedAt) { this.uploadedAt = uploadedAt; }

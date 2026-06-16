@@ -28,7 +28,7 @@ class OrganizationRepositoryImplTest {
     @Test
     void shouldSaveAndReturnOrganizationWithMongoId() {
         var now = Instant.now();
-        var org = new Organization(null, "Test Org", "test-org", null, null, null, true, 0L, now, now);
+        var org = new Organization(null, "Test Org", "test-org", null, null, null, null, true, 0L, now, now);
 
         var saved = repository.save(org);
 
@@ -41,7 +41,7 @@ class OrganizationRepositoryImplTest {
     @Test
     void shouldFindBySlugWhenActive() {
         var now = Instant.now();
-        repository.save(new Organization(null, "Test Org", "test-org", null, null, null, true, 0L, now, now));
+        repository.save(new Organization(null, "Test Org", "test-org", null, null, null, null, true, 0L, now, now));
 
         var found = repository.findBySlug("test-org");
 
@@ -80,7 +80,7 @@ class OrganizationRepositoryImplTest {
     @Test
     void shouldReturnTrueForExistingSlug() {
         var now = Instant.now();
-        repository.save(new Organization(null, "Test Org", "test-org", null, null, null, true, 0L, now, now));
+        repository.save(new Organization(null, "Test Org", "test-org", null, null, null, null, true, 0L, now, now));
 
         assertThat(repository.existsBySlug("test-org")).isTrue();
         assertThat(repository.existsBySlug("other-slug")).isFalse();

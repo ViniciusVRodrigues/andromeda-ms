@@ -41,6 +41,15 @@ azure:
   client-id: ${AZURE_CLIENT_ID:disabled}
   client-secret: ${AZURE_CLIENT_SECRET:disabled}
 
+brevo:
+  api-key: ${BREVO_API_KEY:}
+  sender-email: ${BREVO_SENDER_EMAIL:noreply@andromeda.app}
+  sender-name: ${BREVO_SENDER_NAME:Andrômeda}
+
+app:
+  email:
+    enabled: ${APP_EMAIL_ENABLED:false}  # false por padrão — defina true em dev/prod com Brevo configurado
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
 ---
 spring:
   config:

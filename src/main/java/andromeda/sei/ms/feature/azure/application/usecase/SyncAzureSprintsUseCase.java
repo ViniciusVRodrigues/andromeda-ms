@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoIterationDto;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
 import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
@@ -13,10 +14,10 @@ import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -28,7 +29,7 @@ import java.time.ZoneOffset;
 public class SyncAzureSprintsUseCase {
 
     private final IntegrationSyncLogRepository syncLogRepository;
-    private final EncryptionService encryptionService;
+    private final AzureAuthStrategyResolver authStrategyResolver;
     private final SprintRepository sprintRepository;
     private final AzureDevOpsClient azureDevOpsClient;
 
@@ -45,16 +46,16 @@ public class SyncAzureSprintsUseCase {
 
         try {
             String orgUrl = connection.getAzureOrgUrl();
-            String accessToken = encryptionService.decrypt(connection.getAccessToken());
+            String authHeader = authStrategyResolver.resolve(connection);
             String orgId = connection.getOrganizationId();
             String projectId = binding.getProjectId();
             String azureProjectId = binding.getAzureProjectId();
 
-            var teams = azureDevOpsClient.getTeams(orgUrl, azureProjectId, accessToken);
+            var teams = azureDevOpsClient.getTeams(orgUrl, azureProjectId, authHeader);
             log.info("Sprint sync for org={} project={}: {} teams found", orgId, projectId, teams.size());
 
             for (var team : teams) {
-                var iterations = azureDevOpsClient.getIterations(orgUrl, azureProjectId, team.id(), accessToken);
+                var iterations = azureDevOpsClient.getIterations(orgUrl, azureProjectId, team.id(), authHeader);
                 for (var iteration : iterations) {
                     try {
                         upsertSprint(orgId, projectId, team.id(), team.name(), iteration);
@@ -84,6 +85,13 @@ public class SyncAzureSprintsUseCase {
             syncLog.setItemsFailed(failed);
             syncLog.setErrorCode("AZURE_SYNC_SPRINTS_FAILED");
             syncLog.setErrorMessage(e.getMessage());
+            if (e instanceof WebClientResponseException wex) {
+                syncLog.setHttpStatus(wex.getStatusCode().value());
+                String body = wex.getResponseBodyAsString();
+                syncLog.setErrorDetail(body.length() > 2000 ? body.substring(0, 2000) : body);
+                log.error("Azure API HTTP error during sprint sync: status={} body={}",
+                        wex.getStatusCode().value(), syncLog.getErrorDetail());
+            }
             syncLogRepository.save(syncLog);
             throw e;
         }

@@ -12,4 +12,16 @@ public interface AiUsageMongoRepository extends MongoRepository<AiUsageDocument,
 
     List<AiUsageDocument> findByOrganizationIdAndDayBetween(
             String organizationId, LocalDate from, LocalDate to);
+
+    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayInAndActiveTrue(
+            String organizationId, String userId, List<LocalDate> days);
+
+    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNull(
+            String organizationId, String userId, LocalDate day);
+
+    List<AiUsageDocument> findByOrganizationIdAndUserIdAndAllocationIdIsNullAndActiveTrue(
+            String organizationId, String userId);
+
+    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayBetweenAndActiveTrue(
+            String organizationId, String userId, LocalDate from, LocalDate to);
 }

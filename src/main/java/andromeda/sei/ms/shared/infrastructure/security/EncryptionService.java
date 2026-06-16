@@ -1,5 +1,7 @@
 package andromeda.sei.ms.shared.infrastructure.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +13,8 @@ import java.util.Base64;
 
 @Service
 public class EncryptionService {
+
+    private static final Logger log = LoggerFactory.getLogger(EncryptionService.class);
 
     private static final String ALGORITHM = "AES/GCM/NoPadding";
     private static final int IV_LENGTH = 12;
@@ -54,6 +58,9 @@ public class EncryptionService {
 
             return new String(cipher.doFinal(encrypted));
         } catch (Exception e) {
+            log.warn("Decryption failed: exceptionType={} message=\"{}\" keyLengthBytes={} ciphertextLengthBytes={}",
+                    e.getClass().getSimpleName(), e.getMessage(),
+                    key.length, ciphertext != null ? ciphertext.length() : -1);
             throw new RuntimeException("Decryption failed", e);
         }
     }

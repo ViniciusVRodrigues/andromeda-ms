@@ -16,7 +16,9 @@ public class UserPresentationMapper {
                 output.name(),
                 output.roleId(),
                 output.active(),
-                output.createdAt()
+                output.createdAt(),
+                output.azureId(),
+                output.azureEmail()
         );
     }
 

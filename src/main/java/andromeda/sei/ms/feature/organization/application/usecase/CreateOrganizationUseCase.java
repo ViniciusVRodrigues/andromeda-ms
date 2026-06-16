@@ -25,7 +25,7 @@ public class CreateOrganizationUseCase {
         }
 
         var now = Instant.now();
-        var organization = new Organization(null, input.name(), slug, null, null, null, true, 0L, now, now);
+        var organization = new Organization(null, input.name(), slug, null, null, null, null, true, null, now, now);
 
         var saved = repository.save(organization);
         return CreateOrganizationOutput.from(saved);

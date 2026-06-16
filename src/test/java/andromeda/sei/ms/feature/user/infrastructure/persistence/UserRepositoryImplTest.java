@@ -30,7 +30,7 @@ class UserRepositoryImplTest {
 
     @Test
     void save_shouldPopulateId() {
-        var user = new User(null, ORG_ID, "test@example.com", "hash", "Test User", "role-dev", null, null, null, false, true, 0L, NOW, NOW);
+        var user = new User(null, ORG_ID, "test@example.com", "hash", "Test User", "role-dev", null, null, null, null, null, false, true, 0L, NOW, NOW);
 
         var saved = repository.save(user);
 

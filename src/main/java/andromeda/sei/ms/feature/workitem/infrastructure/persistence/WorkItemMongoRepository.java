@@ -13,6 +13,14 @@ public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocumen
 
     List<WorkItemDocument> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 
+    List<WorkItemDocument> findByOrganizationIdAndAssigneeUserIdAndSprintId(
+            String organizationId, String assigneeUserId, String sprintId);
+
     List<WorkItemDocument> findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
             String organizationId, String sprintId, String assigneeUserId, WorkItem.ResolvedStatus resolvedStatus);
+
+    List<WorkItemDocument> findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(
+            String organizationId, String assigneeUserId, String sprintId, String projectId);
+
+    List<WorkItemDocument> findAllByOrganizationIdAndProjectIdAndSprintId(String organizationId, String projectId, String sprintId);
 }

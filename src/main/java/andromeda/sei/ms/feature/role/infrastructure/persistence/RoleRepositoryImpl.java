@@ -43,6 +43,13 @@ public class RoleRepositoryImpl implements RoleRepository {
     }
 
     @Override
+    public Optional<Role> findByNameAndOrganizationId(String name, String organizationId) {
+        return mongoRepository.findByNameAndOrganizationId(name, organizationId)
+                .filter(RoleDocument::isActive)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Role save(Role role) {
         RoleDocument doc = mapper.toDocument(role);
         doc.setUpdatedAt(Instant.now());

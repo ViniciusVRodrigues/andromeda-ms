@@ -15,7 +15,8 @@ import java.time.Instant;
 
 @Document(collection = "users")
 @CompoundIndexes({
-        @CompoundIndex(def = "{'organizationId': 1, 'active': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'active': 1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'azureId': 1}", unique = true, sparse = true, name = "uq_user_org_azureId")
 })
 @Data
 @Builder
@@ -36,6 +37,8 @@ public class UserDocument {
     private String roleId;
     private String seniority;
     private String githubId;
+    private String azureId;
+    private String azureEmail;
     private String inviteToken;
     private boolean confirmed;
     private boolean active = true;

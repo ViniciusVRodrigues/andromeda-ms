@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.azure.infrastructure.scheduler;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureSprintsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureWorkItemsUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateSprintMetricsUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateWorkItemMetricsUseCase;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
@@ -37,6 +38,7 @@ class AzureSyncJobTest {
     @Mock private SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
     @Mock private CalculateWorkItemMetricsUseCase calculateWorkItemMetricsUseCase;
     @Mock private CalculateSprintMetricsUseCase calculateSprintMetricsUseCase;
+    @Mock private CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
 
     private AzureSyncJob job;
 
@@ -44,7 +46,8 @@ class AzureSyncJobTest {
     void setUp() {
         job = new AzureSyncJob(azureConnectionRepository, azureProjectBindingRepository,
                 azureTokenRefreshService, syncAzureSprintsUseCase, syncAzureWorkItemsUseCase,
-                calculateWorkItemMetricsUseCase, calculateSprintMetricsUseCase);
+                calculateWorkItemMetricsUseCase, calculateSprintMetricsUseCase,
+                calculateTokensPerSpUseCase);
     }
 
     @Test
@@ -115,7 +118,8 @@ class AzureSyncJobTest {
         return new AzureConnection("conn-1", orgId, "https://dev.azure.com/myorg",
                 "enc-access", "enc-refresh", Instant.now().plusSeconds(3600),
                 "user-1", AzureConnectionStatus.CONNECTED,
-                null, 0, null, null, true, Instant.now(), Instant.now(), null);
+                null, 0, null, null, true, Instant.now(), Instant.now(), null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
     }
 
     @Test

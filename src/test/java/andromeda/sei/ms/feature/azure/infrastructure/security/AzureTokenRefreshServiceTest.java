@@ -72,6 +72,7 @@ class AzureTokenRefreshServiceTest {
                 "conn-1", "org-1", "https://dev.azure.com/myorg",
                 "enc-access", "enc-refresh", expiresAt,
                 "user-1", AzureConnectionStatus.CONNECTED,
-                null, 0, null, null, true, Instant.now(), Instant.now(), null);
+                null, 0, null, null, true, Instant.now(), Instant.now(), null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
     }
 }

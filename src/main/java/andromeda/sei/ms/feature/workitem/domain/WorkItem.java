@@ -28,11 +28,14 @@ public class WorkItem {
     private String sprintId;
     private String assigneeExternalId;
     private String assigneeUserId;
+    private String assigneeEmail;
+    private String parentExternalId;
     private Instant createdAt;
     private Instant startedAt;
     private Instant completedAt;
     private Double cycleTimeHours;
     private Double leadTimeHours;
+    private Double tokensPerSp;
     private boolean active;
     private Long version;
     private Instant updatedAt;
@@ -41,9 +44,9 @@ public class WorkItem {
                     String externalId, Instant externalUpdatedAt, String title,
                     String rawType, ResolvedType resolvedType, String rawStatus, ResolvedStatus resolvedStatus,
                     String priority, Double storyPoints, List<String> labels,
-                    String sprintId, String assigneeExternalId, String assigneeUserId,
-                    Instant createdAt, Instant startedAt, Instant completedAt,
-                    Double cycleTimeHours, Double leadTimeHours,
+                    String sprintId, String assigneeExternalId, String assigneeUserId, String assigneeEmail,
+                    String parentExternalId, Instant createdAt, Instant startedAt, Instant completedAt,
+                    Double cycleTimeHours, Double leadTimeHours, Double tokensPerSp,
                     boolean active, Long version, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
@@ -62,11 +65,14 @@ public class WorkItem {
         this.sprintId = sprintId;
         this.assigneeExternalId = assigneeExternalId;
         this.assigneeUserId = assigneeUserId;
+        this.assigneeEmail = assigneeEmail;
+        this.parentExternalId = parentExternalId;
         this.createdAt = createdAt;
         this.startedAt = startedAt;
         this.completedAt = completedAt;
         this.cycleTimeHours = cycleTimeHours;
         this.leadTimeHours = leadTimeHours;
+        this.tokensPerSp = tokensPerSp;
         this.active = active;
         this.version = version;
         this.updatedAt = updatedAt;
@@ -128,6 +134,12 @@ public class WorkItem {
     public String getAssigneeUserId() { return assigneeUserId; }
     public void setAssigneeUserId(String assigneeUserId) { this.assigneeUserId = assigneeUserId; }
 
+    public String getAssigneeEmail() { return assigneeEmail; }
+    public void setAssigneeEmail(String assigneeEmail) { this.assigneeEmail = assigneeEmail; }
+
+    public String getParentExternalId() { return parentExternalId; }
+    public void setParentExternalId(String parentExternalId) { this.parentExternalId = parentExternalId; }
+
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
@@ -142,6 +154,9 @@ public class WorkItem {
 
     public Double getLeadTimeHours() { return leadTimeHours; }
     public void setLeadTimeHours(Double leadTimeHours) { this.leadTimeHours = leadTimeHours; }
+
+    public Double getTokensPerSp() { return tokensPerSp; }
+    public void setTokensPerSp(Double tokensPerSp) { this.tokensPerSp = tokensPerSp; }
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }

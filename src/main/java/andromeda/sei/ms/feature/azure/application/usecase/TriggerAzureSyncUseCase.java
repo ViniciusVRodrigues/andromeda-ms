@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
+import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
@@ -32,7 +33,9 @@ public class TriggerAzureSyncUseCase {
                 .findByOrganizationIdAndActiveTrue(orgId)
                 .orElseThrow(() -> new AzureConnectionNotFoundException(orgId));
 
-        AzureConnection refreshed = azureTokenRefreshService.refreshIfNeeded(connection);
+        AzureConnection refreshed = connection.getAuthMethod() == AzureAuthMethod.PAT
+                ? connection
+                : azureTokenRefreshService.refreshIfNeeded(connection);
 
         List<AzureProjectBinding> bindings = azureProjectBindingRepository
                 .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(orgId);

@@ -1,9 +1,11 @@
 package andromeda.sei.ms.feature.azure.presentation;
 
 import andromeda.sei.ms.feature.azure.application.dto.AzureConnectionStatusOutput;
+import andromeda.sei.ms.feature.azure.application.usecase.ConfigureAzureDevOpsPatUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.DisconnectAzureUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.GetAzureConnectionStatusUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCase;
+import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.infrastructure.AzureSyncCooldownService;
@@ -44,6 +46,9 @@ class AzureConnectionControllerTest {
     @Mock
     private AzureSyncCooldownService azureSyncCooldownService;
 
+    @Mock
+    private ConfigureAzureDevOpsPatUseCase configureAzureDevOpsPatUseCase;
+
     @InjectMocks
     private AzureConnectionController controller;
 
@@ -61,7 +66,7 @@ class AzureConnectionControllerTest {
     void getStatus_shouldReturn200WhenConnectionExists() throws Exception {
         var output = new AzureConnectionStatusOutput(
                 AzureConnectionStatus.CONNECTED, "https://dev.azure.com/myorg",
-                "user-1", Instant.now(), 0);
+                "user-1", Instant.now(), 0, AzureAuthMethod.OAUTH);
         when(getAzureConnectionStatusUseCase.execute()).thenReturn(output);
 
         mockMvc.perform(get("/api/v1/integrations/azure/connection"))
@@ -119,5 +124,21 @@ class AzureConnectionControllerTest {
 
         mockMvc.perform(post("/api/v1/integrations/azure/sync"))
                 .andExpect(status().isAccepted());
+    }
+
+    @Test
+    void connectPat_shouldReturn200OnValidRequest() throws Exception {
+        mockMvc.perform(post("/api/v1/integrations/azure/connection/pat")
+                        .contentType("application/json")
+                        .content("{\"adoOrganizationUrl\":\"https://dev.azure.com/myorg\",\"personalAccessToken\":\"myPat\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void connectPat_shouldReturn400WhenFieldsMissing() throws Exception {
+        mockMvc.perform(post("/api/v1/integrations/azure/connection/pat")
+                        .contentType("application/json")
+                        .content("{\"adoOrganizationUrl\":\"\",\"personalAccessToken\":\"\"}"))
+                .andExpect(status().isBadRequest());
     }
 }

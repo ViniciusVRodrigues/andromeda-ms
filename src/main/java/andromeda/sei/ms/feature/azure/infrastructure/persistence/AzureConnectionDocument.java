@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.azure.infrastructure.persistence;
 
+import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -40,6 +41,8 @@ public class AzureConnectionDocument {
     private boolean active = true;
     private Instant createdAt;
     private Instant updatedAt;
+    private AzureAuthMethod authMethod;
+    private String personalAccessToken;
 
     @Version
     private Long version;

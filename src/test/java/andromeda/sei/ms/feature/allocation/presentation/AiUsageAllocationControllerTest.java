@@ -3,8 +3,12 @@ package andromeda.sei.ms.feature.allocation.presentation;
 import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryOutput;
 import andromeda.sei.ms.feature.allocation.application.dto.PendingAllocationDayOutput;
 import andromeda.sei.ms.feature.allocation.application.dto.WorkItemCandidateOutput;
+import andromeda.sei.ms.feature.allocation.application.usecase.AcceptAllocationUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationCandidatesUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationHistoryUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationBatchesUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationsUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.ManualAllocateUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.SaveAllocationUseCase;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationInvalidSumException;
@@ -45,6 +49,10 @@ class AiUsageAllocationControllerTest {
     @Mock GetPendingAllocationsUseCase getPendingAllocations;
     @Mock GetAllocationCandidatesUseCase getAllocationCandidates;
     @Mock SaveAllocationUseCase saveAllocation;
+    @Mock GetPendingAllocationBatchesUseCase getPendingAllocationBatches;
+    @Mock AcceptAllocationUseCase acceptAllocation;
+    @Mock ManualAllocateUseCase manualAllocate;
+    @Mock GetAllocationHistoryUseCase getAllocationHistory;
 
     MockMvc mockMvc;
     ObjectMapper objectMapper;
@@ -52,7 +60,8 @@ class AiUsageAllocationControllerTest {
     @BeforeEach
     void setUp() {
         AiUsageAllocationController controller = new AiUsageAllocationController(
-                getPendingAllocations, getAllocationCandidates, saveAllocation);
+                getPendingAllocations, getAllocationCandidates, saveAllocation,
+                getPendingAllocationBatches, acceptAllocation, manualAllocate, getAllocationHistory);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
@@ -83,7 +92,7 @@ class AiUsageAllocationControllerTest {
         );
         when(getPendingAllocations.execute(anyString(), anyString())).thenReturn(List.of(output));
 
-        mockMvc.perform(get("/api/v1/ai-usage/allocations"))
+        mockMvc.perform(get("/api/v1/ai/allocations/pending"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].day").value("2026-06-03"))
                 .andExpect(jsonPath("$[0].status").value("PENDING_VALIDATION"));
@@ -95,7 +104,7 @@ class AiUsageAllocationControllerTest {
                 [{"workItemId":"wi-1","workItemTitle":"Fix login","percentage":1.0}]
                 """;
 
-        mockMvc.perform(put("/api/v1/ai-usage/allocations/2026-06-03")
+        mockMvc.perform(put("/api/v1/ai/allocations/2026-06-03")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isNoContent());
@@ -110,7 +119,7 @@ class AiUsageAllocationControllerTest {
                 [{"workItemId":"wi-1","workItemTitle":"Fix login","percentage":0.5}]
                 """;
 
-        mockMvc.perform(put("/api/v1/ai-usage/allocations/2026-06-03")
+        mockMvc.perform(put("/api/v1/ai/allocations/2026-06-03")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())

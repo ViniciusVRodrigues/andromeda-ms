@@ -12,13 +12,13 @@ public class Role {
     private String clonedFromRoleId;
     private List<String> permissionCodes;
     private boolean active;
-    private long version;
+    private Long version;
     private Instant createdAt;
     private Instant updatedAt;
 
     public Role(String id, String organizationId, String name, boolean isDefault,
                 String clonedFromRoleId, List<String> permissionCodes, boolean active,
-                long version, Instant createdAt, Instant updatedAt) {
+                Long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
         this.name = name;
@@ -52,8 +52,8 @@ public class Role {
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
 
-    public long getVersion() { return version; }
-    public void setVersion(long version) { this.version = version; }
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

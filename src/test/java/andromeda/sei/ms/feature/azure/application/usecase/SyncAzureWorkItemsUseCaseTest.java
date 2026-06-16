@@ -17,7 +17,7 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransition;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransitionRepository;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -45,7 +45,7 @@ import static org.mockito.Mockito.when;
 class SyncAzureWorkItemsUseCaseTest {
 
     @Mock private IntegrationSyncLogRepository syncLogRepository;
-    @Mock private EncryptionService encryptionService;
+    @Mock private AzureAuthStrategyResolver authStrategyResolver;
     @Mock private WorkItemRepository workItemRepository;
     @Mock private WorkItemTransitionRepository workItemTransitionRepository;
     @Mock private SprintRepository sprintRepository;
@@ -62,7 +62,8 @@ class SyncAzureWorkItemsUseCaseTest {
     void setUp() {
         connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
                 "enc-access", "enc-refresh", NOW.plusSeconds(3600),
-                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null);
+                "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
 
         binding = new AzureProjectBinding("bind-1", "org-1", "proj-1", "azure-proj-1", "My Project",
                 true, null, DefaultWorkflowConfigFactory.forScrum(), true, NOW, NOW, null);
@@ -70,7 +71,7 @@ class SyncAzureWorkItemsUseCaseTest {
         IntegrationSyncLog syncLog = new IntegrationSyncLog("log-1", "org-1", null, null,
                 SyncStatus.RUNNING, null, "proj-1", NOW, null, null, 0, 0, null, null);
         when(syncLogRepository.save(any())).thenReturn(syncLog);
-        when(encryptionService.decrypt("enc-access")).thenReturn("plain-access");
+        when(authStrategyResolver.resolve(any())).thenReturn("Bearer plain-access");
     }
 
     @Test
@@ -188,7 +189,7 @@ class SyncAzureWorkItemsUseCaseTest {
         return new WorkItem("wi-" + externalId, "org-1", "proj-1",
                 WorkItem.Source.AZURE_DEVOPS, externalId, NOW, "Title",
                 "Bug", WorkItem.ResolvedType.BUG, rawStatus, WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null,
-                NOW, null, null, null, null, true, null, NOW);
+                null, null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, null, true, null, NOW);
     }
 }

@@ -25,6 +25,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-webflux")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
+	implementation("com.sendinblue:sib-api-v3-sdk:7.0.0")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2")
 	implementation("io.jsonwebtoken:jjwt-api:0.12.6")
 	runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.6")

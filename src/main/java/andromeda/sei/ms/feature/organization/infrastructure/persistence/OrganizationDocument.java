@@ -28,6 +28,7 @@ public class OrganizationDocument {
     private String sector;
     private String country;
     private List<String> seniorities;
+    private List<AiPriceEntryDocument> aiPrices;
     private boolean active = true;
 
     @Version

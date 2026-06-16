@@ -6,10 +6,11 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 public record AiefUploadRequest(
-        @NotBlank String datasetId,
-        @NotBlank String gitHubLogin,
+        String datasetId,
+        String gitHubLogin,
         @NotNull @JsonFormat(pattern = "yyyy-MM-dd") LocalDate day,
         @NotBlank String model,
         String workspaceId,
@@ -18,5 +19,7 @@ public record AiefUploadRequest(
         String machineName,
         @NotNull @PositiveOrZero Integer inputTokens,
         @NotNull @PositiveOrZero Integer outputTokens,
-        @NotNull @PositiveOrZero Integer interactions
+        @NotNull @PositiveOrZero Integer interactions,
+        String editor,
+        Map<String, Object> fluencyMetrics
 ) {}

@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 public class IntegrationSyncLogDocumentMapper {
 
     public IntegrationSyncLog toDomain(IntegrationSyncLogDocument doc) {
-        return new IntegrationSyncLog(
+        IntegrationSyncLog log = new IntegrationSyncLog(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getIntegration(),
@@ -23,11 +23,13 @@ public class IntegrationSyncLogDocumentMapper {
                 doc.getErrorCode(),
                 doc.getErrorMessage()
         );
+        log.setHttpStatus(doc.getHttpStatus());
+        log.setErrorDetail(doc.getErrorDetail());
+        return log;
     }
 
     public IntegrationSyncLogDocument toDocument(IntegrationSyncLog log) {
-        return IntegrationSyncLogDocument.builder()
-                .id(log.getId())
+        var builder = IntegrationSyncLogDocument.builder()
                 .organizationId(log.getOrganizationId())
                 .integration(log.getIntegration())
                 .operation(log.getOperation())
@@ -41,6 +43,13 @@ public class IntegrationSyncLogDocumentMapper {
                 .itemsFailed(log.getItemsFailed())
                 .errorCode(log.getErrorCode())
                 .errorMessage(log.getErrorMessage())
-                .build();
+                .httpStatus(log.getHttpStatus())
+                .errorDetail(log.getErrorDetail());
+
+        if (log.getId() != null) {
+            builder.id(log.getId());
+        }
+
+        return builder.build();
     }
 }

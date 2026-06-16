@@ -10,12 +10,12 @@ public class ConnectorToken {
     private String label;
     private String tokenHash;
     private boolean active;
-    private long version;
+    private Long version;
     private Instant createdAt;
     private Instant updatedAt;
 
     public ConnectorToken(String id, String organizationId, String userId, String label,
-                          String tokenHash, boolean active, long version,
+                          String tokenHash, boolean active, Long version,
                           Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
@@ -51,8 +51,8 @@ public class ConnectorToken {
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }
 
-    public long getVersion() { return version; }
-    public void setVersion(long version) { this.version = version; }
+    public Long getVersion() { return version; }
+    public void setVersion(Long version) { this.version = version; }
 
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }

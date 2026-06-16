@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.infrastructure.config;
 
+import andromeda.sei.ms.feature.connector.infrastructure.security.ConnectorTokenAuthFilter;
 import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2AuthorizationRequestResolver;
 import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2AuthorizationRequestResolver;
@@ -8,6 +9,7 @@ import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2Authorization
 import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -28,6 +30,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ConnectorTokenAuthFilter connectorTokenAuthFilter;
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
     private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
 
@@ -36,6 +39,9 @@ public class SecurityConfig {
             "/api/v1/auth/invite/complete",
             "/api/v1/auth/github",
             "/api/v1/auth/github/callback",
+            "/api/v1/auth/email-verification",         // send OTP — pre-auth
+            "/api/v1/auth/email-verification/confirm", // confirm OTP — pre-auth
+            "/api/v1/permissions",      // lista de permissões disponíveis — sem auth (usada no signup)
             "/api/v1/organizations",    // onboarding — cria org + primeiro admin
             "/actuator/health",
             "/v3/api-docs/**",
@@ -73,8 +79,17 @@ public class SecurityConfig {
                         .successHandler(new CompositeOAuth2SuccessHandler(
                                 gitHubOAuth2SuccessHandler, azureOAuth2SuccessHandler))
                 )
+                .addFilterBefore(connectorTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    @Bean
+    public FilterRegistrationBean<ConnectorTokenAuthFilter> connectorTokenFilterRegistration(
+            ConnectorTokenAuthFilter filter) {
+        FilterRegistrationBean<ConnectorTokenAuthFilter> bean = new FilterRegistrationBean<>(filter);
+        bean.setEnabled(false); // runs only inside the Spring Security filter chain, not as a standalone servlet filter
+        return bean;
     }
 
     @Bean

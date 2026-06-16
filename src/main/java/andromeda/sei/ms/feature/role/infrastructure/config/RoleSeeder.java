@@ -25,7 +25,8 @@ public class RoleSeeder implements ApplicationRunner {
             "AI_READ_OWN", "AI_READ_ALL",
             "DASHBOARD_INDIVIDUAL", "DASHBOARD_TEAM", "DASHBOARD_STRATEGIC",
             "PRICE_TABLE_MANAGE",
-            "CONNECTOR_TOKEN_MANAGE_OWN", "CONNECTOR_TOKEN_MANAGE_ALL"
+            "CONNECTOR_TOKEN_MANAGE_OWN", "CONNECTOR_TOKEN_MANAGE_ALL",
+            "PROJECT_MANAGE"
     );
 
     private record RoleSeed(String name, List<String> permissionCodes) {}
@@ -34,7 +35,8 @@ public class RoleSeeder implements ApplicationRunner {
             new RoleSeed("ADMIN", ALL_PERMISSIONS),
             new RoleSeed("TECH_LEAD", List.of(
                     "AZURE_READ", "GITHUB_READ", "AI_READ_ALL",
-                    "DASHBOARD_TEAM", "DASHBOARD_INDIVIDUAL", "CONNECTOR_TOKEN_MANAGE_OWN"
+                    "DASHBOARD_TEAM", "DASHBOARD_INDIVIDUAL", "CONNECTOR_TOKEN_MANAGE_OWN",
+                    "PROJECT_MANAGE"
             )),
             new RoleSeed("MANAGER", List.of(
                     "AZURE_READ", "GITHUB_READ", "AI_READ_ALL", "DASHBOARD_STRATEGIC"

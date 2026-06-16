@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.aiusage.infrastructure.persistence;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,6 +11,7 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
@@ -20,8 +22,10 @@ import java.time.LocalDate;
                 def = "{'organizationId':1,'userId':1,'datasetId':1,'day':1,'model':1,'workspaceId':1,'machineId':1}",
                 unique = true,
                 name = "uq_ai_usage_natural_key"
-        )
+        ),
+        @CompoundIndex(def = "{'organizationId':1,'userId':1,'allocationId':1}", name = "idx_ai_usage_allocation")
 })
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Data
 @Builder
 @NoArgsConstructor
@@ -46,6 +50,9 @@ public class AiUsageDocument {
     private long inputTokens;
     private long outputTokens;
     private int interactions;
+    private String editor;
+    private String allocationId;
+    private BigDecimal costUsd;
 
     private Instant uploadedAt;
 

@@ -13,5 +13,6 @@ public record AIUsageEntry(
         String machineName,
         long inputTokens,
         long outputTokens,
-        int interactions
+        int interactions,
+        String editor
 ) {}

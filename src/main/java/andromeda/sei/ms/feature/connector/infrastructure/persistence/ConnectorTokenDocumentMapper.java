@@ -14,23 +14,27 @@ public class ConnectorTokenDocumentMapper {
                 doc.getLabel(),
                 doc.getTokenHash(),
                 doc.isActive(),
-                doc.getVersion() != null ? doc.getVersion() : 0L,
+                doc.getVersion(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
     }
 
     public ConnectorTokenDocument toDocument(ConnectorToken token) {
-        return ConnectorTokenDocument.builder()
-                .id(token.getId())
+        var builder = ConnectorTokenDocument.builder()
                 .organizationId(token.getOrganizationId())
                 .userId(token.getUserId())
                 .label(token.getLabel())
                 .tokenHash(token.getTokenHash())
                 .active(token.isActive())
-                .version(token.getVersion())
                 .createdAt(token.getCreatedAt())
-                .updatedAt(token.getUpdatedAt())
-                .build();
+                .updatedAt(token.getUpdatedAt());
+
+        if (token.getId() != null) {
+            builder.id(token.getId());
+            builder.version(token.getVersion());
+        }
+
+        return builder.build();
     }
 }

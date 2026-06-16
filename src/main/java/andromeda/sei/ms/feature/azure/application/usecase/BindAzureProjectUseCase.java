@@ -7,9 +7,10 @@ import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
+import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
 import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshService;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,7 +27,7 @@ public class BindAzureProjectUseCase {
     private final AzureConnectionRepository azureConnectionRepository;
     private final AzureDevOpsClient azureDevOpsClient;
     private final AzureTokenRefreshService azureTokenRefreshService;
-    private final EncryptionService encryptionService;
+    private final AzureAuthStrategyResolver authStrategyResolver;
 
     public AzureProjectBinding execute(String projectId, BindAzureProjectInput input) {
         String orgId = TenantContextHolder.get();
@@ -53,10 +54,12 @@ public class BindAzureProjectUseCase {
                     .findByOrganizationIdAndActiveTrue(orgId).orElse(null);
             if (connection == null) return DefaultWorkflowConfigFactory.fallback();
 
-            AzureConnection refreshed = azureTokenRefreshService.refreshIfNeeded(connection);
-            String accessToken = encryptionService.decrypt(refreshed.getAccessToken());
+            AzureConnection refreshed = connection.getAuthMethod() == AzureAuthMethod.PAT
+                    ? connection
+                    : azureTokenRefreshService.refreshIfNeeded(connection);
+            String authHeader = authStrategyResolver.resolve(refreshed);
             var capabilities = azureDevOpsClient.getProjectCapabilities(
-                    refreshed.getAzureOrgUrl(), azureProjectId, accessToken);
+                    refreshed.getAzureOrgUrl(), azureProjectId, authHeader);
             String templateName = capabilities != null ? capabilities.templateName() : null;
             return DefaultWorkflowConfigFactory.forTemplateName(templateName);
         } catch (Exception e) {

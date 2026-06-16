@@ -30,7 +30,7 @@ public class CloneRoleUseCase {
                 source.getId(),
                 new ArrayList<>(source.getPermissionCodes()),
                 true,
-                0L,
+                null,
                 now,
                 now
         );

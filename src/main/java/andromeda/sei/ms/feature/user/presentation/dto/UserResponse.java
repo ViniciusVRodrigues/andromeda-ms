@@ -8,6 +8,8 @@ public record UserResponse(
         String name,
         String roleId,
         boolean active,
-        Instant createdAt
+        Instant createdAt,
+        String azureId,
+        String azureEmail
 ) {
 }

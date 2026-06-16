@@ -70,6 +70,7 @@ class AzureConnectionRepositoryImplTest {
         return new AzureConnection(null, orgId, "https://dev.azure.com/myorg",
                 "enc-access", "enc-refresh", NOW.plusSeconds(3600),
                 "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null,
-                active, NOW, NOW, null);
+                active, NOW, NOW, null,
+                andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.OAUTH, null);
     }
 }

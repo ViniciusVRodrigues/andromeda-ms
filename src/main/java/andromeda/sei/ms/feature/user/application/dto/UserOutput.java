@@ -10,7 +10,9 @@ public record UserOutput(
         String name,
         String roleId,
         boolean active,
-        Instant createdAt
+        Instant createdAt,
+        String azureId,
+        String azureEmail
 ) {
     public static UserOutput from(User user) {
         return new UserOutput(
@@ -19,7 +21,9 @@ public record UserOutput(
                 user.getName(),
                 user.getRoleId(),
                 user.isActive(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getAzureId(),
+                user.getAzureEmail()
         );
     }
 }

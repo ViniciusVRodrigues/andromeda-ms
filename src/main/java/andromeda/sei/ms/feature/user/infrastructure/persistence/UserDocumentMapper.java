@@ -16,18 +16,19 @@ public class UserDocumentMapper {
                 doc.getRoleId(),
                 doc.getSeniority(),
                 doc.getGithubId(),
+                doc.getAzureId(),
+                doc.getAzureEmail(),
                 doc.getInviteToken(),
                 doc.isConfirmed(),
                 doc.isActive(),
-                doc.getVersion() != null ? doc.getVersion() : 0L,
+                doc.getVersion(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
     }
 
     public UserDocument toDocument(User user) {
-        return UserDocument.builder()
-                .id(user.getId())
+        var builder = UserDocument.builder()
                 .organizationId(user.getOrganizationId())
                 .email(user.getEmail())
                 .passwordHash(user.getPasswordHash())
@@ -35,11 +36,19 @@ public class UserDocumentMapper {
                 .roleId(user.getRoleId())
                 .seniority(user.getSeniority())
                 .githubId(user.getGithubId())
+                .azureId(user.getAzureId())
+                .azureEmail(user.getAzureEmail())
                 .inviteToken(user.getInviteToken())
                 .confirmed(user.isConfirmed())
                 .active(user.isActive())
                 .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .build();
+                .updatedAt(user.getUpdatedAt());
+
+        if (user.getId() != null) {
+            builder.id(user.getId());
+            builder.version(user.getVersion());
+        }
+
+        return builder.build();
     }
 }

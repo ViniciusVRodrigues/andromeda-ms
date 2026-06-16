@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.organization.application.dto.OnboardOrganization
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.exception.OrganizationSlugConflictException;
+import andromeda.sei.ms.feature.user.domain.exception.UserEmailConflictException;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.role.domain.Role;
@@ -12,9 +13,13 @@ import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.user.application.port.PasswordHasher;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
+import andromeda.sei.ms.shared.application.port.EmailService;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.util.SlugUtils;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -28,17 +33,27 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class OnboardOrganizationUseCase {
 
+    private static final Logger log = LoggerFactory.getLogger(OnboardOrganizationUseCase.class);
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
     private final OrganizationRepository organizationRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final PasswordHasher passwordHasher;
+    private final EmailService emailService;
 
     public OnboardOrganizationOutput execute(OnboardOrganizationInput input) {
         String slug = SlugUtils.toSlug(input.org().name());
 
         if (organizationRepository.existsBySlug(slug)) {
             throw new OrganizationSlugConflictException(slug);
+        }
+
+        if (userRepository.existsByEmail(input.admin().email())) {
+            throw new UserEmailConflictException(input.admin().email());
         }
 
         Instant now = Instant.now();
@@ -51,8 +66,9 @@ public class OnboardOrganizationUseCase {
                 input.org().sector(),
                 input.org().country(),
                 input.seniorities(),
+                null,
                 true,
-                0L,
+                null,
                 now,
                 now
         );
@@ -69,7 +85,7 @@ public class OnboardOrganizationUseCase {
                     null,
                     roleData.permissionCodes(),
                     true,
-                    0L,
+                    null,
                     now,
                     now
             );
@@ -93,9 +109,11 @@ public class OnboardOrganizationUseCase {
                 null,
                 null,
                 null,
+                null,
+                null,
                 true,
                 true,
-                0L,
+                null,
                 now,
                 now
         );
@@ -110,7 +128,8 @@ public class OnboardOrganizationUseCase {
                 projectSlug,
                 input.project().description(),
                 true,
-                0L,
+                null,
+                null,
                 now,
                 now
         );
@@ -137,15 +156,22 @@ public class OnboardOrganizationUseCase {
                         inviteRoleId,
                         invite.seniority(),
                         null,
+                        null,
+                        null,
                         UUID.randomUUID().toString(),
                         false,
                         true,
-                        0L,
+                        null,
                         now,
                         now
                 );
-                userRepository.save(invitedUser);
+                User savedInvite = userRepository.save(invitedUser);
                 inviteCount++;
+                try {
+                    emailService.sendInvite(invite.email(), null, frontendUrl + "/onboard?token=" + savedInvite.getInviteToken());
+                } catch (Exception e) {
+                    log.warn("Failed to send invite email to {}: {}", invite.email(), e.getMessage());
+                }
             }
         }
 

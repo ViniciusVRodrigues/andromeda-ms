@@ -39,4 +39,8 @@ public class AndromedaUserDetails implements UserDetails {
     public String getOrganizationId() {
         return organizationId;
     }
+
+    public List<String> getPermissions() {
+        return permissions;
+    }
 }

@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.project.infrastructure.persistence;
 import andromeda.sei.ms.feature.project.domain.Project;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+
 @Component
 public class ProjectDocumentMapper {
 
@@ -14,23 +16,29 @@ public class ProjectDocumentMapper {
                 doc.getSlug(),
                 doc.getDescription(),
                 doc.isActive(),
-                doc.getVersion() != null ? doc.getVersion() : 0L,
+                doc.getMemberIds() != null ? doc.getMemberIds() : new ArrayList<>(),
+                doc.getVersion(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
     }
 
     public ProjectDocument toDocument(Project project) {
-        return ProjectDocument.builder()
-                .id(project.getId())
+        var builder = ProjectDocument.builder()
                 .organizationId(project.getOrganizationId())
                 .name(project.getName())
                 .slug(project.getSlug())
                 .description(project.getDescription())
                 .active(project.isActive())
-                .version(project.getVersion())
+                .memberIds(project.getMemberIds() != null ? project.getMemberIds() : new ArrayList<>())
                 .createdAt(project.getCreatedAt())
-                .updatedAt(project.getUpdatedAt())
-                .build();
+                .updatedAt(project.getUpdatedAt());
+
+        if (project.getId() != null) {
+            builder.id(project.getId());
+            builder.version(project.getVersion());
+        }
+
+        return builder.build();
     }
 }

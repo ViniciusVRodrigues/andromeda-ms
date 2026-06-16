@@ -1,23 +1,34 @@
 package andromeda.sei.ms.feature.azure.presentation;
 
 import andromeda.sei.ms.feature.azure.application.dto.AzureConnectionStatusOutput;
+import andromeda.sei.ms.feature.azure.application.dto.AzurePatConnectionInput;
+import andromeda.sei.ms.feature.azure.application.usecase.ConfigureAzureDevOpsPatUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.DisconnectAzureUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.GetAzureConnectionStatusUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListAzureUsersUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCase;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.infrastructure.AzureSyncCooldownService;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureConnectionStatusResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzurePatConnectionRequest;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureUserResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureUsersResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import java.util.List;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Azure DevOps Integration", description = "Azure DevOps OAuth connection management")
@@ -30,6 +41,21 @@ public class AzureConnectionController {
     private final DisconnectAzureUseCase disconnectAzureUseCase;
     private final TriggerAzureSyncUseCase triggerAzureSyncUseCase;
     private final AzureSyncCooldownService azureSyncCooldownService;
+    private final ConfigureAzureDevOpsPatUseCase configureAzureDevOpsPatUseCase;
+    private final ListAzureUsersUseCase listAzureUsersUseCase;
+
+    @Operation(summary = "List all Azure DevOps users across all active project bindings")
+    @ApiResponse(responseCode = "200", description = "List of Azure users")
+    @ApiResponse(responseCode = "404", description = "Azure connection not found")
+    @ApiResponse(responseCode = "403", description = "No permission")
+    @GetMapping("/users")
+    @PreAuthorize("hasAuthority('USER_MANAGE')")
+    public ResponseEntity<AzureUsersResponse> listUsers() {
+        List<AzureUserResponse> users = listAzureUsersUseCase.execute().stream()
+                .map(u -> new AzureUserResponse(u.azureId(), u.displayName(), u.azureEmail()))
+                .toList();
+        return ResponseEntity.ok(new AzureUsersResponse(users));
+    }
 
     @Operation(summary = "Initiate Azure DevOps OAuth authorization")
     @ApiResponse(responseCode = "302", description = "Redirect to Microsoft authorization")
@@ -55,8 +81,21 @@ public class AzureConnectionController {
                 output.azureOrgUrl(),
                 output.authorizedByUserId(),
                 output.lastSuccessAt(),
-                output.consecutiveFailures()
+                output.consecutiveFailures(),
+                output.authMethod()
         ));
+    }
+
+    @Operation(summary = "Connect Azure DevOps via Personal Access Token")
+    @ApiResponse(responseCode = "200", description = "PAT connection established")
+    @ApiResponse(responseCode = "400", description = "Invalid PAT or org URL")
+    @ApiResponse(responseCode = "403", description = "No permission")
+    @PostMapping("/connection/pat")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<Void> connectPat(@Valid @RequestBody AzurePatConnectionRequest request) {
+        configureAzureDevOpsPatUseCase.execute(
+                new AzurePatConnectionInput(request.adoOrganizationUrl(), request.personalAccessToken()));
+        return ResponseEntity.ok().build();
     }
 
     @Operation(summary = "Disconnect Azure DevOps integration")

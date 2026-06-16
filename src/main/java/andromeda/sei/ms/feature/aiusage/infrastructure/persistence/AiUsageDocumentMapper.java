@@ -22,6 +22,9 @@ public class AiUsageDocumentMapper {
                 doc.getInputTokens(),
                 doc.getOutputTokens(),
                 doc.getInteractions(),
+                doc.getEditor(),
+                doc.getAllocationId(),
+                doc.getCostUsd(),
                 doc.getUploadedAt(),
                 doc.isActive(),
                 doc.getVersion(),
@@ -31,8 +34,7 @@ public class AiUsageDocumentMapper {
     }
 
     public AiUsageDocument toDocument(AIUsage usage) {
-        return AiUsageDocument.builder()
-                .id(usage.getId())
+        var builder = AiUsageDocument.builder()
                 .organizationId(usage.getOrganizationId())
                 .userId(usage.getUserId())
                 .gitHubLogin(usage.getGitHubLogin())
@@ -46,11 +48,19 @@ public class AiUsageDocumentMapper {
                 .inputTokens(usage.getInputTokens())
                 .outputTokens(usage.getOutputTokens())
                 .interactions(usage.getInteractions())
+                .editor(usage.getEditor())
+                .allocationId(usage.getAllocationId())
+                .costUsd(usage.getCostUsd())
                 .uploadedAt(usage.getUploadedAt())
                 .active(usage.isActive())
-                .version(usage.getVersion())
                 .createdAt(usage.getCreatedAt())
-                .updatedAt(usage.getUpdatedAt())
-                .build();
+                .updatedAt(usage.getUpdatedAt());
+
+        if (usage.getId() != null) {
+            builder.id(usage.getId());
+            builder.version(usage.getVersion());
+        }
+
+        return builder.build();
     }
 }

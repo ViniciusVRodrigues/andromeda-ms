@@ -41,6 +41,7 @@ public class AzureProjectBindingDocumentMapper {
                 .active(binding.isActive())
                 .createdAt(binding.getCreatedAt())
                 .updatedAt(binding.getUpdatedAt())
+                .version(binding.getVersion())
                 .build();
     }
 

@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.allocation.application.usecase;
 
+import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
@@ -17,11 +19,12 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -30,6 +33,7 @@ import static org.mockito.Mockito.when;
 class AutoAssignAllocationUseCaseTest {
 
     @Mock AiUsageAllocationRepository allocationRepository;
+    @Mock AIUsageRepository aiUsageRepository;
     @Mock SprintRepository sprintRepository;
     @Mock WorkItemRepository workItemRepository;
 
@@ -41,73 +45,158 @@ class AutoAssignAllocationUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new AutoAssignAllocationUseCase(allocationRepository, sprintRepository, workItemRepository);
+        useCase = new AutoAssignAllocationUseCase(
+                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository);
     }
 
+    // ── Happy path ────────────────────────────────────────────────────────────
+
     @Test
-    void skips_when_validated_allocation_exists() {
-        when(allocationRepository.existsValidatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY)).thenReturn(true);
+    void should_createPendingAllocation_without_stampingUsageRecords_when_unallocatedRecordsAndSprintItemsExist() {
+        AIUsage usage1 = aiUsage("usage-1");
+        AIUsage usage2 = aiUsage("usage-2");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(usage1, usage2));
+
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+
+        Sprint sprint = sprint("sprint-1");
+        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
+
+        WorkItem item1 = workItem("wi-1", "Fix login bug");
+        WorkItem item2 = workItem("wi-2", "Add dashboard");
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(item1, item2));
+
+        AiUsageAllocation savedAllocation = savedAllocation("alloc-1", List.of("usage-1", "usage-2"));
+        when(allocationRepository.save(any())).thenReturn(savedAllocation);
 
         useCase.execute(ORG, USER, DAY);
 
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+
+        AiUsageAllocation created = captor.getValue();
+        assertThat(created.getAiUsageIds()).containsExactlyInAnyOrder("usage-1", "usage-2");
+        assertThat(created.getSplits()).hasSize(2);
+        assertThat(created.getStatus()).isEqualTo(AiUsageAllocation.Status.PENDING_VALIDATION);
+        assertThat(created.getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.AUTO);
+
+        BigDecimal expectedSplit = new BigDecimal("0.5000");
+        created.getSplits().forEach(s -> assertThat(s.getPercentage()).isEqualByComparingTo(expectedSplit));
+
+        // PENDING_VALIDATION must NOT stamp allocationId on AIUsage records
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
+    }
+
+    // ── Idempotency: all records already allocated ────────────────────────────
+
+    @Test
+    void should_returnEarly_when_noUnallocatedRecordsExist() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of());
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
         verify(sprintRepository, never()).findCurrentSprintsByOrganizationId(anyString());
-        verify(allocationRepository, never()).saveAll(any());
     }
 
+    // ── Idempotency: same PENDING allocation already covers these records ─────
+
     @Test
-    void creates_no_allocations_when_no_in_progress_items() {
-        when(allocationRepository.existsValidatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY)).thenReturn(false);
-        Sprint sprint = sprint("sprint-1");
-        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
-        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of());
+    void should_returnEarly_when_identicalPendingAllocationAlreadyExists() {
+        AIUsage usage1 = aiUsage("usage-1");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(usage1));
+
+        AiUsageAllocation existingPending = savedAllocation("alloc-existing", List.of("usage-1"));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(existingPending));
 
         useCase.execute(ORG, USER, DAY);
 
-        verify(allocationRepository, never()).saveAll(any());
+        verify(allocationRepository, never()).deleteById(anyString());
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
-    @Test
-    void creates_100_percent_allocation_for_single_item() {
-        when(allocationRepository.existsValidatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY)).thenReturn(false);
-        Sprint sprint = sprint("sprint-1");
-        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
-        WorkItem item = workItem("wi-1", "Fix login bug");
-        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of(item));
-
-        useCase.execute(ORG, USER, DAY);
-
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<AiUsageAllocation>> captor = ArgumentCaptor.forClass(List.class);
-        verify(allocationRepository).saveAll(captor.capture());
-
-        List<AiUsageAllocation> saved = captor.getValue();
-        assertThat(saved).hasSize(1);
-        assertThat(saved.get(0).getPercentage()).isEqualByComparingTo(BigDecimal.ONE);
-        assertThat(saved.get(0).getStatus()).isEqualTo(AiUsageAllocation.Status.PENDING_VALIDATION);
-        assertThat(saved.get(0).getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.AUTO);
-    }
+    // ── No sprint items found ─────────────────────────────────────────────────
 
     @Test
-    void splits_evenly_for_multiple_items() {
-        when(allocationRepository.existsValidatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY)).thenReturn(false);
+    void should_leaveRecordsUnallocated_when_noSprintItemsFound() {
+        AIUsage usage1 = aiUsage("usage-1");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(usage1));
+
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+
         Sprint sprint = sprint("sprint-1");
         when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                 ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
-                .thenReturn(List.of(workItem("wi-1", "A"), workItem("wi-2", "B"), workItem("wi-3", "C")));
+                .thenReturn(List.of());
 
         useCase.execute(ORG, USER, DAY);
 
-        @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<AiUsageAllocation>> captor = ArgumentCaptor.forClass(List.class);
-        verify(allocationRepository).saveAll(captor.capture());
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
+    }
 
-        List<AiUsageAllocation> saved = captor.getValue();
-        assertThat(saved).hasSize(3);
-        BigDecimal expected = new BigDecimal("0.3333");
-        saved.forEach(a -> assertThat(a.getPercentage()).isEqualByComparingTo(expected));
+    // ── Stale PENDING cleanup ─────────────────────────────────────────────────
+
+    @Test
+    void should_deleteStaleAndCreateNew_when_pendingAllocationCoversDifferentRecords() {
+        AIUsage usage1 = aiUsage("usage-1");
+        AIUsage usage2 = aiUsage("usage-2");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(usage1, usage2));
+
+        // Stale PENDING covers only usage-1, not usage-2
+        AiUsageAllocation stalePending = savedAllocation("alloc-stale", List.of("usage-1"));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(stalePending));
+
+        Sprint sprint = sprint("sprint-1");
+        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
+
+        WorkItem item = workItem("wi-1", "Fix login bug");
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(item));
+
+        AiUsageAllocation newAllocation = savedAllocation("alloc-new", List.of("usage-1", "usage-2"));
+        when(allocationRepository.save(any())).thenReturn(newAllocation);
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository).deleteById("alloc-stale");
+        verify(allocationRepository).save(any());
+        // PENDING_VALIDATION must NOT stamp allocationId on AIUsage records
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private AIUsage aiUsage(String id) {
+        return new AIUsage(
+                id, ORG, USER, "gh-login", "dataset-1", DAY, "gpt-4o",
+                "ws-1", "Workspace 1", "mc-1", "Machine 1",
+                1000L, 500L, 10, "vscode", null,
+                new BigDecimal("0.05"), Instant.now(), true, null, Instant.now(), Instant.now()
+        );
+    }
+
+    private AiUsageAllocation savedAllocation(String id, List<String> aiUsageIds) {
+        return new AiUsageAllocation(
+                id, ORG, USER, DAY,
+                aiUsageIds, List.of(),
+                AiUsageAllocation.Status.PENDING_VALIDATION,
+                AiUsageAllocation.AssignedBy.AUTO,
+                true, 0L, Instant.now(), Instant.now()
+        );
     }
 
     private Sprint sprint(String id) {
@@ -123,8 +212,8 @@ class AutoAssignAllocationUseCaseTest {
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
                 "Medium", 3.0, List.of(),
-                "sprint-1", "ext-user", USER,
+                "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, true, 1L, Instant.now());
+                null, null, null, true, 1L, Instant.now());
     }
 }

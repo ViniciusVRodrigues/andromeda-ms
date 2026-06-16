@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.azure.infrastructure.client;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
@@ -37,12 +38,12 @@ public class AzureDevOpsClient {
         return orgUrl.endsWith("/") ? orgUrl.substring(0, orgUrl.length() - 1) : orgUrl;
     }
 
-    public List<AzureProjectDto> getProjects(String orgUrl, String accessToken) {
+    public List<AzureProjectDto> getProjects(String orgUrl, String authHeader) {
         String url = baseUrl(orgUrl) + "/_apis/projects?api-version=7.0";
 
         ProjectsResponse response = azureWebClient.get()
                 .uri(url)
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .bodyToMono(ProjectsResponse.class)
                 .retryWhen(retrySpec())
@@ -50,12 +51,12 @@ public class AzureDevOpsClient {
         return response != null && response.value() != null ? response.value() : List.of();
     }
 
-    public List<AdoTeamDto> getTeams(String orgUrl, String projectId, String accessToken) {
-        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/teams?api-version=7.2";
+    public List<AdoTeamDto> getTeams(String orgUrl, String projectId, String authHeader) {
+        String url = baseUrl(orgUrl) + "/_apis/projects/" + projectId + "/teams?api-version=7.1";
 
         ListResponse<AdoTeamDto> response = azureWebClient.get()
                 .uri(url)
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoTeamDto>>() {})
                 .retryWhen(retrySpec())
@@ -63,13 +64,13 @@ public class AzureDevOpsClient {
         return response != null && response.value() != null ? response.value() : List.of();
     }
 
-    public List<AdoIterationDto> getIterations(String orgUrl, String projectId, String teamId, String accessToken) {
+    public List<AdoIterationDto> getIterations(String orgUrl, String projectId, String teamId, String authHeader) {
         String url = baseUrl(orgUrl) + "/" + projectId + "/" + teamId
-                + "/_apis/work/teamsettings/iterations?api-version=7.2";
+                + "/_apis/work/teamsettings/iterations?api-version=7.1";
 
         ListResponse<AdoIterationDto> response = azureWebClient.get()
                 .uri(url)
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoIterationDto>>() {})
                 .retryWhen(retrySpec())
@@ -77,13 +78,13 @@ public class AzureDevOpsClient {
         return response != null && response.value() != null ? response.value() : List.of();
     }
 
-    public AdoProjectCapabilitiesDto getProjectCapabilities(String orgUrl, String projectId, String accessToken) {
+    public AdoProjectCapabilitiesDto getProjectCapabilities(String orgUrl, String projectId, String authHeader) {
         String url = baseUrl(orgUrl) + "/_apis/projects/" + projectId
-                + "?includeCapabilities=true&api-version=7.2";
+                + "?includeCapabilities=true&api-version=7.1";
 
         ProjectCapabilitiesResponse response = azureWebClient.get()
                 .uri(url)
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", authHeader)
                 .retrieve()
                 .bodyToMono(ProjectCapabilitiesResponse.class)
                 .retryWhen(retrySpec())
@@ -95,8 +96,8 @@ public class AzureDevOpsClient {
         return new AdoProjectCapabilitiesDto(templateName);
     }
 
-    public List<Integer> queryWorkItemIds(String orgUrl, String projectId, String accessToken, Instant since) {
-        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/wiql?api-version=7.2";
+    public List<Integer> queryWorkItemIds(String orgUrl, String projectId, String authHeader, Instant since) {
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/wiql?api-version=7.1";
 
         String dateFilter = since != null
                 ? " WHERE [System.ChangedDate] >= '" + since.toString() + "'"
@@ -106,7 +107,7 @@ public class AzureDevOpsClient {
         @SuppressWarnings("unchecked")
         Map<String, Object> response = azureWebClient.post()
                 .uri(url)
-                .header("Authorization", "Bearer " + accessToken)
+                .header("Authorization", authHeader)
                 .header("Content-Type", "application/json")
                 .body(BodyInserters.fromValue(Map.of("query", wiql)))
                 .retrieve()
@@ -123,7 +124,7 @@ public class AzureDevOpsClient {
                 .toList();
     }
 
-    public List<AdoWorkItemDto> getWorkItemsBatch(String orgUrl, List<Integer> ids, String accessToken) {
+    public List<AdoWorkItemDto> getWorkItemsBatch(String orgUrl, List<Integer> ids, String authHeader) {
         if (ids.isEmpty()) return List.of();
 
         List<AdoWorkItemDto> all = new ArrayList<>();
@@ -132,11 +133,11 @@ public class AzureDevOpsClient {
             List<Integer> batch = ids.subList(i, Math.min(i + BATCH_SIZE, ids.size()));
             String idsParam = batch.stream().map(String::valueOf).reduce((a, b) -> a + "," + b).orElse("");
             String url = baseUrl(orgUrl) + "/_apis/wit/workitems?ids=" + idsParam
-                    + "&$expand=all&api-version=7.2";
+                    + "&$expand=all&api-version=7.1";
 
             ListResponse<AdoWorkItemDto> response = azureWebClient.get()
                     .uri(url)
-                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Authorization", authHeader)
                     .retrieve()
                     .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoWorkItemDto>>() {})
                     .retryWhen(retrySpec())
@@ -150,14 +151,33 @@ public class AzureDevOpsClient {
         return all;
     }
 
-    public List<AdoWorkItemUpdateDto> getWorkItemUpdates(String orgUrl, int workItemId, String accessToken) {
+    public List<AdoTeamMemberDto> getTeamMembers(String orgUrl, String projectId, String teamId, String authHeader) {
+        String url = baseUrl(orgUrl) + "/_apis/projects/" + projectId + "/teams/" + teamId
+                + "/members?api-version=7.1";
+
+        ListResponse<AdoTeamMemberWrapperDto> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoTeamMemberWrapperDto>>() {})
+                .retryWhen(retrySpec())
+                .block();
+
+        if (response == null || response.value() == null) return List.of();
+        return response.value().stream()
+                .filter(w -> w.identity() != null)
+                .map(w -> new AdoTeamMemberDto(w.identity().id(), w.identity().displayName(), w.identity().uniqueName()))
+                .toList();
+    }
+
+    public List<AdoWorkItemUpdateDto> getWorkItemUpdates(String orgUrl, int workItemId, String authHeader) {
         List<AdoWorkItemUpdateDto> all = new ArrayList<>();
-        String url = baseUrl(orgUrl) + "/_apis/wit/workitems/" + workItemId + "/updates?api-version=7.2";
+        String url = baseUrl(orgUrl) + "/_apis/wit/workitems/" + workItemId + "/updates?api-version=7.1";
 
         while (url != null) {
             PagedResponse<AdoWorkItemUpdateDto> response = azureWebClient.get()
                     .uri(url)
-                    .header("Authorization", "Bearer " + accessToken)
+                    .header("Authorization", authHeader)
                     .retrieve()
                     .bodyToMono(new org.springframework.core.ParameterizedTypeReference<PagedResponse<AdoWorkItemUpdateDto>>() {})
                     .retryWhen(retrySpec())
@@ -167,7 +187,7 @@ public class AzureDevOpsClient {
             all.addAll(response.value());
             url = response.continuationToken() != null
                     ? baseUrl(orgUrl) + "/_apis/wit/workitems/" + workItemId
-                            + "/updates?api-version=7.2&continuationToken=" + response.continuationToken()
+                            + "/updates?api-version=7.1&continuationToken=" + response.continuationToken()
                     : null;
         }
         return all;
@@ -175,7 +195,9 @@ public class AzureDevOpsClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class ProjectsResponse {
+        @JsonProperty("value")
         private List<AzureProjectDto> value;
+        @JsonProperty("count")
         private int count;
 
         public List<AzureProjectDto> value() { return value; }
@@ -184,13 +206,16 @@ public class AzureDevOpsClient {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class ListResponse<T> {
+        @JsonProperty("value")
         private List<T> value;
         public List<T> value() { return value; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class PagedResponse<T> {
+        @JsonProperty("value")
         private List<T> value;
+        @JsonProperty("continuationToken")
         private String continuationToken;
         public List<T> value() { return value; }
         public String continuationToken() { return continuationToken; }

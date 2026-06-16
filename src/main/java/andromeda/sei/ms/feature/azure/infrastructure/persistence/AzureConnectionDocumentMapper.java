@@ -23,7 +23,9 @@ public class AzureConnectionDocumentMapper {
                 doc.isActive(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt(),
-                doc.getVersion()
+                doc.getVersion(),
+                doc.getAuthMethod(),
+                doc.getPersonalAccessToken()
         );
     }
 
@@ -44,6 +46,9 @@ public class AzureConnectionDocumentMapper {
                 .active(connection.isActive())
                 .createdAt(connection.getCreatedAt())
                 .updatedAt(connection.getUpdatedAt())
+                .version(connection.getVersion())
+                .authMethod(connection.getAuthMethod())
+                .personalAccessToken(connection.getPersonalAccessToken())
                 .build();
     }
 }

@@ -20,13 +20,16 @@ public class AzureConnection {
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;
+    private AzureAuthMethod authMethod;
+    private String personalAccessToken;
 
     public AzureConnection(String id, String organizationId, String azureOrgUrl,
                             String accessToken, String refreshToken, Instant tokenExpiresAt,
                             String authorizedByUserId, AzureConnectionStatus status,
                             Instant lastSuccessAt, int consecutiveFailures,
                             String lastErrorCode, String lastErrorMessage,
-                            boolean active, Instant createdAt, Instant updatedAt, Long version) {
+                            boolean active, Instant createdAt, Instant updatedAt, Long version,
+                            AzureAuthMethod authMethod, String personalAccessToken) {
         this.id = id;
         this.organizationId = organizationId;
         this.azureOrgUrl = azureOrgUrl;
@@ -43,6 +46,8 @@ public class AzureConnection {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.version = version;
+        this.authMethod = authMethod;
+        this.personalAccessToken = personalAccessToken;
     }
 
     public String getId() { return id; }
@@ -92,4 +97,10 @@ public class AzureConnection {
 
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
+
+    public AzureAuthMethod getAuthMethod() { return authMethod; }
+    public void setAuthMethod(AzureAuthMethod authMethod) { this.authMethod = authMethod; }
+
+    public String getPersonalAccessToken() { return personalAccessToken; }
+    public void setPersonalAccessToken(String personalAccessToken) { this.personalAccessToken = personalAccessToken; }
 }

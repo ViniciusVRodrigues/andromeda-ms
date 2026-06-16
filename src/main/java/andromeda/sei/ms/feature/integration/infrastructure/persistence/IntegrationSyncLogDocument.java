@@ -41,4 +41,6 @@ public class IntegrationSyncLogDocument {
     private Integer itemsFailed;
     private String errorCode;
     private String errorMessage;
+    private Integer httpStatus;
+    private String errorDetail;
 }

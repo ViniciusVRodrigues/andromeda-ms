@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.organization.presentation;
 import andromeda.sei.ms.feature.organization.application.dto.CreateOrganizationOutput;
 import andromeda.sei.ms.feature.organization.application.dto.OnboardOrganizationInput;
 import andromeda.sei.ms.feature.organization.application.dto.OnboardOrganizationOutput;
+import andromeda.sei.ms.feature.organization.presentation.dto.AiPriceEntryResponse;
 import andromeda.sei.ms.feature.organization.presentation.dto.OnboardOrganizationRequest;
 import andromeda.sei.ms.feature.organization.presentation.dto.OnboardOrganizationResponse;
 import andromeda.sei.ms.feature.organization.presentation.dto.OrganizationResponse;
@@ -48,6 +49,11 @@ public class OrganizationPresentationMapper {
     }
 
     public OrganizationResponse toResponse(CreateOrganizationOutput output) {
-        return new OrganizationResponse(output.id(), output.name(), output.slug(), output.createdAt());
+        List<AiPriceEntryResponse> aiPrices = output.aiPrices() == null ? null :
+                output.aiPrices().stream()
+                        .map(e -> new AiPriceEntryResponse(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput()))
+                        .toList();
+        return new OrganizationResponse(output.id(), output.name(), output.slug(),
+                output.sector(), output.country(), output.seniorities(), aiPrices, output.createdAt());
     }
 }

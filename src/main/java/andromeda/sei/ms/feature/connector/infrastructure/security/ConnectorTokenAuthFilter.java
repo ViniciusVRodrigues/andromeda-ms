@@ -13,7 +13,6 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.HexFormat;
 
 @Component
-@Order(Integer.MIN_VALUE)
 @RequiredArgsConstructor
 public class ConnectorTokenAuthFilter extends OncePerRequestFilter {
 

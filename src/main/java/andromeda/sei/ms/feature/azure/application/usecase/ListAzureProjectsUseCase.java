@@ -4,21 +4,32 @@ import andromeda.sei.ms.feature.azure.application.dto.AzureProjectOutput;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
-import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
+import andromeda.sei.ms.feature.integration.domain.Integration;
+import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
+import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
+import andromeda.sei.ms.feature.integration.domain.SyncOperation;
+import andromeda.sei.ms.feature.integration.domain.SyncStatus;
+import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
+import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ListAzureProjectsUseCase {
 
     private final AzureConnectionRepository azureConnectionRepository;
     private final AzureDevOpsClient azureDevOpsClient;
-    private final EncryptionService encryptionService;
+    private final AzureAuthStrategyResolver authStrategyResolver;
+    private final IntegrationSyncLogRepository syncLogRepository;
 
     public List<AzureProjectOutput> execute() {
         String orgId = TenantContextHolder.get();
@@ -26,10 +37,45 @@ public class ListAzureProjectsUseCase {
                 .findByOrganizationIdAndActiveTrue(orgId)
                 .orElseThrow(() -> new AzureConnectionNotFoundException(orgId));
 
-        String accessToken = encryptionService.decrypt(connection.getAccessToken());
-        return azureDevOpsClient.getProjects(connection.getAzureOrgUrl(), accessToken)
-                .stream()
-                .map(p -> new AzureProjectOutput(p.id(), p.name()))
-                .toList();
+        Instant startedAt = Instant.now();
+        String authHeader = authStrategyResolver.resolve(connection);
+
+        try {
+            List<AzureProjectOutput> projects = azureDevOpsClient
+                    .getProjects(connection.getAzureOrgUrl(), authHeader)
+                    .stream()
+                    .map(p -> new AzureProjectOutput(p.id(), p.name()))
+                    .toList();
+
+            log.info("Azure projects fetched: org={} count={} projects={}",
+                    orgId, projects.size(), projects.stream().map(AzureProjectOutput::azureProjectName).toList());
+
+            writeSyncLog(orgId, startedAt, SyncStatus.SUCCESS, projects.size(), null, null, null, null);
+            return projects;
+
+        } catch (WebClientResponseException e) {
+            String body = e.getResponseBodyAsString();
+            String detail = body.length() > 2000 ? body.substring(0, 2000) : body;
+            log.error("Azure list projects failed: org={} httpStatus={} body={}", orgId, e.getStatusCode().value(), detail);
+            writeSyncLog(orgId, startedAt, SyncStatus.FAILED, 0,
+                    "AZURE_LIST_PROJECTS_FAILED", e.getMessage(), e.getStatusCode().value(), detail);
+            throw e;
+        } catch (Exception e) {
+            log.error("Azure list projects failed: org={}", orgId, e);
+            writeSyncLog(orgId, startedAt, SyncStatus.FAILED, 0, "AZURE_LIST_PROJECTS_FAILED", e.getMessage(), null, null);
+            throw e;
+        }
+    }
+
+    private void writeSyncLog(String orgId, Instant startedAt, SyncStatus status, int count,
+                               String errorCode, String errorMessage, Integer httpStatus, String errorDetail) {
+        Instant finishedAt = Instant.now();
+        IntegrationSyncLog entry = new IntegrationSyncLog(
+                null, orgId, Integration.AZURE_DEVOPS, SyncOperation.LIST_PROJECTS,
+                status, SyncTrigger.MANUAL, null, startedAt, finishedAt,
+                finishedAt.toEpochMilli() - startedAt.toEpochMilli(), count, 0, errorCode, errorMessage);
+        entry.setHttpStatus(httpStatus);
+        entry.setErrorDetail(errorDetail);
+        syncLogRepository.save(entry);
     }
 }

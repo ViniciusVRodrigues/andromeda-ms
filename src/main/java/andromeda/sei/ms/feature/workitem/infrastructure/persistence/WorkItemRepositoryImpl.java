@@ -49,6 +49,7 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("sprintId", doc.getSprintId())
                 .set("assigneeExternalId", doc.getAssigneeExternalId())
                 .set("assigneeUserId", doc.getAssigneeUserId())
+                .set("assigneeEmail", doc.getAssigneeEmail())
                 .set("startedAt", doc.getStartedAt())
                 .set("completedAt", doc.getCompletedAt())
                 .set("active", doc.isActive())
@@ -93,5 +94,56 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("leadTimeHours", leadTimeHours)
                 .set("updatedAt", Instant.now());
         mongoTemplate.updateFirst(query, update, WorkItemDocument.class);
+    }
+
+    @Override
+    public void updateTokensPerSp(String id, Double tokensPerSp) {
+        Query query = Query.query(Criteria.where("_id").is(id));
+        Update update = new Update()
+                .set("tokensPerSp", tokensPerSp)
+                .set("updatedAt", Instant.now());
+        mongoTemplate.updateFirst(query, update, WorkItemDocument.class);
+    }
+
+    @Override
+    public List<WorkItem> findByOrganizationIdAndAssigneeUserIdAndSprintId(
+            String organizationId, String userId, String sprintId) {
+        return mongoRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(organizationId, userId, sprintId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItem> findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(
+            String organizationId, String assigneeUserId, String sprintId, String projectId) {
+        return mongoRepository.findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(
+                        organizationId, assigneeUserId, sprintId, projectId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItem> findAllByOrganizationIdAndProjectIdAndSprintId(
+            String organizationId, String projectId, String sprintId) {
+        return mongoRepository.findAllByOrganizationIdAndProjectIdAndSprintId(organizationId, projectId, sprintId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public void updateAssigneeUserIdByExternalIdOrEmail(String organizationId, String azureId, String email, String userId) {
+        List<Criteria> orCriteria = new java.util.ArrayList<>();
+        if (azureId != null) {
+            orCriteria.add(Criteria.where("assigneeExternalId").is(azureId));
+        }
+        if (email != null) {
+            orCriteria.add(Criteria.where("assigneeEmail").is(email));
+        }
+        if (orCriteria.isEmpty()) {
+            return;
+        }
+        Criteria criteria = Criteria.where("organizationId").is(organizationId)
+                .and("active").is(true)
+                .orOperator(orCriteria.toArray(new Criteria[0]));
+        Query query = new Query(criteria);
+        Update update = new Update().set("assigneeUserId", userId).set("updatedAt", Instant.now());
+        mongoTemplate.updateMulti(query, update, WorkItemDocument.class);
     }
 }

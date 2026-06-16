@@ -12,4 +12,6 @@ public interface RoleMongoRepository extends MongoRepository<RoleDocument, Strin
     List<RoleDocument> findByOrganizationIdIsNullAndActiveTrue();
 
     Optional<RoleDocument> findByNameAndOrganizationIdIsNull(String name);
+
+    Optional<RoleDocument> findByNameAndOrganizationId(String name, String organizationId);
 }

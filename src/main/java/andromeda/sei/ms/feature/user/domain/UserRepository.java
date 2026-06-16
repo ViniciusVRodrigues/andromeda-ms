@@ -13,6 +13,8 @@ public interface UserRepository {
 
     Optional<User> findByEmail(String email);
 
+    Optional<User> findByOrganizationIdAndAzureId(String organizationId, String azureId);
+
     Optional<User> findByInviteToken(String inviteToken);
 
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);

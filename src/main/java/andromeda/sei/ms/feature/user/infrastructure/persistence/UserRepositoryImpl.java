@@ -41,6 +41,12 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
+    public Optional<User> findByOrganizationIdAndAzureId(String organizationId, String azureId) {
+        return mongoRepository.findByOrganizationIdAndAzureIdAndActiveTrue(organizationId, azureId)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<User> findByInviteToken(String inviteToken) {
         return mongoRepository.findByInviteToken(inviteToken).map(mapper::toDomain);
     }

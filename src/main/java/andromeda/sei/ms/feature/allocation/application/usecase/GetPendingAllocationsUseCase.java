@@ -27,16 +27,15 @@ public class GetPendingAllocationsUseCase {
         return byDay.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(e -> {
-                    AiUsageAllocation.Status status = e.getValue().stream()
-                            .map(AiUsageAllocation::getStatus)
-                            .findFirst()
-                            .orElse(AiUsageAllocation.Status.UNALLOCATED);
+                    AiUsageAllocation first = e.getValue().get(0);
+                    AiUsageAllocation.Status status = first.getStatus();
 
-                    List<AllocationEntryOutput> entries = e.getValue().stream()
-                            .map(a -> new AllocationEntryOutput(
-                                    a.getWorkItemId(), a.getWorkItemTitle(),
-                                    a.getPercentage(), a.getAssignedBy()))
-                            .toList();
+                    List<AllocationEntryOutput> entries = first.getSplits() == null ? List.of() :
+                            first.getSplits().stream()
+                                    .map(s -> new AllocationEntryOutput(
+                                            s.getWorkItemId(), s.getWorkItemTitle(),
+                                            s.getPercentage(), first.getAssignedBy()))
+                                    .toList();
 
                     return new PendingAllocationDayOutput(e.getKey(), status, entries);
                 })

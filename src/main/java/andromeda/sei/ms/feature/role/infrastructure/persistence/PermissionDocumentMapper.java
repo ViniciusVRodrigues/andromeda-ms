@@ -14,14 +14,18 @@ public class PermissionDocumentMapper {
 
     public PermissionDocument toDocument(Permission permission) {
         Instant now = Instant.now();
-        return PermissionDocument.builder()
-                .id(permission.getId())
+        var builder = PermissionDocument.builder()
                 .code(permission.getCode())
                 .description(permission.getDescription())
                 .module(permission.getModule())
                 .active(true)
                 .createdAt(now)
-                .updatedAt(now)
-                .build();
+                .updatedAt(now);
+
+        if (permission.getId() != null) {
+            builder.id(permission.getId());
+        }
+
+        return builder.build();
     }
 }

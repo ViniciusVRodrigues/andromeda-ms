@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.infrastructure.security;
 
+import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
@@ -85,7 +86,8 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt,
                     userId, AzureConnectionStatus.CONNECTED,
                     null, 0, null, null,
-                    true, now, now, null);
+                    true, now, now, null,
+                    AzureAuthMethod.OAUTH, null);
             azureConnectionRepository.save(connection);
         }
 

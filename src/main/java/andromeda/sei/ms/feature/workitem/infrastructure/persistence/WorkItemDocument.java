@@ -44,11 +44,14 @@ public class WorkItemDocument {
     private String sprintId;
     private String assigneeExternalId;
     private String assigneeUserId;
+    private String assigneeEmail;
+    private String parentExternalId;
     private Instant createdAt;
     private Instant startedAt;
     private Instant completedAt;
     private Double cycleTimeHours;
     private Double leadTimeHours;
+    private Double tokensPerSp;
     private boolean active = true;
     private Instant updatedAt;
 

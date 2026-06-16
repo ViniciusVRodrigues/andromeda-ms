@@ -25,11 +25,14 @@ public class WorkItemDocumentMapper {
                 doc.getSprintId(),
                 doc.getAssigneeExternalId(),
                 doc.getAssigneeUserId(),
+                doc.getAssigneeEmail(),
+                doc.getParentExternalId(),
                 doc.getCreatedAt(),
                 doc.getStartedAt(),
                 doc.getCompletedAt(),
                 doc.getCycleTimeHours(),
                 doc.getLeadTimeHours(),
+                doc.getTokensPerSp(),
                 doc.isActive(),
                 doc.getVersion(),
                 doc.getUpdatedAt()
@@ -55,11 +58,14 @@ public class WorkItemDocumentMapper {
                 .sprintId(item.getSprintId())
                 .assigneeExternalId(item.getAssigneeExternalId())
                 .assigneeUserId(item.getAssigneeUserId())
+                .assigneeEmail(item.getAssigneeEmail())
+                .parentExternalId(item.getParentExternalId())
                 .createdAt(item.getCreatedAt())
                 .startedAt(item.getStartedAt())
                 .completedAt(item.getCompletedAt())
                 .cycleTimeHours(item.getCycleTimeHours())
                 .leadTimeHours(item.getLeadTimeHours())
+                .tokensPerSp(item.getTokensPerSp())
                 .active(item.isActive())
                 .version(item.getVersion())
                 .updatedAt(item.getUpdatedAt())

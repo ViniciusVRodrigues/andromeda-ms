@@ -1,8 +1,8 @@
 package andromeda.sei.ms.feature.allocation.domain;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 
 public class AiUsageAllocation {
 
@@ -13,9 +13,8 @@ public class AiUsageAllocation {
     private String organizationId;
     private String userId;
     private LocalDate day;
-    private String workItemId;
-    private String workItemTitle;
-    private BigDecimal percentage;
+    private List<String> aiUsageIds;
+    private List<AllocationSplit> splits;
     private Status status;
     private AssignedBy assignedBy;
     private boolean active;
@@ -24,16 +23,15 @@ public class AiUsageAllocation {
     private Instant updatedAt;
 
     public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
-                              String workItemId, String workItemTitle, BigDecimal percentage,
+                              List<String> aiUsageIds, List<AllocationSplit> splits,
                               Status status, AssignedBy assignedBy,
                               boolean active, Long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
         this.userId = userId;
         this.day = day;
-        this.workItemId = workItemId;
-        this.workItemTitle = workItemTitle;
-        this.percentage = percentage;
+        this.aiUsageIds = aiUsageIds;
+        this.splits = splits;
         this.status = status;
         this.assignedBy = assignedBy;
         this.active = active;
@@ -54,14 +52,11 @@ public class AiUsageAllocation {
     public LocalDate getDay() { return day; }
     public void setDay(LocalDate day) { this.day = day; }
 
-    public String getWorkItemId() { return workItemId; }
-    public void setWorkItemId(String workItemId) { this.workItemId = workItemId; }
+    public List<String> getAiUsageIds() { return aiUsageIds; }
+    public void setAiUsageIds(List<String> aiUsageIds) { this.aiUsageIds = aiUsageIds; }
 
-    public String getWorkItemTitle() { return workItemTitle; }
-    public void setWorkItemTitle(String workItemTitle) { this.workItemTitle = workItemTitle; }
-
-    public BigDecimal getPercentage() { return percentage; }
-    public void setPercentage(BigDecimal percentage) { this.percentage = percentage; }
+    public List<AllocationSplit> getSplits() { return splits; }
+    public void setSplits(List<AllocationSplit> splits) { this.splits = splits; }
 
     public Status getStatus() { return status; }
     public void setStatus(Status status) { this.status = status; }

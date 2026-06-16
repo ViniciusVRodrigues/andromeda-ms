@@ -18,15 +18,14 @@ public class RoleDocumentMapper {
                 doc.getClonedFromRoleId(),
                 doc.getPermissionCodes() != null ? new ArrayList<>(doc.getPermissionCodes()) : new ArrayList<>(),
                 doc.isActive(),
-                doc.getVersion() != null ? doc.getVersion() : 0L,
+                doc.getVersion(),
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
     }
 
     public RoleDocument toDocument(Role role) {
-        return RoleDocument.builder()
-                .id(role.getId())
+        var builder = RoleDocument.builder()
                 .organizationId(role.getOrganizationId())
                 .name(role.getName())
                 .isDefault(role.isDefault())
@@ -34,7 +33,13 @@ public class RoleDocumentMapper {
                 .permissionCodes(role.getPermissionCodes() != null ? new ArrayList<>(role.getPermissionCodes()) : List.of())
                 .active(role.isActive())
                 .createdAt(role.getCreatedAt())
-                .updatedAt(role.getUpdatedAt())
-                .build();
+                .updatedAt(role.getUpdatedAt());
+
+        if (role.getId() != null) {
+            builder.id(role.getId());
+            builder.version(role.getVersion());
+        }
+
+        return builder.build();
     }
 }

@@ -118,9 +118,9 @@ class CalculateSprintMetricsUseCaseTest {
         WorkItem item = new WorkItem(id, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 id, NOW, "Title", "Story", WorkItem.ResolvedType.STORY,
                 status.name(), status, null, storyPoints, List.of(),
-                sprintId, null, null, NOW, null,
+                sprintId, null, null, null, null, NOW, null,
                 status == WorkItem.ResolvedStatus.DONE ? NOW.plusSeconds(3600) : null,
-                cycleTimeHours, leadTimeHours, true, null, NOW);
+                cycleTimeHours, leadTimeHours, null, true, null, NOW);
         return item;
     }
 }

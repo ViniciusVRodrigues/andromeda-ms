@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.azure.application.dto.BindAzureProjectInput;
 import andromeda.sei.ms.feature.azure.application.dto.UpdateAzureBindingInput;
 import andromeda.sei.ms.feature.azure.application.dto.UpdateWorkflowConfigInput;
 import andromeda.sei.ms.feature.azure.application.usecase.BindAzureProjectUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.RemoveAzureProjectBindingUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureProjectBindingSyncUseCase;
@@ -17,12 +18,14 @@ import andromeda.sei.ms.feature.azure.presentation.dto.BindAzureProjectRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateAzureBindingRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateWorkflowConfigRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.WorkflowConfigResponse;
+import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase.ResyncSummaryResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,6 +51,7 @@ public class AzureProjectBindingController {
     private final RemoveAzureProjectBindingUseCase removeAzureProjectBindingUseCase;
     private final UpdateAzureProjectBindingSyncUseCase updateAzureProjectBindingSyncUseCase;
     private final UpdateWorkflowConfigUseCase updateWorkflowConfigUseCase;
+    private final ForceResyncProjectUseCase forceResyncProjectUseCase;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
 
     @Operation(summary = "List available Azure DevOps projects")
@@ -68,12 +72,12 @@ public class AzureProjectBindingController {
     @ApiResponse(responseCode = "404", description = "Project not found")
     @PostMapping("/projects/{projectId}/binding")
     @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
-    public ResponseEntity<Void> bindProject(
+    public ResponseEntity<AzureProjectBindingResponse> bindProject(
             @PathVariable String projectId,
             @Valid @RequestBody BindAzureProjectRequest request) {
-        bindAzureProjectUseCase.execute(projectId,
+        AzureProjectBinding binding = bindAzureProjectUseCase.execute(projectId,
                 new BindAzureProjectInput(request.azureProjectId(), request.azureProjectName()));
-        return ResponseEntity.ok().build();
+        return ResponseEntity.ok(toResponse(binding));
     }
 
     @Operation(summary = "Remove Azure DevOps project binding")
@@ -84,6 +88,18 @@ public class AzureProjectBindingController {
     public ResponseEntity<Void> removeBinding(@PathVariable String projectId) {
         removeAzureProjectBindingUseCase.execute(projectId);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Force full re-sync of work item transition history for a project")
+    @ApiResponse(responseCode = "202", description = "Re-sync completed")
+    @ApiResponse(responseCode = "404", description = "Binding or connection not found")
+    @ApiResponse(responseCode = "403", description = "Missing AZURE_CONFIGURE permission")
+    @PostMapping("/projects/{projectId}/resync")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<ResyncSummaryResponse> resyncProject(@PathVariable String projectId) {
+        String orgId = TenantContextHolder.get();
+        ResyncSummaryResponse summary = forceResyncProjectUseCase.execute(orgId, projectId);
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(summary);
     }
 
     @Operation(summary = "Toggle sync for a bound project")

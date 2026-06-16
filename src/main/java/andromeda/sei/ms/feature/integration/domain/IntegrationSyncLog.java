@@ -18,6 +18,8 @@ public class IntegrationSyncLog {
     private Integer itemsFailed;
     private String errorCode;
     private String errorMessage;
+    private Integer httpStatus;
+    private String errorDetail;
 
     public IntegrationSyncLog(String id, String organizationId, Integration integration,
                                SyncOperation operation, SyncStatus status, SyncTrigger triggeredBy,
@@ -81,4 +83,10 @@ public class IntegrationSyncLog {
 
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
+
+    public Integer getHttpStatus() { return httpStatus; }
+    public void setHttpStatus(Integer httpStatus) { this.httpStatus = httpStatus; }
+
+    public String getErrorDetail() { return errorDetail; }
+    public void setErrorDetail(String errorDetail) { this.errorDetail = errorDetail; }
 }
