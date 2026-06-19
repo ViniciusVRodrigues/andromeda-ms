@@ -100,8 +100,8 @@ class StrategicDashboardControllerTest {
     @Test
     void should_return200_when_memberScope() throws Exception {
         DeveloperDashboardOutput devOutput = new DeveloperDashboardOutput(
-                List.of(), null, null, 5.0, List.of(), BigDecimal.ZERO, null, null, null,
-                List.of(), 0, List.of(), null);
+                List.of(), null, null, 5.0, null, List.of(), BigDecimal.ZERO, null, null, null,
+                List.of(), 0, List.of(), null, null, null);
         StrategicDashboardOutput output = new StrategicDashboardOutput("MEMBER", null, null, devOutput);
 
         when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), eq("member-1"), any(), any()))

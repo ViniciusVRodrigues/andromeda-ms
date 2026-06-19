@@ -24,4 +24,6 @@ public interface AiUsageMongoRepository extends MongoRepository<AiUsageDocument,
 
     List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayBetweenAndActiveTrue(
             String organizationId, String userId, LocalDate from, LocalDate to);
+
+    List<AiUsageDocument> findByOrganizationIdAndActiveTrue(String organizationId);
 }

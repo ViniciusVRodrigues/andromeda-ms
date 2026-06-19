@@ -29,6 +29,7 @@ public class RoleDocument {
 
     private String organizationId;
     private String name;
+    private String label;
     private boolean isDefault;
     private String clonedFromRoleId;
     private List<String> permissionCodes;

@@ -28,6 +28,10 @@ spring:
             user-info-uri: https://graph.microsoft.com/oidc/userinfo
             user-name-attribute: sub
 
+jackson:
+  serialization:
+    write-dates-as-timestamps: false
+
 server:
   port: ${SERVER_PORT:9090}
 

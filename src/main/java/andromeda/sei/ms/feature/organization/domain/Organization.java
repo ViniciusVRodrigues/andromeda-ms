@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.organization.domain;
 
 import andromeda.sei.ms.feature.organization.domain.exception.AiPriceDuplicateModelException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -16,14 +17,16 @@ public class Organization {
     private String country;
     private List<String> seniorities;
     private List<AiPriceEntry> aiPrices;
+    private BigDecimal subscriptionCostPerUserUsd;
     private boolean active;
     private Long version;
     private Instant createdAt;
     private Instant updatedAt;
 
     public Organization(String id, String name, String slug, String sector, String country,
-                        List<String> seniorities, List<AiPriceEntry> aiPrices, boolean active,
-                        Long version, Instant createdAt, Instant updatedAt) {
+                        List<String> seniorities, List<AiPriceEntry> aiPrices,
+                        BigDecimal subscriptionCostPerUserUsd,
+                        boolean active, Long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.name = name;
         this.slug = slug;
@@ -31,6 +34,7 @@ public class Organization {
         this.country = country;
         this.seniorities = seniorities;
         this.aiPrices = aiPrices;
+        this.subscriptionCostPerUserUsd = subscriptionCostPerUserUsd;
         this.active = active;
         this.version = version;
         this.createdAt = createdAt;
@@ -56,6 +60,9 @@ public class Organization {
     public void setSeniorities(List<String> seniorities) { this.seniorities = seniorities; }
 
     public List<AiPriceEntry> getAiPrices() { return aiPrices; }
+
+    public BigDecimal getSubscriptionCostPerUserUsd() { return subscriptionCostPerUserUsd; }
+    public void setSubscriptionCostPerUserUsd(BigDecimal subscriptionCostPerUserUsd) { this.subscriptionCostPerUserUsd = subscriptionCostPerUserUsd; }
 
     public void setAiPrices(List<AiPriceEntry> entries) {
         if (entries != null) {

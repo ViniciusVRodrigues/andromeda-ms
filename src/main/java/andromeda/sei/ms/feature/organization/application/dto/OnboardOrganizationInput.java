@@ -13,6 +13,6 @@ public record OnboardOrganizationInput(
     public record OrgData(String name, String sector, String country) {}
     public record AdminData(String email, String name, String password) {}
     public record ProjectData(String name, String description) {}
-    public record RoleData(String name, List<String> permissionCodes) {}
+    public record RoleData(String name, String label, List<String> permissionCodes) {}
     public record InviteData(String email, String roleName, String seniority) {}
 }

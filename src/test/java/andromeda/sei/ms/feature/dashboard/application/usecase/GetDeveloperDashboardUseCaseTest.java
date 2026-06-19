@@ -3,9 +3,14 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
+import andromeda.sei.ms.feature.organization.domain.Organization;
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -28,6 +33,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +42,8 @@ class GetDeveloperDashboardUseCaseTest {
     @Mock private SprintRepository sprintRepository;
     @Mock private WorkItemRepository workItemRepository;
     @Mock private AIUsageRepository aiUsageRepository;
+    @Mock private AiUsageAllocationRepository allocationRepository;
+    @Mock private OrganizationRepository organizationRepository;
 
     private GetDeveloperDashboardUseCase useCase;
 
@@ -50,7 +58,12 @@ class GetDeveloperDashboardUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new GetDeveloperDashboardUseCase(sprintRepository, workItemRepository, aiUsageRepository);
+        useCase = new GetDeveloperDashboardUseCase(
+                sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository);
+        // Default: no validated allocations. Individual tests override as needed.
+        lenient().when(allocationRepository.findValidatedByOrgUserAndWorkItemId(any(), any(), any()))
+                .thenReturn(List.of());
+        lenient().when(organizationRepository.findById(any())).thenReturn(Optional.empty());
     }
 
     // ── Task 2.5: null metrics ─────────────────────────────────────────────────
@@ -131,6 +144,110 @@ class GetDeveloperDashboardUseCaseTest {
                 .filter(p -> p.date().equals(LocalDate.of(2026, 6, 6)))
                 .findFirst().orElseThrow();
         assertThat(june6.remainingSp()).isEqualTo(0.0);
+
+        // Both stories count toward the sprint SP denominator (delivered == total here)
+        assertThat(output.totalSpInSprint()).isEqualTo(15.0);
+        assertThat(output.storyPointsDelivered()).isEqualTo(15.0);
+    }
+
+    // ── totalSpInSprint: all stories vs. delivered ─────────────────────────────
+
+    @Test
+    void should_compute_totalSpInSprint_from_all_stories_not_only_done() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+
+        WorkItem done = workItem("wi-1", WorkItem.ResolvedStatus.DONE, 5.0, 2.0, Instant.now());
+        WorkItem inProgress = workItem("wi-2", WorkItem.ResolvedStatus.IN_PROGRESS, 8.0, null, null);
+
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of(done, inProgress));
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        // delivered = DONE only (5), total = all stories (5 + 8 = 13)
+        assertThat(output.storyPointsDelivered()).isEqualTo(5.0);
+        assertThat(output.totalSpInSprint()).isEqualTo(13.0);
+    }
+
+    // ── Sprint token series: zero-filled across the full span ──────────────────
+
+    @Test
+    void should_zero_fill_tokensByDay_across_full_sprint_span() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        // Only two days have usage; the rest of the 10-day span must be zero-filled.
+        DailyAiUsage june2 = new DailyAiUsage(LocalDate.of(2026, 6, 2), 1000L, 500L, 5L, new BigDecimal("0.05"));
+        DailyAiUsage june5 = new DailyAiUsage(LocalDate.of(2026, 6, 5), 2000L, 800L, 9L, new BigDecimal("0.12"));
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(
+                eq(ORG), eq(USER), eq(SPRINT_START), eq(SPRINT_END), isNull()))
+                .thenReturn(List.of(june2, june5));
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        List<DailyAiUsage> series = output.tokensByDay();
+        // June 1..June 10 inclusive → 10 entries, one per day, in order.
+        assertThat(series).hasSize(10);
+        assertThat(series.get(0).day()).isEqualTo(LocalDate.of(2026, 6, 1));
+        assertThat(series.get(9).day()).isEqualTo(LocalDate.of(2026, 6, 10));
+
+        DailyAiUsage day1 = series.get(0);
+        assertThat(day1.inputTokens()).isZero();
+        assertThat(day1.outputTokens()).isZero();
+
+        DailyAiUsage day2 = series.stream()
+                .filter(d -> d.day().equals(LocalDate.of(2026, 6, 2))).findFirst().orElseThrow();
+        assertThat(day2.inputTokens()).isEqualTo(1000L);
+        assertThat(day2.outputTokens()).isEqualTo(500L);
+    }
+
+    // ── AI cost per work item: basis = the allocation's own usage records ──────
+
+    @Test
+    void should_attribute_aiCost_from_allocation_records_not_whole_day() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+
+        WorkItem story = workItem("story-1", WorkItem.ResolvedStatus.IN_PROGRESS, 3.0, null, null);
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of(story));
+
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        // Two usage records on the same day: u1 ($0.10) is covered by the allocation,
+        // u2 ($0.90) is NOT. Whole-day cost would be $1.00; correct basis is only $0.10.
+        AIUsage u1 = aiUsage("u1", LocalDate.of(2026, 6, 2), "alloc-1", 1000L, 500L, "0.10");
+        AIUsage u2 = aiUsage("u2", LocalDate.of(2026, 6, 2), null, 9000L, 4000L, "0.90");
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(
+                eq(ORG), eq(USER), eq(SPRINT_START), eq(SPRINT_END)))
+                .thenReturn(List.of(u1, u2));
+
+        // Allocation covers only u1, fully attributed (100%) to the story.
+        AiUsageAllocation alloc = new AiUsageAllocation(
+                "alloc-1", ORG, USER, LocalDate.of(2026, 6, 2),
+                List.of("u1"),
+                List.of(new AllocationSplit("story-1", "Title story-1", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL,
+                true, 1L, Instant.now(), Instant.now());
+        when(allocationRepository.findValidatedByOrgUserAndWorkItemId(ORG, USER, "story-1"))
+                .thenReturn(List.of(alloc));
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        // Must be $0.10 (only u1), NOT $1.00 (whole day).
+        assertThat(output.aiCostByWorkItemId()).containsKey("story-1");
+        assertThat(output.aiCostByWorkItemId().get("story-1")).isEqualByComparingTo(new BigDecimal("0.10"));
     }
 
     // ── Task 3.6b: aiSprintSummary unallocated days ────────────────────────────

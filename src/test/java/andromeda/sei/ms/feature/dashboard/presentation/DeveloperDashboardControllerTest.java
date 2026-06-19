@@ -70,8 +70,8 @@ class DeveloperDashboardControllerTest {
     @Test
     void should_return200WithDashboardData_when_authenticated() throws Exception {
         DeveloperDashboardOutput output = new DeveloperDashboardOutput(
-                List.of(), null, null, null, List.of(), BigDecimal.ZERO, null, null, null,
-                List.of(), 0, List.of(), null);
+                List.of(), null, null, null, null, List.of(), BigDecimal.ZERO, null, null, null,
+                List.of(), 0, List.of(), null, null, null);
         DeveloperDashboardResponse response = mapper.toResponse(output);
 
         when(getDeveloperDashboardUseCase.execute(
@@ -87,8 +87,8 @@ class DeveloperDashboardControllerTest {
     @Test
     void should_return200_when_queryParamsProvided() throws Exception {
         DeveloperDashboardOutput output = new DeveloperDashboardOutput(
-                List.of(), 4.5, 8.0, 5.0, List.of(), new BigDecimal("12.50"), 250.0, null, null,
-                List.of(), 0, List.of(), null);
+                List.of(), 4.5, 8.0, 5.0, 10.0, List.of(), new BigDecimal("12.50"), 250.0, null, null,
+                List.of(), 0, List.of(), null, null, null);
 
         when(getDeveloperDashboardUseCase.execute(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(output);
@@ -100,6 +100,7 @@ class DeveloperDashboardControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.avgCycleTimeHours").value(4.5))
                 .andExpect(jsonPath("$.storyPointsDelivered").value(5.0))
+                .andExpect(jsonPath("$.totalSpInSprint").value(10.0))
                 .andExpect(jsonPath("$.avgTokensPerSp").value(250.0));
     }
 }

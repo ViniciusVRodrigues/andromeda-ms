@@ -24,6 +24,9 @@ public class UpdateUserUseCase {
         if (input.roleId() != null) {
             user.setRoleId(input.roleId());
         }
+        if (input.seniority() != null) {
+            user.setSeniority(input.seniority());
+        }
 
         User saved = userRepository.save(user);
         return UserOutput.from(saved);

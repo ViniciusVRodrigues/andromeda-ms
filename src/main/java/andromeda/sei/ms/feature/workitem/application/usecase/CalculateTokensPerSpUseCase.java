@@ -10,7 +10,6 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -31,6 +30,7 @@ public class CalculateTokensPerSpUseCase {
                 continue;
             }
 
+            // Find all validated allocations that reference this work item in their splits
             List<AiUsageAllocation> allocations = allocationRepository.findByWorkItemId(workItem.getId());
 
             if (allocations.isEmpty()) {
@@ -38,44 +38,43 @@ public class CalculateTokensPerSpUseCase {
                 continue;
             }
 
-            Map<String, List<LocalDate>> daysByUserId = allocations.stream()
-                    .collect(Collectors.groupingBy(
-                            AiUsageAllocation::getUserId,
-                            Collectors.mapping(AiUsageAllocation::getDay, Collectors.toList())
-                    ));
+            // Collect all aiUsageIds referenced across all allocations for this work item
+            List<String> allUsageIds = allocations.stream()
+                    .filter(a -> a.getAiUsageIds() != null)
+                    .flatMap(a -> a.getAiUsageIds().stream())
+                    .distinct()
+                    .collect(Collectors.toList());
 
-            Map<String, Map<LocalDate, AIUsage>> usageByUserAndDay = daysByUserId.entrySet().stream()
-                    .collect(Collectors.toMap(
-                            Map.Entry::getKey,
-                            e -> {
-                                List<AIUsage> usages = aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(
-                                        orgId, e.getKey(), e.getValue());
-                                return usages.stream()
-                                        .collect(Collectors.toMap(AIUsage::getDay, u -> u, (a, b) -> a));
-                            }
-                    ));
+            // Fetch all referenced usage records in one query
+            Map<String, AIUsage> usageById = aiUsageRepository.findByIds(allUsageIds).stream()
+                    .collect(Collectors.toMap(AIUsage::getId, u -> u, (a, b) -> a));
 
             double totalAttributedTokens = 0.0;
             for (AiUsageAllocation allocation : allocations) {
-                Map<LocalDate, AIUsage> dayMap = usageByUserAndDay.get(allocation.getUserId());
-                if (dayMap == null) continue;
-                AIUsage usage = dayMap.get(allocation.getDay());
-                if (usage == null) continue;
+                if (allocation.getAiUsageIds() == null || allocation.getSplits() == null) continue;
 
-                double splitPercentage = allocation.getSplits() == null ? 0.0 :
-                        allocation.getSplits().stream()
-                                .filter(s -> workItem.getId().equals(s.getWorkItemId()))
-                                .findFirst()
-                                .map(AllocationSplit::getPercentage)
-                                .map(java.math.BigDecimal::doubleValue)
-                                .orElse(0.0);
+                // Find the split percentage for this work item in this allocation
+                double splitPercentage = allocation.getSplits().stream()
+                        .filter(s -> workItem.getId().equals(s.getWorkItemId()))
+                        .findFirst()
+                        .map(AllocationSplit::getPercentage)
+                        .map(java.math.BigDecimal::doubleValue)
+                        .orElse(0.0);
 
-                double totalTokens = usage.getInputTokens() + usage.getOutputTokens();
-                totalAttributedTokens += totalTokens * splitPercentage;
+                if (splitPercentage == 0.0) continue;
+
+                // Sum tokens from all usage records referenced by this allocation
+                double allocationTokens = allocation.getAiUsageIds().stream()
+                        .map(usageById::get)
+                        .filter(u -> u != null)
+                        .mapToDouble(u -> u.getInputTokens() + u.getOutputTokens())
+                        .sum();
+
+                totalAttributedTokens += allocationTokens * splitPercentage;
             }
 
             double tokensPerSp = totalAttributedTokens / workItem.getStoryPoints();
-            workItemRepository.updateTokensPerSp(workItem.getId(), tokensPerSp);
+            workItemRepository.updateTokensPerSp(workItem.getId(), tokensPerSp > 0 ? tokensPerSp : null);
         }
     }
 }

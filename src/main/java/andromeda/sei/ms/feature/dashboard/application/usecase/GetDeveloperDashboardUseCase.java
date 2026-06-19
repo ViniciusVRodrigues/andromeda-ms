@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -38,6 +39,7 @@ public class GetDeveloperDashboardUseCase {
     private final WorkItemRepository workItemRepository;
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
+    private final OrganizationRepository organizationRepository;
 
     public DeveloperDashboardOutput execute(String orgId, String userId, String projectId, String sprintId,
                                             LocalDate startDate, LocalDate endDate, String model) {
@@ -82,20 +84,32 @@ public class GetDeveloperDashboardUseCase {
                 .toArray();
         Double storyPointsDelivered = spValues.length == 0 ? null : Arrays.stream(spValues).sum();
 
-        LocalDate from = startDate != null ? startDate : LocalDate.now().minusDays(30);
-        LocalDate to = endDate != null ? endDate : LocalDate.now();
+        double[] totalSpValues = storyItems.stream()
+                .map(WorkItem::getStoryPoints)
+                .filter(v -> v != null)
+                .mapToDouble(Double::doubleValue)
+                .toArray();
+        Double totalSpInSprint = totalSpValues.length == 0 ? null : Arrays.stream(totalSpValues).sum();
 
-        List<DailyAiUsage> tokensByDay = aiUsageRepository.findDailyUsageByUserIdAndDateRange(
-                orgId, userId, from, to, model);
-
-        BigDecimal sprintCostUsd = null;
         LocalDate sprintStart = sprintOpt.map(s -> toLocalDate(s.getStartDate())).orElse(null);
         LocalDate sprintEnd = sprintOpt.map(s -> toLocalDate(s.getEndDate())).orElse(null);
 
+        // Token usage series: scoped to the sprint span (zero-filled per day) when a sprint
+        // is resolved; otherwise fall back to the explicit range or the trailing 30 days.
+        List<DailyAiUsage> tokensByDay;
         if (sprintStart != null && sprintEnd != null) {
-            List<DailyAiUsage> sprintUsage = aiUsageRepository.findDailyUsageByUserIdAndDateRange(
-                    orgId, userId, sprintStart, sprintEnd, model);
-            sprintCostUsd = sprintUsage.stream()
+            tokensByDay = buildSprintTokenSeries(orgId, userId, sprintStart, sprintEnd, model);
+        } else {
+            LocalDate from = startDate != null ? startDate : LocalDate.now().minusDays(30);
+            LocalDate to = endDate != null ? endDate : LocalDate.now();
+            tokensByDay = aiUsageRepository.findDailyUsageByUserIdAndDateRange(
+                    orgId, userId, from, to, model);
+        }
+
+        BigDecimal sprintCostUsd = null;
+
+        if (sprintStart != null && sprintEnd != null) {
+            sprintCostUsd = tokensByDay.stream()
                     .map(DailyAiUsage::costUsd)
                     .filter(v -> v != null)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -115,11 +129,16 @@ public class GetDeveloperDashboardUseCase {
 
         Map<String, BigDecimal> aiCostByWorkItemId = computeAiCostByWorkItem(orgId, userId, storyItems, sprintStart, sprintEnd);
 
+        BigDecimal subscriptionCostPerUserUsd = organizationRepository.findById(orgId)
+                .map(org -> org.getSubscriptionCostPerUserUsd())
+                .orElse(null);
+
         return new DeveloperDashboardOutput(
                 storyItems,
                 avgCycleTimeHours,
                 avgLeadTimeHours,
                 storyPointsDelivered,
+                totalSpInSprint,
                 tokensByDay,
                 sprintCostUsd,
                 avgTokensPerSp,
@@ -129,25 +148,26 @@ public class GetDeveloperDashboardUseCase {
                 storyItems.size(),
                 burndownSeries,
                 aiSprintSummary,
-                aiCostByWorkItemId
+                aiCostByWorkItemId,
+                subscriptionCostPerUserUsd
         );
     }
 
     private Map<String, BigDecimal> computeAiCostByWorkItem(String orgId, String userId,
             List<WorkItem> storyItems, LocalDate sprintStart, LocalDate sprintEnd) {
-        if (storyItems.isEmpty()) return Map.of();
+        if (storyItems.isEmpty() || sprintStart == null || sprintEnd == null) return Map.of();
 
-        Map<LocalDate, BigDecimal> costByDay = Map.of();
-        if (sprintStart != null && sprintEnd != null) {
-            List<DailyAiUsage> dailyUsage = aiUsageRepository.findDailyUsageByUserIdAndDateRange(
-                    orgId, userId, sprintStart, sprintEnd, null);
-            costByDay = dailyUsage.stream()
-                    .filter(d -> d.costUsd() != null && d.day() != null)
-                    .collect(Collectors.toMap(
-                            DailyAiUsage::day,
-                            DailyAiUsage::costUsd,
-                            BigDecimal::add));
-        }
+        // Cost basis is the actual usage records an allocation covers, not the whole day's
+        // total. Build a per-record cost map so each allocation only attributes the cost of
+        // its own aiUsageIds (handles days with partial coverage or multiple allocations).
+        Map<String, BigDecimal> costByUsageId = aiUsageRepository
+                .findByOrganizationIdAndUserIdAndDayBetween(orgId, userId, sprintStart, sprintEnd)
+                .stream()
+                .filter(u -> u.getId() != null && u.getCostUsd() != null)
+                .collect(Collectors.toMap(
+                        AIUsage::getId,
+                        AIUsage::getCostUsd,
+                        BigDecimal::add));
 
         Map<String, BigDecimal> costByWorkItem = new HashMap<>();
         for (WorkItem story : storyItems) {
@@ -155,12 +175,17 @@ public class GetDeveloperDashboardUseCase {
                     .findValidatedByOrgUserAndWorkItemId(orgId, userId, story.getId());
             BigDecimal totalCost = BigDecimal.ZERO;
             for (AiUsageAllocation alloc : allocations) {
-                BigDecimal dayCost = costByDay.getOrDefault(alloc.getDay(), BigDecimal.ZERO);
                 if (alloc.getSplits() == null) continue;
+
+                BigDecimal allocationBasis = alloc.getAiUsageIds() == null ? BigDecimal.ZERO
+                        : alloc.getAiUsageIds().stream()
+                                .map(id -> costByUsageId.getOrDefault(id, BigDecimal.ZERO))
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
                 for (AllocationSplit split : alloc.getSplits()) {
                     if (!story.getId().equals(split.getWorkItemId())) continue;
                     if (split.getPercentage() == null) continue;
-                    totalCost = totalCost.add(dayCost.multiply(split.getPercentage()));
+                    totalCost = totalCost.add(allocationBasis.multiply(split.getPercentage()));
                 }
             }
             if (totalCost.compareTo(BigDecimal.ZERO) > 0) {
@@ -168,6 +193,27 @@ public class GetDeveloperDashboardUseCase {
             }
         }
         return costByWorkItem;
+    }
+
+    /**
+     * Builds a token-usage series covering every day of the sprint span, zero-filling days
+     * with no usage so the chart renders a continuous X-axis from sprint start to end.
+     */
+    private List<DailyAiUsage> buildSprintTokenSeries(String orgId, String userId,
+            LocalDate sprintStart, LocalDate sprintEnd, String model) {
+        Map<LocalDate, DailyAiUsage> byDay = aiUsageRepository
+                .findDailyUsageByUserIdAndDateRange(orgId, userId, sprintStart, sprintEnd, model)
+                .stream()
+                .filter(d -> d.day() != null)
+                .collect(Collectors.toMap(DailyAiUsage::day, d -> d, (a, b) -> a));
+
+        List<DailyAiUsage> series = new ArrayList<>();
+        LocalDate cursor = sprintStart;
+        while (!cursor.isAfter(sprintEnd)) {
+            series.add(byDay.getOrDefault(cursor, new DailyAiUsage(cursor, 0L, 0L, 0L, BigDecimal.ZERO)));
+            cursor = cursor.plusDays(1);
+        }
+        return series;
     }
 
     private List<BurndownPoint> computeBurndown(List<WorkItem> sprintItems,
@@ -229,11 +275,15 @@ public class GetDeveloperDashboardUseCase {
             return null;
         }
 
-        long totalTokens = sprintUsages.stream()
+        List<AIUsage> allocatedUsages = sprintUsages.stream()
+                .filter(u -> u.getAllocationId() != null)
+                .toList();
+
+        long totalTokens = allocatedUsages.stream()
                 .mapToLong(u -> u.getInputTokens() + u.getOutputTokens())
                 .sum();
 
-        BigDecimal totalCostUsd = sprintUsages.stream()
+        BigDecimal totalCostUsd = allocatedUsages.stream()
                 .map(AIUsage::getCostUsd)
                 .filter(c -> c != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);

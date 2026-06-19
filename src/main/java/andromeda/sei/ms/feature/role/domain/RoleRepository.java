@@ -11,6 +11,8 @@ public interface RoleRepository {
 
     Optional<Role> findGlobalByName(String name);
 
+    List<Role> findAllGlobal();
+
     Optional<Role> findByNameAndOrganizationId(String name, String organizationId);
 
     Role save(Role role);

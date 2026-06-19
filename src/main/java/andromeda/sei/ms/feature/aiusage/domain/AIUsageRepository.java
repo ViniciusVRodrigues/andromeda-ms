@@ -40,4 +40,8 @@ public interface AIUsageRepository {
 
     List<AIUsage> findByOrganizationIdAndUserIdAndMonth(String organizationId, String userId,
             java.time.YearMonth month);
+
+    List<AIUsage> findAllByOrganizationId(String organizationId);
+
+    List<AIUsage> findByIds(List<String> ids);
 }

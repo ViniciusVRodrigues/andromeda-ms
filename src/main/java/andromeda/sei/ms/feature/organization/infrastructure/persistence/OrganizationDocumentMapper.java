@@ -23,6 +23,7 @@ public class OrganizationDocumentMapper {
                 doc.getCountry(),
                 doc.getSeniorities(),
                 aiPrices,
+                doc.getSubscriptionCostPerUserUsd(),
                 doc.isActive(),
                 doc.getVersion(),
                 doc.getCreatedAt(),
@@ -43,6 +44,7 @@ public class OrganizationDocumentMapper {
                 .country(org.getCountry())
                 .seniorities(org.getSeniorities())
                 .aiPrices(aiPriceDocs)
+                .subscriptionCostPerUserUsd(org.getSubscriptionCostPerUserUsd())
                 .active(org.isActive())
                 .createdAt(org.getCreatedAt())
                 .updatedAt(org.getUpdatedAt());

@@ -8,6 +8,7 @@ public record RoleOutput(
         String id,
         String organizationId,
         String name,
+        String label,
         boolean isDefault,
         List<String> permissionCodes
 ) {
@@ -16,6 +17,7 @@ public record RoleOutput(
                 role.getId(),
                 role.getOrganizationId(),
                 role.getName(),
+                role.getLabel(),
                 role.isDefault(),
                 role.getPermissionCodes()
         );

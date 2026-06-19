@@ -56,7 +56,7 @@ public class OrganizationController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<OrganizationResponse> updateMe(@Valid @RequestBody UpdateOrganizationRequest request) {
         String orgId = TenantContextHolder.get();
-        var output = updateOrganizationUseCase.execute(orgId, request.seniorities());
+        var output = updateOrganizationUseCase.execute(orgId, request.seniorities(), request.subscriptionCostPerUserUsd());
         return ResponseEntity.ok(mapper.toResponse(output));
     }
 

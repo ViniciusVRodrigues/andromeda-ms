@@ -229,6 +229,19 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         return resultMap;
     }
 
+    @Override
+    public List<AIUsage> findAllByOrganizationId(String organizationId) {
+        return mongoRepository.findByOrganizationIdAndActiveTrue(organizationId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<AIUsage> findByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return mongoRepository.findAllById(ids)
+                .stream().map(mapper::toDomain).toList();
+    }
+
     private Criteria buildUserFilterCriteria(String organizationId, String userId,
                                               LocalDate startDate, LocalDate endDate, String model) {
         Criteria criteria = Criteria.where("organizationId").is(organizationId)
@@ -264,7 +277,10 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     }
 
     private LocalDate toLocalDate(Object value) {
+        if (value == null) return null;
         if (value instanceof LocalDate ld) return ld;
+        if (value instanceof Instant i) return i.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        if (value instanceof java.util.Date d) return d.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
         return null;
     }
 }

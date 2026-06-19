@@ -13,7 +13,7 @@ public record OnboardOrganizationRequest(
         @Valid @NotNull AdminData admin,
         @Valid @NotNull ProjectData project,
         @NotEmpty List<@NotBlank String> seniorities,
-        @NotEmpty List<@Valid RoleData> roles,
+        List<@Valid RoleData> roles,
         List<@Valid InviteData> invites
 ) {
     public record OrgData(
@@ -35,6 +35,7 @@ public record OnboardOrganizationRequest(
 
     public record RoleData(
             @NotBlank String name,
+            String label,
             @NotEmpty List<@NotBlank String> permissionCodes
     ) {}
 

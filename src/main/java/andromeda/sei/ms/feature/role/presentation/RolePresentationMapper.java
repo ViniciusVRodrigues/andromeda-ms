@@ -11,6 +11,7 @@ public class RolePresentationMapper {
         return new RoleResponse(
                 output.id(),
                 output.name(),
+                output.label(),
                 output.organizationId(),
                 output.isDefault(),
                 output.permissionCodes()

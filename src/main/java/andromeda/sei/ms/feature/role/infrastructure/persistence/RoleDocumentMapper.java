@@ -14,6 +14,7 @@ public class RoleDocumentMapper {
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getName(),
+                doc.getLabel(),
                 doc.isDefault(),
                 doc.getClonedFromRoleId(),
                 doc.getPermissionCodes() != null ? new ArrayList<>(doc.getPermissionCodes()) : new ArrayList<>(),
@@ -28,6 +29,7 @@ public class RoleDocumentMapper {
         var builder = RoleDocument.builder()
                 .organizationId(role.getOrganizationId())
                 .name(role.getName())
+                .label(role.getLabel())
                 .isDefault(role.isDefault())
                 .clonedFromRoleId(role.getClonedFromRoleId())
                 .permissionCodes(role.getPermissionCodes() != null ? new ArrayList<>(role.getPermissionCodes()) : List.of())

@@ -9,6 +9,7 @@ import org.springframework.data.annotation.Version;
 import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -29,6 +30,7 @@ public class OrganizationDocument {
     private String country;
     private List<String> seniorities;
     private List<AiPriceEntryDocument> aiPrices;
+    private BigDecimal subscriptionCostPerUserUsd;
     private boolean active = true;
 
     @Version

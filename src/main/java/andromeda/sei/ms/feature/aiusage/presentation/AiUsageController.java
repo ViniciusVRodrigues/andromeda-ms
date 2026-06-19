@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.aiusage.presentation;
 
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryByMonthUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryUseCase;
+import andromeda.sei.ms.feature.aiusage.application.usecase.RecalculateAiCostsUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetSprintItemsUseCase;
 import andromeda.sei.ms.feature.allocation.presentation.dto.SprintItemResponse;
 import andromeda.sei.ms.shared.infrastructure.security.AndromedaUserDetails;
@@ -28,6 +29,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,6 +49,7 @@ public class AiUsageController {
     private final GetAiUsageSummaryByMonthUseCase getAiUsageSummaryByMonthUseCase;
     private final GetSprintItemsUseCase getSprintItemsUseCase;
     private final UserRepository userRepository;
+    private final RecalculateAiCostsUseCase recalculateAiCostsUseCase;
 
     @Operation(summary = "Get AI usage summary (date-range)", description = "Returns aggregate token/cost summary, optionally grouped by model. Pass ?userId only with DASHBOARD_TEAM permission to view another user's data.")
     @ApiResponse(responseCode = "200", description = "Summary returned")
@@ -189,5 +192,17 @@ public class AiUsageController {
         return ResponseEntity.ok(members);
     }
 
+    @Operation(summary = "Recalculate AI costs", description = "Backfills costUsd on all AI usage records for the org using current price table. Requires PRICE_TABLE_MANAGE.")
+    @ApiResponse(responseCode = "200", description = "Number of records updated")
+    @PostMapping("/recalculate-costs")
+    @PreAuthorize("hasAuthority('PRICE_TABLE_MANAGE')")
+    public ResponseEntity<RecalculateCostsResponse> recalculateCosts() {
+        String orgId = TenantContextHolder.get();
+        int updated = recalculateAiCostsUseCase.execute(orgId);
+        return ResponseEntity.ok(new RecalculateCostsResponse(updated));
+    }
+
     public record TeamMemberResponse(String userId, String name) {}
+
+    public record RecalculateCostsResponse(int updatedRecords) {}
 }

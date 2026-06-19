@@ -61,7 +61,7 @@ class AutoAssignAllocationUseCaseTest {
         when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
 
         Sprint sprint = sprint("sprint-1");
-        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint));
 
         WorkItem item1 = workItem("wi-1", "Fix login bug");
         WorkItem item2 = workItem("wi-2", "Add dashboard");
@@ -101,7 +101,7 @@ class AutoAssignAllocationUseCaseTest {
 
         verify(allocationRepository, never()).save(any());
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
-        verify(sprintRepository, never()).findCurrentSprintsByOrganizationId(anyString());
+        verify(sprintRepository, never()).findByOrganizationIdAndDay(anyString(), any());
     }
 
     // ── Idempotency: same PENDING allocation already covers these records ─────
@@ -134,7 +134,7 @@ class AutoAssignAllocationUseCaseTest {
         when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
 
         Sprint sprint = sprint("sprint-1");
-        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint));
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                 ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
                 .thenReturn(List.of());
@@ -160,7 +160,7 @@ class AutoAssignAllocationUseCaseTest {
                 .thenReturn(List.of(stalePending));
 
         Sprint sprint = sprint("sprint-1");
-        when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint));
 
         WorkItem item = workItem("wi-1", "Fix login bug");
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(

@@ -8,6 +8,7 @@ public class Role {
     private String id;
     private String organizationId;
     private String name;
+    private String label;
     private boolean isDefault;
     private String clonedFromRoleId;
     private List<String> permissionCodes;
@@ -16,12 +17,13 @@ public class Role {
     private Instant createdAt;
     private Instant updatedAt;
 
-    public Role(String id, String organizationId, String name, boolean isDefault,
+    public Role(String id, String organizationId, String name, String label, boolean isDefault,
                 String clonedFromRoleId, List<String> permissionCodes, boolean active,
                 Long version, Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.organizationId = organizationId;
         this.name = name;
+        this.label = label;
         this.isDefault = isDefault;
         this.clonedFromRoleId = clonedFromRoleId;
         this.permissionCodes = permissionCodes;
@@ -39,6 +41,9 @@ public class Role {
 
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getLabel() { return label; }
+    public void setLabel(String label) { this.label = label; }
 
     public boolean isDefault() { return isDefault; }
     public void setDefault(boolean isDefault) { this.isDefault = isDefault; }

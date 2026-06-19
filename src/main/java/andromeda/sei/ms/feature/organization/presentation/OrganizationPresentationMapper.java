@@ -17,7 +17,7 @@ public class OrganizationPresentationMapper {
     public OnboardOrganizationInput toInput(OnboardOrganizationRequest request) {
         List<OnboardOrganizationInput.RoleData> roles = request.roles() == null ? List.of() :
                 request.roles().stream()
-                        .map(r -> new OnboardOrganizationInput.RoleData(r.name(), r.permissionCodes()))
+                        .map(r -> new OnboardOrganizationInput.RoleData(r.name(), r.label(), r.permissionCodes()))
                         .toList();
 
         List<OnboardOrganizationInput.InviteData> invites = request.invites() == null ? List.of() :
@@ -54,6 +54,7 @@ public class OrganizationPresentationMapper {
                         .map(e -> new AiPriceEntryResponse(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput()))
                         .toList();
         return new OrganizationResponse(output.id(), output.name(), output.slug(),
-                output.sector(), output.country(), output.seniorities(), aiPrices, output.createdAt());
+                output.sector(), output.country(), output.seniorities(), aiPrices,
+                output.subscriptionCostPerUserUsd(), output.createdAt());
     }
 }

@@ -36,6 +36,13 @@ public class RoleRepositoryImpl implements RoleRepository {
     }
 
     @Override
+    public List<Role> findAllGlobal() {
+        return mongoRepository.findByOrganizationIdIsNullAndActiveTrue().stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
     public Optional<Role> findGlobalByName(String name) {
         return mongoRepository.findByNameAndOrganizationIdIsNull(name)
                 .filter(RoleDocument::isActive)

@@ -12,6 +12,7 @@ public record DeveloperDashboardResponse(
         Double avgCycleTimeHours,
         Double avgLeadTimeHours,
         Double storyPointsDelivered,
+        Double totalSpInSprint,
         List<DailyUsageResponse> tokensByDay,
         BigDecimal sprintCostUsd,
         Double avgTokensPerSp,
@@ -21,7 +22,8 @@ public record DeveloperDashboardResponse(
         int totalSprintItems,
         List<BurndownPointResponse> burndownSeries,
         AiSprintSummaryResponse aiSprintSummary,
-        Map<String, BigDecimal> aiCostByWorkItemId
+        Map<String, BigDecimal> aiCostByWorkItemId,
+        BigDecimal subscriptionCostPerUserUsd
 ) {
     public record WorkItemSummary(
             String id,

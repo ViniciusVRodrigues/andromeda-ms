@@ -58,7 +58,7 @@ class OnboardOrganizationUseCaseTest {
     @Test
     void shouldCreateAllEntitiesAndReturnOutput() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
-                List.of("Junior", "Pleno"), null, true, 0L, NOW, NOW);
+                List.of("Junior", "Pleno"), null, null, true, 0L, NOW, NOW);
         var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
         var adminRole = new Role("role-admin", null, "ADMIN", true, null,
@@ -100,7 +100,7 @@ class OnboardOrganizationUseCaseTest {
     @Test
     void shouldThrowWhenAdminRoleSeedIsMissing() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
-                List.of(), null, true, 0L, NOW, NOW);
+                List.of(), null, null, true, 0L, NOW, NOW);
         var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
 
@@ -117,7 +117,7 @@ class OnboardOrganizationUseCaseTest {
     @Test
     void shouldThrowWhenInviteReferencesUnknownRole() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
-                List.of(), null, true, 0L, NOW, NOW);
+                List.of(), null, null, true, 0L, NOW, NOW);
         var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
         var adminRole = new Role("role-admin", null, "ADMIN", true, null,
@@ -144,7 +144,7 @@ class OnboardOrganizationUseCaseTest {
     @Test
     void shouldCreateInviteUsersWhenInvitesProvided() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
-                List.of(), null, true, 0L, NOW, NOW);
+                List.of(), null, null, true, 0L, NOW, NOW);
         var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
         var adminRole = new Role("role-admin", null, "ADMIN", true, null,

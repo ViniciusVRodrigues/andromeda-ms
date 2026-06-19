@@ -12,6 +12,7 @@ public record DeveloperDashboardOutput(
         Double avgCycleTimeHours,
         Double avgLeadTimeHours,
         Double storyPointsDelivered,
+        Double totalSpInSprint,
         List<DailyAiUsage> tokensByDay,
         BigDecimal sprintCostUsd,
         Double avgTokensPerSp,
@@ -21,5 +22,6 @@ public record DeveloperDashboardOutput(
         int totalSprintItems,
         List<BurndownPoint> burndownSeries,
         AiSprintSummary aiSprintSummary,
-        Map<String, BigDecimal> aiCostByWorkItemId
+        Map<String, BigDecimal> aiCostByWorkItemId,
+        BigDecimal subscriptionCostPerUserUsd
 ) {}

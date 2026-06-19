@@ -29,19 +29,21 @@ public class RoleSeeder implements ApplicationRunner {
             "PROJECT_MANAGE"
     );
 
-    private record RoleSeed(String name, List<String> permissionCodes) {}
+    private record RoleSeed(String name, String label, List<String> permissionCodes) {}
 
     private static final List<RoleSeed> DEFAULT_ROLES = List.of(
-            new RoleSeed("ADMIN", ALL_PERMISSIONS),
-            new RoleSeed("TECH_LEAD", List.of(
+            new RoleSeed("ADMIN", "Administrador", ALL_PERMISSIONS),
+            new RoleSeed("TECH_LEAD", "Líder Técnico", List.of(
                     "AZURE_READ", "GITHUB_READ", "AI_READ_ALL",
                     "DASHBOARD_TEAM", "DASHBOARD_INDIVIDUAL", "CONNECTOR_TOKEN_MANAGE_OWN",
                     "PROJECT_MANAGE"
             )),
-            new RoleSeed("MANAGER", List.of(
-                    "AZURE_READ", "GITHUB_READ", "AI_READ_ALL", "DASHBOARD_STRATEGIC"
+            new RoleSeed("MANAGER", "Gerente", List.of(
+                    "AZURE_READ", "GITHUB_READ", "AI_READ_ALL",
+                    "DASHBOARD_INDIVIDUAL", "DASHBOARD_STRATEGIC",
+                    "AI_READ_OWN", "CONNECTOR_TOKEN_MANAGE_OWN"
             )),
-            new RoleSeed("DEVELOPER", List.of(
+            new RoleSeed("DEVELOPER", "Desenvolvedor", List.of(
                     "AI_READ_OWN", "DASHBOARD_INDIVIDUAL", "CONNECTOR_TOKEN_MANAGE_OWN"
             ))
     );
@@ -50,18 +52,44 @@ public class RoleSeeder implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         Instant now = Instant.now();
         for (RoleSeed seed : DEFAULT_ROLES) {
-            if (roleMongoRepository.findByNameAndOrganizationIdIsNull(seed.name()).isEmpty()) {
-                RoleDocument doc = RoleDocument.builder()
-                                .organizationId(null)
-                                .name(seed.name())
-                                .isDefault(true)
-                                .permissionCodes(seed.permissionCodes())
-                                .active(true)
-                                .createdAt(now)
-                                .updatedAt(now)
-                                .build();
-                roleMongoRepository.save(doc);
-            }
+            roleMongoRepository.findByNameAndOrganizationIdIsNull(seed.name())
+                    .ifPresentOrElse(
+                            existing -> {
+                                boolean dirty = false;
+                                if (existing.getLabel() == null) {
+                                    existing.setLabel(seed.label());
+                                    dirty = true;
+                                }
+                                // Backfill any missing always-on permissions
+                                List<String> current = existing.getPermissionCodes() == null
+                                        ? new java.util.ArrayList<>()
+                                        : new java.util.ArrayList<>(existing.getPermissionCodes());
+                                for (String code : seed.permissionCodes()) {
+                                    if (!current.contains(code)) {
+                                        current.add(code);
+                                        dirty = true;
+                                    }
+                                }
+                                if (dirty) {
+                                    existing.setPermissionCodes(current);
+                                    existing.setUpdatedAt(now);
+                                    roleMongoRepository.save(existing);
+                                }
+                            },
+                            () -> {
+                                RoleDocument doc = RoleDocument.builder()
+                                        .organizationId(null)
+                                        .name(seed.name())
+                                        .label(seed.label())
+                                        .isDefault(true)
+                                        .permissionCodes(seed.permissionCodes())
+                                        .active(true)
+                                        .createdAt(now)
+                                        .updatedAt(now)
+                                        .build();
+                                roleMongoRepository.save(doc);
+                            }
+                    );
         }
     }
 }

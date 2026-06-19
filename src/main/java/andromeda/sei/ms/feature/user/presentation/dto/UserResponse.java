@@ -7,6 +7,7 @@ public record UserResponse(
         String email,
         String name,
         String roleId,
+        String seniority,
         boolean active,
         Instant createdAt,
         String azureId,

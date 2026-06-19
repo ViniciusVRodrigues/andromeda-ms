@@ -26,6 +26,7 @@ public class CloneRoleUseCase {
                 null,
                 organizationId,
                 input.newName(),
+                input.newName(),
                 false,
                 source.getId(),
                 new ArrayList<>(source.getPermissionCodes()),

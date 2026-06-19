@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.organization.domain.exception.OrganizationSenior
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -16,7 +17,8 @@ public class UpdateOrganizationUseCase {
 
     private final OrganizationRepository organizationRepository;
 
-    public CreateOrganizationOutput execute(String organizationId, List<String> seniorities) {
+    public CreateOrganizationOutput execute(String organizationId, List<String> seniorities,
+                                            BigDecimal subscriptionCostPerUserUsd) {
         if (seniorities == null || seniorities.isEmpty()) {
             throw new OrganizationSenioritiesEmptyException();
         }
@@ -24,6 +26,9 @@ public class UpdateOrganizationUseCase {
                 .orElseThrow(() -> new OrganizationNotFoundException(organizationId));
 
         org.setSeniorities(seniorities);
+        if (subscriptionCostPerUserUsd != null) {
+            org.setSubscriptionCostPerUserUsd(subscriptionCostPerUserUsd);
+        }
         org.setUpdatedAt(Instant.now());
 
         return CreateOrganizationOutput.from(organizationRepository.save(org));

@@ -67,6 +67,7 @@ public class DeveloperDashboardMapper {
                 output.avgCycleTimeHours(),
                 output.avgLeadTimeHours(),
                 output.storyPointsDelivered(),
+                output.totalSpInSprint(),
                 tokensByDay,
                 output.sprintCostUsd(),
                 output.avgTokensPerSp(),
@@ -76,7 +77,8 @@ public class DeveloperDashboardMapper {
                 output.totalSprintItems(),
                 burndownSeries,
                 aiSprintSummary,
-                output.aiCostByWorkItemId()
+                output.aiCostByWorkItemId(),
+                output.subscriptionCostPerUserUsd()
         );
     }
 }

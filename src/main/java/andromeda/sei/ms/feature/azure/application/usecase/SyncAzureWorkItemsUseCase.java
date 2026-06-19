@@ -186,14 +186,28 @@ public class SyncAzureWorkItemsUseCase {
             workItem.setCreatedAt(parseInstant(fields, "System.CreatedDate"));
         }
 
+        // Seed startedAt / completedAt directly from ADO fields — the transitions
+        // history may be incomplete or unavailable, so these are authoritative fallbacks.
+        Instant adoActivatedDate = parseInstant(fields, "Microsoft.VSTS.Common.ActivatedDate");
+        Instant adoClosedDate = firstNonNull(
+                parseInstant(fields, "Microsoft.VSTS.Common.ClosedDate"),
+                parseInstant(fields, "Microsoft.VSTS.Common.ResolvedDate"));
+
+        if (adoActivatedDate != null) workItem.setStartedAt(adoActivatedDate);
+        if (adoClosedDate != null) workItem.setCompletedAt(adoClosedDate);
+
         // Save first to ensure workItemId is set before building transitions
         WorkItem saved = workItemRepository.save(workItem);
 
         buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader);
 
+        // Re-derive from transitions — prefer transition-derived timestamps (more granular)
+        // but fall back to the ADO field values already set above if transitions give nothing.
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(saved.getId());
-        saved.setStartedAt(deriveStartedAt(transitions));
-        saved.setCompletedAt(deriveCompletedAt(transitions));
+        Instant transitionStartedAt = deriveStartedAt(transitions);
+        Instant transitionCompletedAt = deriveCompletedAt(transitions);
+        if (transitionStartedAt != null) saved.setStartedAt(transitionStartedAt);
+        if (transitionCompletedAt != null) saved.setCompletedAt(transitionCompletedAt);
         workItemRepository.save(saved);
     }
 
@@ -259,8 +273,9 @@ public class SyncAzureWorkItemsUseCase {
             String newVal = getString(stateField, "newValue");
             if (newVal == null) continue;
 
-            Instant occurredAt = update.revisedDate() != null
-                    ? Instant.parse(update.revisedDate()) : Instant.now();
+            // revisedDate is ADO's "valid-until" sentinel (often 9999-01-01); use System.ChangedDate instead.
+            Instant occurredAt = getChangedDateFromUpdate(update);
+            if (occurredAt == null) occurredAt = Instant.now();
 
             WorkItem.ResolvedStatus resolved = resolveStatus(newVal, config);
             transitions.add(new WorkItemTransition(
@@ -358,10 +373,16 @@ public class SyncAzureWorkItemsUseCase {
         try { return ((Number) val).doubleValue(); } catch (Exception e) { return null; }
     }
 
+    private static final Instant ADO_SENTINEL = Instant.parse("9998-01-01T00:00:00Z");
+
     private Instant parseInstant(Map<String, Object> fields, String key) {
         String val = getString(fields, key);
         if (val == null) return null;
-        try { return Instant.parse(val); } catch (Exception e) { return null; }
+        try {
+            Instant instant = Instant.parse(val);
+            // ADO uses 9999-01-01 as "not set" sentinel — treat as null
+            return instant.isAfter(ADO_SENTINEL) ? null : instant;
+        } catch (Exception e) { return null; }
     }
 
     private String getAssigneeId(Map<String, Object> fields) {
@@ -395,6 +416,28 @@ public class SyncAzureWorkItemsUseCase {
                     .filter(user -> orgId.equals(user.getOrganizationId()))
                     .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
         }
+    }
+
+    private Instant getChangedDateFromUpdate(AdoWorkItemUpdateDto update) {
+        if (update.fields() == null) return null;
+        Object changedDate = update.fields().get("System.ChangedDate");
+        if (changedDate == null) return null;
+        // The field value is a map with "newValue" key in the updates API
+        if (changedDate instanceof Map<?, ?> m) {
+            Object newVal = m.get("newValue");
+            if (newVal == null) newVal = m.get("oldValue");
+            if (newVal != null) {
+                try { return Instant.parse(newVal.toString()); } catch (Exception ignored) {}
+            }
+        }
+        try { return Instant.parse(changedDate.toString()); } catch (Exception ignored) {}
+        return null;
+    }
+
+    @SafeVarargs
+    private <T> T firstNonNull(T... values) {
+        for (T v : values) { if (v != null) return v; }
+        return null;
     }
 
     private void finishSuccess(IntegrationSyncLog syncLog, Instant startedAt, int processed, int failed) {

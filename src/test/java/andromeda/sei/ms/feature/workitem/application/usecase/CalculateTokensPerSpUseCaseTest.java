@@ -20,8 +20,6 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,16 +45,17 @@ class CalculateTokensPerSpUseCaseTest {
                 Instant.now(), null, null, null, null, null, true, null, Instant.now());
     }
 
-    private AIUsage aiUsage(String userId, LocalDate day, long inputTokens, long outputTokens) {
-        return new AIUsage(null, "org-1", userId, null, "ds-1", day, "gpt-4o",
+    private AIUsage aiUsage(String id, String userId, LocalDate day, long inputTokens, long outputTokens) {
+        return new AIUsage(id, "org-1", userId, null, "ds-1", day, "gpt-4o",
                 "ws-1", null, "m-1", null, inputTokens, outputTokens, 1, null,
                 null, null, Instant.now(), true, null, Instant.now(), Instant.now());
     }
 
-    private AiUsageAllocation allocation(String workItemId, String userId, LocalDate day, BigDecimal percentage) {
+    private AiUsageAllocation allocation(String workItemId, String userId, LocalDate day,
+                                          BigDecimal percentage, List<String> usageIds) {
         List<AllocationSplit> splits = List.of(new AllocationSplit(workItemId, "Title", percentage));
         return new AiUsageAllocation(null, "org-1", userId, day,
-                List.of(), splits,
+                usageIds, splits,
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AUTO,
                 true, null, Instant.now(), Instant.now());
     }
@@ -89,14 +88,13 @@ class CalculateTokensPerSpUseCaseTest {
     void should_computeTokensPerSp_when_singleAllocation() {
         WorkItem wi = workItem("wi-1", 2.0);
         LocalDate day = LocalDate.of(2026, 6, 1);
-        AIUsage usage = aiUsage("user-1", day, 1000L, 500L);
-        AiUsageAllocation alloc = allocation("wi-1", "user-1", day, BigDecimal.ONE);
+        AIUsage usage = aiUsage("usage-1", "user-1", day, 1000L, 500L);
+        AiUsageAllocation alloc = allocation("wi-1", "user-1", day, BigDecimal.ONE, List.of("usage-1"));
 
         when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
                 .thenReturn(List.of(wi));
         when(allocationRepository.findByWorkItemId("wi-1")).thenReturn(List.of(alloc));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(eq("org-1"), eq("user-1"), any()))
-                .thenReturn(List.of(usage));
+        when(aiUsageRepository.findByIds(List.of("usage-1"))).thenReturn(List.of(usage));
 
         useCase.execute("org-1", "proj-1");
 
@@ -108,14 +106,13 @@ class CalculateTokensPerSpUseCaseTest {
     void should_computeTokensPerSp_when_partialPercentage() {
         WorkItem wi = workItem("wi-1", 4.0);
         LocalDate day = LocalDate.of(2026, 6, 1);
-        AIUsage usage = aiUsage("user-1", day, 2000L, 0L);
-        AiUsageAllocation alloc = allocation("wi-1", "user-1", day, new BigDecimal("0.5"));
+        AIUsage usage = aiUsage("usage-1", "user-1", day, 2000L, 0L);
+        AiUsageAllocation alloc = allocation("wi-1", "user-1", day, new BigDecimal("0.5"), List.of("usage-1"));
 
         when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
                 .thenReturn(List.of(wi));
         when(allocationRepository.findByWorkItemId("wi-1")).thenReturn(List.of(alloc));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(eq("org-1"), eq("user-1"), any()))
-                .thenReturn(List.of(usage));
+        when(aiUsageRepository.findByIds(List.of("usage-1"))).thenReturn(List.of(usage));
 
         useCase.execute("org-1", "proj-1");
 
@@ -128,16 +125,15 @@ class CalculateTokensPerSpUseCaseTest {
         WorkItem wi = workItem("wi-1", 2.0);
         LocalDate day1 = LocalDate.of(2026, 6, 1);
         LocalDate day2 = LocalDate.of(2026, 6, 2);
-        AIUsage usage1 = aiUsage("user-1", day1, 500L, 500L);
-        AIUsage usage2 = aiUsage("user-1", day2, 300L, 200L);
-        AiUsageAllocation alloc1 = allocation("wi-1", "user-1", day1, BigDecimal.ONE);
-        AiUsageAllocation alloc2 = allocation("wi-1", "user-1", day2, BigDecimal.ONE);
+        AIUsage usage1 = aiUsage("usage-1", "user-1", day1, 500L, 500L);
+        AIUsage usage2 = aiUsage("usage-2", "user-1", day2, 300L, 200L);
+        AiUsageAllocation alloc1 = allocation("wi-1", "user-1", day1, BigDecimal.ONE, List.of("usage-1"));
+        AiUsageAllocation alloc2 = allocation("wi-1", "user-1", day2, BigDecimal.ONE, List.of("usage-2"));
 
         when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
                 .thenReturn(List.of(wi));
         when(allocationRepository.findByWorkItemId("wi-1")).thenReturn(List.of(alloc1, alloc2));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(eq("org-1"), eq("user-1"), any()))
-                .thenReturn(List.of(usage1, usage2));
+        when(aiUsageRepository.findByIds(any())).thenReturn(List.of(usage1, usage2));
 
         useCase.execute("org-1", "proj-1");
 

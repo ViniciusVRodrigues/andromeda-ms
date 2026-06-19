@@ -92,7 +92,7 @@ class UserUseCaseTest {
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(updated);
 
-        UserOutput output = updateUserUseCase.execute(new UpdateUserInput("user-1", "Jane Doe", "role-lead"), ORG_ID);
+        UserOutput output = updateUserUseCase.execute(new UpdateUserInput("user-1", "Jane Doe", "role-lead", null), ORG_ID);
 
         assertThat(output.name()).isEqualTo("Jane Doe");
         assertThat(output.roleId()).isEqualTo("role-lead");
@@ -103,7 +103,7 @@ class UserUseCaseTest {
     void updateUser_shouldThrowNotFoundForInvalidId() {
         when(userRepository.findByIdAndOrganizationId("invalid", ORG_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> updateUserUseCase.execute(new UpdateUserInput("invalid", "Name", null), ORG_ID))
+        assertThatThrownBy(() -> updateUserUseCase.execute(new UpdateUserInput("invalid", "Name", null, null), ORG_ID))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining("invalid");
     }

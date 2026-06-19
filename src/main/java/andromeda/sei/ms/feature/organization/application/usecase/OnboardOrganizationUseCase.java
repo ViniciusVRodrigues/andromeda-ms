@@ -67,6 +67,7 @@ public class OnboardOrganizationUseCase {
                 input.org().country(),
                 input.seniorities(),
                 null,
+                null,
                 true,
                 null,
                 now,
@@ -81,6 +82,7 @@ public class OnboardOrganizationUseCase {
                     null,
                     savedOrg.getId(),
                     roleData.name(),
+                    roleData.label() != null ? roleData.label() : roleData.name(),
                     false,
                     null,
                     roleData.permissionCodes(),
@@ -136,8 +138,11 @@ public class OnboardOrganizationUseCase {
         Project savedProject = projectRepository.save(project);
 
         // 5. Create invited users (confirmed=false, pending invite)
-        Map<String, String> roleIdByName = savedRoles.stream()
-                .collect(Collectors.toMap(Role::getName, Role::getId));
+        // Build lookup from org-scoped roles first, then fall back to global defaults
+        List<Role> globalDefaults = roleRepository.findAllGlobal();
+        Map<String, String> roleIdByName = new java.util.HashMap<>();
+        globalDefaults.forEach(r -> roleIdByName.put(r.getName(), r.getId()));
+        savedRoles.forEach(r -> roleIdByName.put(r.getName(), r.getId()));
 
         int inviteCount = 0;
         if (input.invites() != null) {

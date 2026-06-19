@@ -80,7 +80,7 @@ public class UserController {
             @PathVariable String id,
             @RequestBody UpdateUserRequest request) {
         String orgId = TenantContextHolder.get();
-        UpdateUserInput input = new UpdateUserInput(id, request.name(), request.roleId());
+        UpdateUserInput input = new UpdateUserInput(id, request.name(), request.roleId(), request.seniority());
         return ResponseEntity.ok(mapper.toResponse(updateUserUseCase.execute(input, orgId)));
     }
 
