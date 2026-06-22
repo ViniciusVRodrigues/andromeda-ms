@@ -2,9 +2,12 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +18,8 @@ import java.time.Instant;
 public class AcceptAllocationUseCase {
 
     private final AiUsageAllocationRepository allocationRepository;
+    private final WorkItemRepository workItemRepository;
+    private final CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
 
     public void execute(String organizationId, String userId, String allocationId) {
         AiUsageAllocation allocation = allocationRepository.findById(allocationId, organizationId)
@@ -35,5 +40,18 @@ public class AcceptAllocationUseCase {
 
         allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
+
+        resolveProjectId(organizationId, allocation).ifPresent(projectId ->
+                calculateTokensPerSpUseCase.execute(organizationId, projectId));
+    }
+
+    private java.util.Optional<String> resolveProjectId(String organizationId, AiUsageAllocation allocation) {
+        if (allocation.getSplits() == null) return java.util.Optional.empty();
+        return allocation.getSplits().stream()
+                .map(AllocationSplit::getWorkItemId)
+                .filter(id -> id != null && !id.isBlank())
+                .findFirst()
+                .flatMap(workItemRepository::findById)
+                .map(andromeda.sei.ms.feature.workitem.domain.WorkItem::getProjectId);
     }
 }
