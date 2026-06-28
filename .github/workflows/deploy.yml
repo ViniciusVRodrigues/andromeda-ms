@@ -62,6 +62,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u viniciusvrodrigues --password-stdin
             IMAGE=${{ env.IMAGE }}:sha-${{ github.sha }} \
             ENV_FILE=${{ secrets.VPS_MS_ENV_FILE }} \
             ~/scripts/deploy-ms.sh
