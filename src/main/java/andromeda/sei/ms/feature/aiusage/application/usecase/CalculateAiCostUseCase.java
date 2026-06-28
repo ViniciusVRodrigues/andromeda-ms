@@ -37,8 +37,12 @@ public class CalculateAiCostUseCase {
             return null;
         }
 
-        return BigDecimal.valueOf(usage.getOutputTokens())
+        BigDecimal inputCost = BigDecimal.valueOf(usage.getInputTokens())
+                .multiply(entry.getPricePerKInput())
+                .divide(K, SCALE, RoundingMode.HALF_UP);
+        BigDecimal outputCost = BigDecimal.valueOf(usage.getOutputTokens())
                 .multiply(entry.getPricePerKOutput())
                 .divide(K, SCALE, RoundingMode.HALF_UP);
+        return inputCost.add(outputCost);
     }
 }

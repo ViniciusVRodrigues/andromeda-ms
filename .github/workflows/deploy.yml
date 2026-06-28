@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner | lower }}/andromeda-ms
+  IMAGE: ghcr.io/viniciusvrodrigues/andromeda-ms
 
 jobs:
   test-build-deploy:
