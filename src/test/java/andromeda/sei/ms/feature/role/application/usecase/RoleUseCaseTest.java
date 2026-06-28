@@ -36,11 +36,11 @@ class RoleUseCaseTest {
     private static final Instant NOW = Instant.now();
 
     private Role defaultRole(String id, String name) {
-        return new Role(id, null, name, true, null, List.of("AI_READ_OWN"), true, 0L, NOW, NOW);
+        return new Role(id, null, name, name, true, null, List.of("AI_READ_OWN"), true, 0L, NOW, NOW);
     }
 
     private Role orgRole(String id, String name) {
-        return new Role(id, ORG_ID, name, false, "role-admin", List.of("AZURE_READ", "GITHUB_READ"), true, 0L, NOW, NOW);
+        return new Role(id, ORG_ID, name, name, false, "role-admin", List.of("AZURE_READ", "GITHUB_READ"), true, 0L, NOW, NOW);
     }
 
     // ── ListRolesUseCase ─────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ class RoleUseCaseTest {
     @Test
     void cloneRole_shouldCopyPermissionCodesAndSetClonedFromRoleId() {
         var source = defaultRole("role-admin", "ADMIN");
-        var cloned = new Role("role-cloned", ORG_ID, "My Admin Clone", false,
+        var cloned = new Role("role-cloned", ORG_ID, "My Admin Clone", "My Admin Clone", false,
                 "role-admin", List.of("AI_READ_OWN"), true, 0L, NOW, NOW);
 
         when(roleRepository.findById("role-admin")).thenReturn(Optional.of(source));

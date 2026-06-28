@@ -32,7 +32,7 @@ class RoleRepositoryImplTest {
 
     @Test
     void save_shouldPopulateId() {
-        var role = new Role(null, ORG_ID, "Custom Role", false, null, List.of("AZURE_READ"), true, 0L, NOW, NOW);
+        var role = new Role(null, ORG_ID, "Custom Role", "Custom Role", false, null, List.of("AZURE_READ"), true, 0L, NOW, NOW);
 
         var saved = repository.save(role);
 

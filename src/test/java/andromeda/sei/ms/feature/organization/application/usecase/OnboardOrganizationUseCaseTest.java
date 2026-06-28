@@ -50,7 +50,7 @@ class OnboardOrganizationUseCaseTest {
                 new OnboardOrganizationInput.AdminData("admin@acme.com", "Maria Admin", "Secure@1"),
                 new OnboardOrganizationInput.ProjectData("Orion Core", "Main platform."),
                 List.of("Junior", "Pleno", "Sênior"),
-                List.of(new OnboardOrganizationInput.RoleData("Desenvolvedor", List.of("DASHBOARD_INDIVIDUAL"))),
+                List.of(new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor", List.of("DASHBOARD_INDIVIDUAL"))),
                 invites
         );
     }
@@ -59,9 +59,9 @@ class OnboardOrganizationUseCaseTest {
     void shouldCreateAllEntitiesAndReturnOutput() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
                 List.of("Junior", "Pleno"), null, null, true, 0L, NOW, NOW);
-        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
+        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
-        var adminRole = new Role("role-admin", null, "ADMIN", true, null,
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
                 List.of("USER_MANAGE", "ROLE_MANAGE"), true, 0L, NOW, NOW);
         var adminUser = new User("user-1", "org-1", "admin@acme.com", "hashed", "Maria Admin",
                 "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW);
@@ -101,7 +101,7 @@ class OnboardOrganizationUseCaseTest {
     void shouldThrowWhenAdminRoleSeedIsMissing() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
                 List.of(), null, null, true, 0L, NOW, NOW);
-        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
+        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
 
         when(organizationRepository.existsBySlug("acme-corp")).thenReturn(false);
@@ -118,9 +118,9 @@ class OnboardOrganizationUseCaseTest {
     void shouldThrowWhenInviteReferencesUnknownRole() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
                 List.of(), null, null, true, 0L, NOW, NOW);
-        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
+        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
-        var adminRole = new Role("role-admin", null, "ADMIN", true, null,
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
                 List.of("USER_MANAGE"), true, 0L, NOW, NOW);
         var adminUser = new User("user-1", "org-1", "admin@acme.com", "hashed", "Maria Admin",
                 "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW);
@@ -145,9 +145,9 @@ class OnboardOrganizationUseCaseTest {
     void shouldCreateInviteUsersWhenInvitesProvided() {
         var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
                 List.of(), null, null, true, 0L, NOW, NOW);
-        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", false, null,
+        var customRole = new Role("role-dev", "org-1", "Desenvolvedor", "Desenvolvedor", false, null,
                 List.of("DASHBOARD_INDIVIDUAL"), true, 0L, NOW, NOW);
-        var adminRole = new Role("role-admin", null, "ADMIN", true, null,
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
                 List.of("USER_MANAGE"), true, 0L, NOW, NOW);
         var adminUser = new User("user-1", "org-1", "admin@acme.com", "hashed", "Maria Admin",
                 "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW);

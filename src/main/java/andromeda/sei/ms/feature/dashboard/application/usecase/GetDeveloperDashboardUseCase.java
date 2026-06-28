@@ -275,15 +275,11 @@ public class GetDeveloperDashboardUseCase {
             return null;
         }
 
-        List<AIUsage> allocatedUsages = sprintUsages.stream()
-                .filter(u -> u.getAllocationId() != null)
-                .toList();
-
-        long totalTokens = allocatedUsages.stream()
+        long totalTokens = sprintUsages.stream()
                 .mapToLong(u -> u.getInputTokens() + u.getOutputTokens())
                 .sum();
 
-        BigDecimal totalCostUsd = allocatedUsages.stream()
+        BigDecimal totalCostUsd = sprintUsages.stream()
                 .map(AIUsage::getCostUsd)
                 .filter(c -> c != null)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
