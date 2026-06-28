@@ -66,6 +66,11 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     }
 
     @Override
+    public Optional<WorkItem> findById(String id) {
+        return mongoRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<WorkItem> findByOrganizationIdAndExternalIdAndSource(
             String organizationId, String externalId, WorkItem.Source source) {
         return mongoRepository.findByOrganizationIdAndExternalIdAndSource(organizationId, externalId, source)

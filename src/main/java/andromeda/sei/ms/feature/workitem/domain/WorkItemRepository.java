@@ -7,6 +7,8 @@ public interface WorkItemRepository {
 
     WorkItem save(WorkItem workItem);
 
+    Optional<WorkItem> findById(String id);
+
     Optional<WorkItem> findByOrganizationIdAndExternalIdAndSource(
             String organizationId, String externalId, WorkItem.Source source);
 

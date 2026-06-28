@@ -141,8 +141,14 @@ public class OnboardOrganizationUseCase {
         // Build lookup from org-scoped roles first, then fall back to global defaults
         List<Role> globalDefaults = roleRepository.findAllGlobal();
         Map<String, String> roleIdByName = new java.util.HashMap<>();
-        globalDefaults.forEach(r -> roleIdByName.put(r.getName(), r.getId()));
-        savedRoles.forEach(r -> roleIdByName.put(r.getName(), r.getId()));
+        globalDefaults.forEach(r -> {
+            roleIdByName.put(r.getName(), r.getId());
+            roleIdByName.put(r.getLabel(), r.getId());
+        });
+        savedRoles.forEach(r -> {
+            roleIdByName.put(r.getName(), r.getId());
+            roleIdByName.put(r.getLabel(), r.getId());
+        });
 
         int inviteCount = 0;
         if (input.invites() != null) {
