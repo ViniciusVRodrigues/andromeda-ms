@@ -45,15 +45,15 @@ class RoleModificationUseCaseTest {
     private static final Instant NOW = Instant.now();
 
     private Role customRole(String id, List<String> codes) {
-        return new Role(id, ORG_ID, "Custom Role", false, null, new ArrayList<>(codes), true, 0L, NOW, NOW);
+        return new Role(id, ORG_ID, "Custom Role", "Custom Role", false, null, new ArrayList<>(codes), true, 0L, NOW, NOW);
     }
 
     private Role defaultRole(String id) {
-        return new Role(id, null, "ADMIN", true, null, new ArrayList<>(List.of("USER_MANAGE")), true, 0L, NOW, NOW);
+        return new Role(id, null, "ADMIN", "ADMIN", true, null, new ArrayList<>(List.of("USER_MANAGE")), true, 0L, NOW, NOW);
     }
 
     private Role otherOrgRole(String id) {
-        return new Role(id, OTHER_ORG_ID, "Foreign Role", false, null, new ArrayList<>(), true, 0L, NOW, NOW);
+        return new Role(id, OTHER_ORG_ID, "Foreign Role", "Foreign Role", false, null, new ArrayList<>(), true, 0L, NOW, NOW);
     }
 
     // ── UpdateRolePermissionsUseCase ─────────────────────────────────────────
