@@ -32,10 +32,15 @@ for i in $(seq 1 ${HEALTH_RETRIES}); do
   fi
   if [ "${i}" -eq "${HEALTH_RETRIES}" ]; then
     echo "[deploy-ms] Health check failed — rolling back"
+    echo "[deploy-ms] ── últimas linhas de log do green ──"
+    docker logs --tail 50 "${GREEN}" 2>&1 || true
     docker rm -f "${GREEN}"
     exit 1
   fi
   echo "[deploy-ms] Attempt ${i}/${HEALTH_RETRIES} — retrying in ${HEALTH_INTERVAL}s"
+  echo "[deploy-ms] ── log do green (últimas 20 linhas) ──"
+  docker logs --tail 20 "${GREEN}" 2>&1 || true
+  echo "[deploy-ms] ────────────────────────────────────────"
   sleep "${HEALTH_INTERVAL}"
 done
 
