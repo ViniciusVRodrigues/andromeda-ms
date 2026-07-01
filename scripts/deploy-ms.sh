@@ -19,6 +19,7 @@ docker rm -f "${GREEN}" 2>/dev/null || true
 docker run -d \
   --name "${GREEN}" \
   --env-file "${ENV_FILE}" \
+  --network andromeda-net \
   -p "127.0.0.1:${GREEN_PORT}:9090" \
   --restart unless-stopped \
   "${IMAGE}"
@@ -46,6 +47,7 @@ docker rm "${GREEN}"
 docker run -d \
   --name "${BLUE}" \
   --env-file "${ENV_FILE}" \
+  --network andromeda-net \
   -p "127.0.0.1:${BLUE_PORT}:9090" \
   --restart unless-stopped \
   "${IMAGE}"
