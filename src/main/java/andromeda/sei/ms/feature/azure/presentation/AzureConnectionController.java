@@ -87,7 +87,7 @@ public class AzureConnectionController {
     }
 
     @Operation(summary = "Connect Azure DevOps via Personal Access Token")
-    @ApiResponse(responseCode = "200", description = "PAT connection established")
+    @ApiResponse(responseCode = "204", description = "PAT connection established")
     @ApiResponse(responseCode = "400", description = "Invalid PAT or org URL")
     @ApiResponse(responseCode = "403", description = "No permission")
     @PostMapping("/connection/pat")
@@ -95,7 +95,7 @@ public class AzureConnectionController {
     public ResponseEntity<Void> connectPat(@Valid @RequestBody AzurePatConnectionRequest request) {
         configureAzureDevOpsPatUseCase.execute(
                 new AzurePatConnectionInput(request.adoOrganizationUrl(), request.personalAccessToken()));
-        return ResponseEntity.ok().build();
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "Disconnect Azure DevOps integration")

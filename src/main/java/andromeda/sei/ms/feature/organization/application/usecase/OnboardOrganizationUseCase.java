@@ -14,12 +14,12 @@ import andromeda.sei.ms.feature.user.application.port.PasswordHasher;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.application.port.EmailService;
+import andromeda.sei.ms.shared.application.port.FrontendUrlResolver;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.util.SlugUtils;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -35,15 +35,13 @@ public class OnboardOrganizationUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(OnboardOrganizationUseCase.class);
 
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
-
     private final OrganizationRepository organizationRepository;
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final ProjectRepository projectRepository;
     private final PasswordHasher passwordHasher;
     private final EmailService emailService;
+    private final FrontendUrlResolver frontendUrlResolver;
 
     public OnboardOrganizationOutput execute(OnboardOrganizationInput input) {
         String slug = SlugUtils.toSlug(input.org().name());
@@ -179,7 +177,7 @@ public class OnboardOrganizationUseCase {
                 User savedInvite = userRepository.save(invitedUser);
                 inviteCount++;
                 try {
-                    emailService.sendInvite(invite.email(), null, frontendUrl + "/onboard?token=" + savedInvite.getInviteToken());
+                    emailService.sendInvite(invite.email(), null, frontendUrlResolver.resolve() + "/onboard?token=" + savedInvite.getInviteToken());
                 } catch (Exception e) {
                     log.warn("Failed to send invite email to {}: {}", invite.email(), e.getMessage());
                 }
