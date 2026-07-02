@@ -5,6 +5,7 @@ WORKDIR /app
 # Copy Gradle wrapper and build scripts first (better layer caching)
 COPY gradlew gradlew.bat settings.gradle.kts build.gradle.kts ./
 COPY gradle/ gradle/
+RUN chmod +x gradlew
 
 # Pre-fetch dependencies (cached unless build files change)
 RUN ./gradlew dependencies --no-daemon --quiet || true

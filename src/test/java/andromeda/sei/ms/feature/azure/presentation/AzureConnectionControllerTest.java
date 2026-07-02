@@ -127,11 +127,11 @@ class AzureConnectionControllerTest {
     }
 
     @Test
-    void connectPat_shouldReturn200OnValidRequest() throws Exception {
+    void connectPat_shouldReturn204OnValidRequest() throws Exception {
         mockMvc.perform(post("/api/v1/integrations/azure/connection/pat")
                         .contentType("application/json")
                         .content("{\"adoOrganizationUrl\":\"https://dev.azure.com/myorg\",\"personalAccessToken\":\"myPat\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isNoContent());
     }
 
     @Test

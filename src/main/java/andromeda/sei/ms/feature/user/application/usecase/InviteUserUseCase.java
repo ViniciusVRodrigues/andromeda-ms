@@ -9,10 +9,10 @@ import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserEmailConflictException;
 import andromeda.sei.ms.shared.application.port.EmailService;
+import andromeda.sei.ms.shared.application.port.FrontendUrlResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.security.SecureRandom;
@@ -27,12 +27,10 @@ public class InviteUserUseCase {
     private static final int TOKEN_LENGTH = 32;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    @Value("${app.frontend-url}")
-    private String frontendUrl;
-
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final EmailService emailService;
+    private final FrontendUrlResolver frontendUrlResolver;
 
     public CreateUserOutput execute(InviteUserInput input, String organizationId) {
         if (userRepository.existsByEmail(input.email())) {
@@ -66,7 +64,7 @@ public class InviteUserUseCase {
         User saved = userRepository.save(user);
 
         try {
-            emailService.sendInvite(input.email(), null, frontendUrl + "/invite/complete?token=" + inviteToken);
+            emailService.sendInvite(input.email(), null, frontendUrlResolver.resolve() + "/invite/complete?token=" + inviteToken);
         } catch (Exception e) {
             log.warn("Failed to send invite email to {}: {}", input.email(), e.getMessage());
         }
