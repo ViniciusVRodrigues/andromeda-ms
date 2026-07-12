@@ -49,7 +49,7 @@ class AutoAssignAllocationUseCaseTest {
                 allocationRepository, aiUsageRepository, sprintRepository, workItemRepository);
     }
 
-    // ── Happy path ────────────────────────────────────────────────────────────
+    // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void should_createPendingAllocation_without_stampingUsageRecords_when_unallocatedRecordsAndSprintItemsExist() {
@@ -90,7 +90,7 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
-    // ── Idempotency: all records already allocated ────────────────────────────
+    // â”€â”€ Idempotency: all records already allocated â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void should_returnEarly_when_noUnallocatedRecordsExist() {
@@ -104,7 +104,7 @@ class AutoAssignAllocationUseCaseTest {
         verify(sprintRepository, never()).findByOrganizationIdAndDay(anyString(), any());
     }
 
-    // ── Idempotency: same PENDING allocation already covers these records ─────
+    // â”€â”€ Idempotency: same PENDING allocation already covers these records â”€â”€â”€â”€â”€
 
     @Test
     void should_returnEarly_when_identicalPendingAllocationAlreadyExists() {
@@ -123,7 +123,7 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
-    // ── No sprint items found ─────────────────────────────────────────────────
+    // â”€â”€ No sprint items found â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void should_leaveRecordsUnallocated_when_noSprintItemsFound() {
@@ -145,7 +145,7 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
-    // ── Stale PENDING cleanup ─────────────────────────────────────────────────
+    // â”€â”€ Stale PENDING cleanup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     @Test
     void should_deleteStaleAndCreateNew_when_pendingAllocationCoversDifferentRecords() {
@@ -178,7 +178,7 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private AIUsage aiUsage(String id) {
         return new AIUsage(
@@ -214,6 +214,6 @@ class AutoAssignAllocationUseCaseTest {
                 "Medium", 3.0, List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now());
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }

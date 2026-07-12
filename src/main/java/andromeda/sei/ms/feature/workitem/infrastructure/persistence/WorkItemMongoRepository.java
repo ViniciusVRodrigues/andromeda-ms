@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.workitem.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.mongodb.repository.MongoRepository;
 
 import java.util.List;
@@ -23,4 +24,15 @@ public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocumen
             String organizationId, String assigneeUserId, String sprintId, String projectId);
 
     List<WorkItemDocument> findAllByOrganizationIdAndProjectIdAndSprintId(String organizationId, String projectId, String sprintId);
+
+    List<WorkItemDocument> findByOrganizationIdAndProjectIdAndActiveTrueOrderByExternalIdAsc(
+            String organizationId, String projectId, Pageable pageable);
+
+    long countByOrganizationIdAndProjectIdAndActiveTrue(String organizationId, String projectId);
+
+    List<WorkItemDocument> findByOrganizationIdAndProjectIdAndParentExternalIdInAndActiveTrue(
+            String organizationId, String projectId, List<String> parentExternalIds);
+
+    List<WorkItemDocument> findByOrganizationIdAndProjectIdAndParentExternalIdAndActiveTrueOrderByExternalIdAsc(
+            String organizationId, String projectId, String parentExternalId, Pageable pageable);
 }

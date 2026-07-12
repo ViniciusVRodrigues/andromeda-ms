@@ -26,7 +26,7 @@ public class CalculateTokensPerSpUseCase {
         List<WorkItem> workItems = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId);
 
         for (WorkItem workItem : workItems) {
-            if (workItem.getStoryPoints() == null || workItem.getStoryPoints() == 0) {
+            if (workItem.getEffort() == null || workItem.getEffort() == 0) {
                 continue;
             }
 
@@ -73,7 +73,7 @@ public class CalculateTokensPerSpUseCase {
                 totalAttributedTokens += allocationTokens * splitPercentage;
             }
 
-            double tokensPerSp = totalAttributedTokens / workItem.getStoryPoints();
+            double tokensPerSp = totalAttributedTokens / workItem.getEffort();
             workItemRepository.updateTokensPerSp(workItem.getId(), tokensPerSp > 0 ? tokensPerSp : null);
         }
     }

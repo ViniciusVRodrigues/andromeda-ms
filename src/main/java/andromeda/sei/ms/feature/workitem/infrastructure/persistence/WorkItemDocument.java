@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.workitem.infrastructure.persistence;
 
+import andromeda.sei.ms.feature.workitem.domain.FieldValueSource;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +18,8 @@ import java.util.List;
 @Document(collection = "work_items")
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId': 1, 'externalId': 1, 'source': 1}", unique = true),
-        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'parentExternalId': 1}")
 })
 @Data
 @Builder
@@ -54,6 +56,14 @@ public class WorkItemDocument {
     private Double tokensPerSp;
     private boolean active = true;
     private Instant updatedAt;
+    private Double complexity;
+    private FieldValueSource complexitySource;
+    private String complexityOverriddenBy;
+    private Instant complexityOverriddenAt;
+    private Double effort;
+    private FieldValueSource effortSource;
+    private String effortOverriddenBy;
+    private Instant effortOverriddenAt;
 
     @Version
     private Long version;

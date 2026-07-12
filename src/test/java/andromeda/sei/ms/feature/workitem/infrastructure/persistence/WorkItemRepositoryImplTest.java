@@ -12,7 +12,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@Disabled("@DataMongoTest removed in Spring Boot 4 â€” needs rewrite as @SpringBootTest slice")
 class WorkItemRepositoryImplTest {
 
     @Autowired
@@ -74,6 +74,6 @@ class WorkItemRepositoryImplTest {
                 externalId, NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
                 "2", null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW);
+                NOW, null, null, null, null, null, true, null, NOW, null, null, null, null, null, null, null, null);
     }
 }

@@ -78,14 +78,14 @@ public class GetDeveloperDashboardUseCase {
                 .toArray());
 
         double[] spValues = doneItems.stream()
-                .map(WorkItem::getStoryPoints)
+                .map(WorkItem::getEffort)
                 .filter(v -> v != null)
                 .mapToDouble(Double::doubleValue)
                 .toArray();
         Double storyPointsDelivered = spValues.length == 0 ? null : Arrays.stream(spValues).sum();
 
         double[] totalSpValues = storyItems.stream()
-                .map(WorkItem::getStoryPoints)
+                .map(WorkItem::getEffort)
                 .filter(v -> v != null)
                 .mapToDouble(Double::doubleValue)
                 .toArray();
@@ -223,7 +223,7 @@ public class GetDeveloperDashboardUseCase {
         }
 
         double totalSp = sprintItems.stream()
-                .map(WorkItem::getStoryPoints)
+                .map(WorkItem::getEffort)
                 .filter(sp -> sp != null)
                 .mapToDouble(Double::doubleValue)
                 .sum();
@@ -245,7 +245,7 @@ public class GetDeveloperDashboardUseCase {
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                     .filter(wi -> wi.getCompletedAt() != null)
                     .filter(wi -> !toLocalDate(wi.getCompletedAt()).isAfter(currentDay))
-                    .map(WorkItem::getStoryPoints)
+                    .map(WorkItem::getEffort)
                     .filter(sp -> sp != null)
                     .mapToDouble(Double::doubleValue)
                     .sum();

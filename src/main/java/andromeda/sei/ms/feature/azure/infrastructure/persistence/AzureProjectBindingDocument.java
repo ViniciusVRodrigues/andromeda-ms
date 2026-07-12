@@ -48,7 +48,10 @@ public class AzureProjectBindingDocument {
     public static class WorkflowConfigDocument {
         private List<StatusMappingDocument> statusMappings;
         private List<TypeMappingDocument> typeMappings;
+        private List<FieldMappingDocument> fieldMappings;
+        private WiqlFilterDocument syncFilter;
         private String configSource;
+        private List<HierarchyLevelDocument> hierarchyLevels;
     }
 
     @Data
@@ -67,5 +70,34 @@ public class AzureProjectBindingDocument {
     public static class TypeMappingDocument {
         private String rawType;
         private WorkItem.ResolvedType resolvedType;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FieldMappingDocument {
+        private String internalField;
+        private String azureFieldReferenceName;
+        private String azureFieldType;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WiqlFilterDocument {
+        private List<String> workItemTypes;
+        private String areaPath;
+        private String iterationPath;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HierarchyLevelDocument {
+        private String rawType;
+        private Integer rank;
     }
 }

@@ -111,6 +111,6 @@ class CalculateWorkItemMetricsUseCaseTest {
                 id, null, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
                 null, null, List.of(), null, null, null, null, null,
-                createdAt, startedAt, completedAt, null, null, null, true, null, Instant.now());
+                createdAt, startedAt, completedAt, null, null, null, true, null, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }

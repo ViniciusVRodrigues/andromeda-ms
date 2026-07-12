@@ -52,7 +52,7 @@ class GetDeveloperDashboardUseCaseTest {
     private static final String PROJECT = "proj-1";
     private static final String SPRINT_ID = "sprint-1";
 
-    // Sprint: June 1 – June 10 (10 days)
+    // Sprint: June 1 Ã¢â‚¬â€œ June 10 (10 days)
     private static final LocalDate SPRINT_START = LocalDate.of(2026, 6, 1);
     private static final LocalDate SPRINT_END = LocalDate.of(2026, 6, 10);
 
@@ -66,7 +66,7 @@ class GetDeveloperDashboardUseCaseTest {
         lenient().when(organizationRepository.findById(any())).thenReturn(Optional.empty());
     }
 
-    // ── Task 2.5: null metrics ─────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Task 2.5: null metrics Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_return_null_avgCycleTime_when_all_done_items_have_null_cycleTime() {
@@ -89,11 +89,11 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.storyPointsDelivered()).isNull();
     }
 
-    // ── Task 3.6a: burndown series ─────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Task 3.6a: burndown series Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_compute_burndownSeries_with_correct_remainingSp_and_idealSp() {
-        // Sprint: June 1 – June 10, total 30 SP
+        // Sprint: June 1 Ã¢â‚¬â€œ June 10, total 30 SP
         // Item 1 (10 SP): completed June 3
         // Item 2 (5 SP): completed June 6
         // totalSp = 15, remaining after day 3 = 5, after day 6 = 0
@@ -115,7 +115,7 @@ class GetDeveloperDashboardUseCaseTest {
         when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
                 .thenReturn(List.of());
 
-        // Simulate "today" is June 8 by controlling seriesEnd — but since we can't mock LocalDate.now(),
+        // Simulate "today" is June 8 by controlling seriesEnd Ã¢â‚¬â€ but since we can't mock LocalDate.now(),
         // we verify up to the actual current date. The important verification is that:
         // - On June 1: remainingSp = 15.0 (nothing completed yet)
         // - On June 3: remainingSp = 5.0 (item1 completed)
@@ -150,7 +150,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.storyPointsDelivered()).isEqualTo(15.0);
     }
 
-    // ── totalSpInSprint: all stories vs. delivered ─────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ totalSpInSprint: all stories vs. delivered Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_compute_totalSpInSprint_from_all_stories_not_only_done() {
@@ -174,7 +174,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.totalSpInSprint()).isEqualTo(13.0);
     }
 
-    // ── Sprint token series: zero-filled across the full span ──────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Sprint token series: zero-filled across the full span Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_zero_fill_tokensByDay_across_full_sprint_span() {
@@ -196,7 +196,7 @@ class GetDeveloperDashboardUseCaseTest {
         DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
 
         List<DailyAiUsage> series = output.tokensByDay();
-        // June 1..June 10 inclusive → 10 entries, one per day, in order.
+        // June 1..June 10 inclusive Ã¢â€ â€™ 10 entries, one per day, in order.
         assertThat(series).hasSize(10);
         assertThat(series.get(0).day()).isEqualTo(LocalDate.of(2026, 6, 1));
         assertThat(series.get(9).day()).isEqualTo(LocalDate.of(2026, 6, 10));
@@ -211,7 +211,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(day2.outputTokens()).isEqualTo(500L);
     }
 
-    // ── AI cost per work item: basis = the allocation's own usage records ──────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ AI cost per work item: basis = the allocation's own usage records Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_attribute_aiCost_from_allocation_records_not_whole_day() {
@@ -250,7 +250,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.aiCostByWorkItemId().get("story-1")).isEqualByComparingTo(new BigDecimal("0.10"));
     }
 
-    // ── Task 3.6b: aiSprintSummary unallocated days ────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Task 3.6b: aiSprintSummary unallocated days Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_compute_aiSprintSummary_with_correct_unallocatedDaysCount() {
@@ -297,7 +297,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.aiSprintSummary()).isNull();
     }
 
-    // ── Task 3.1/3.2: inProgressItems and totalSprintItems ────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Task 3.1/3.2: inProgressItems and totalSprintItems Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
     void should_return_inProgressItems_and_totalSprintItems() {
@@ -322,7 +322,7 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.inProgressItems().get(0).getId()).isEqualTo("wi-1");
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     private Sprint sprint(LocalDate start, LocalDate end) {
         Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -342,7 +342,7 @@ class GetDeveloperDashboardUseCaseTest {
                 "Medium", storyPoints, List.of(),
                 SPRINT_ID, "ext-user", USER, null, null,
                 Instant.now(), null, completedAt,
-                cycleTimeHours, null, null, true, 1L, Instant.now());
+                cycleTimeHours, null, null, true, 1L, Instant.now(), null, null, null, null, storyPoints, null, null, null);
     }
 
     private AIUsage aiUsage(String id, LocalDate day, String allocationId,

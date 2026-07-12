@@ -111,7 +111,7 @@ public class GetTeamDashboardUseCase {
                 .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                 .toList();
 
-        double sp = done.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
+        double sp = done.stream().mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0).sum();
         Double cycleTime = averageNonNull(done.stream().map(WorkItem::getCycleTimeHours).toList());
         Double leadTime = averageNonNull(done.stream().map(WorkItem::getLeadTimeHours).toList());
         Double avgTokensPerSp = averageNonNull(items.stream().map(WorkItem::getTokensPerSp).toList());
@@ -141,7 +141,7 @@ public class GetTeamDashboardUseCase {
             double sp = sprintItems.stream()
                     .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                    .mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0)
+                    .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
                     .sum();
             LocalDate sprintStart = toLocalDate(sprint.getStartDate());
             LocalDate sprintEnd = toLocalDate(sprint.getEndDate());

@@ -27,6 +27,8 @@ public class DefaultWorkflowConfigFactory {
                         new TypeMapping("Epic", WorkItem.ResolvedType.EPIC),
                         new TypeMapping("Feature", WorkItem.ResolvedType.EPIC)
                 ),
+                List.of(),
+                null,
                 WorkflowConfig.ConfigSource.DEFAULT
         );
     }
@@ -47,6 +49,8 @@ public class DefaultWorkflowConfigFactory {
                         new TypeMapping("Epic", WorkItem.ResolvedType.EPIC),
                         new TypeMapping("Feature", WorkItem.ResolvedType.EPIC)
                 ),
+                List.of(),
+                null,
                 WorkflowConfig.ConfigSource.DEFAULT
         );
     }
@@ -66,6 +70,8 @@ public class DefaultWorkflowConfigFactory {
                         new TypeMapping("Epic", WorkItem.ResolvedType.EPIC),
                         new TypeMapping("Feature", WorkItem.ResolvedType.EPIC)
                 ),
+                List.of(),
+                null,
                 WorkflowConfig.ConfigSource.DEFAULT
         );
     }

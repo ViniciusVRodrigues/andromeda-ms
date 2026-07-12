@@ -120,7 +120,7 @@ class CalculateSprintMetricsUseCaseTest {
                 status.name(), status, null, storyPoints, List.of(),
                 sprintId, null, null, null, null, NOW, null,
                 status == WorkItem.ResolvedStatus.DONE ? NOW.plusSeconds(3600) : null,
-                cycleTimeHours, leadTimeHours, null, true, null, NOW);
+                cycleTimeHours, leadTimeHours, null, true, null, NOW, null, null, null, null, null, null, null, null);
         return item;
     }
 }

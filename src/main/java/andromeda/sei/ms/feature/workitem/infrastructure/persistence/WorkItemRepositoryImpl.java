@@ -1,8 +1,10 @@
 package andromeda.sei.ms.feature.workitem.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemPageResult;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -53,6 +55,14 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("startedAt", doc.getStartedAt())
                 .set("completedAt", doc.getCompletedAt())
                 .set("active", doc.isActive())
+                .set("complexity", doc.getComplexity())
+                .set("complexitySource", doc.getComplexitySource())
+                .set("complexityOverriddenBy", doc.getComplexityOverriddenBy())
+                .set("complexityOverriddenAt", doc.getComplexityOverriddenAt())
+                .set("effort", doc.getEffort())
+                .set("effortSource", doc.getEffortSource())
+                .set("effortOverriddenBy", doc.getEffortOverriddenBy())
+                .set("effortOverriddenAt", doc.getEffortOverriddenAt())
                 .set("updatedAt", now)
                 .setOnInsert("organizationId", doc.getOrganizationId())
                 .setOnInsert("externalId", doc.getExternalId())
@@ -150,5 +160,37 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
         Query query = new Query(criteria);
         Update update = new Update().set("assigneeUserId", userId).set("updatedAt", Instant.now());
         mongoTemplate.updateMulti(query, update, WorkItemDocument.class);
+    }
+
+    @Override
+    public WorkItemPageResult findRootCandidatesByOrganizationIdAndProjectId(
+            String organizationId, String projectId, int page, int size) {
+        PageRequest pageable = PageRequest.of(page, size);
+        List<WorkItem> content = mongoRepository
+                .findByOrganizationIdAndProjectIdAndActiveTrueOrderByExternalIdAsc(organizationId, projectId, pageable)
+                .stream().map(mapper::toDomain).toList();
+        long totalElements = mongoRepository.countByOrganizationIdAndProjectIdAndActiveTrue(organizationId, projectId);
+        return new WorkItemPageResult(content, page, size, totalElements);
+    }
+
+    @Override
+    public List<WorkItem> findByOrganizationIdAndProjectIdAndParentExternalIdIn(
+            String organizationId, String projectId, List<String> parentExternalIds) {
+        if (parentExternalIds == null || parentExternalIds.isEmpty()) {
+            return List.of();
+        }
+        return mongoRepository
+                .findByOrganizationIdAndProjectIdAndParentExternalIdInAndActiveTrue(organizationId, projectId, parentExternalIds)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItem> findChildCandidatesByOrganizationIdAndParentExternalId(
+            String organizationId, String projectId, String parentExternalId, int limit) {
+        PageRequest pageable = PageRequest.of(0, limit);
+        return mongoRepository
+                .findByOrganizationIdAndProjectIdAndParentExternalIdAndActiveTrueOrderByExternalIdAsc(
+                        organizationId, projectId, parentExternalId, pageable)
+                .stream().map(mapper::toDomain).toList();
     }
 }
