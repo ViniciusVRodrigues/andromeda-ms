@@ -33,7 +33,7 @@ public class AzureDevOpsClient {
                         return ex.getStatusCode().value() == 429
                                 || ex.getStatusCode().is5xxServerError();
                     }
-                    return true;
+                    return false;
                 });
     }
 

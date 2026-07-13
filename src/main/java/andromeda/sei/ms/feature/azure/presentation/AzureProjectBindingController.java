@@ -8,6 +8,7 @@ import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseC
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypesUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.RemoveAzureProjectBindingUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureProjectBindingSyncUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateWorkflowConfigUseCase;
@@ -17,6 +18,7 @@ import andromeda.sei.ms.feature.azure.domain.FieldMapping;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureProjectBindingResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureProjectResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureSiblingBindingResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeFieldResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.BindAzureProjectRequest;
@@ -60,6 +62,7 @@ public class AzureProjectBindingController {
     private final AzureProjectBindingRepository azureProjectBindingRepository;
     private final ListAzureWorkItemTypesUseCase listAzureWorkItemTypesUseCase;
     private final ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
+    private final ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
     @Operation(summary = "List available Azure DevOps projects")
     @ApiResponse(responseCode = "200", description = "Projects listed")
@@ -212,6 +215,18 @@ public class AzureProjectBindingController {
                 .map(f -> new AzureWorkItemTypeFieldResponse(f.referenceName(), f.name(), f.type(), f.required()))
                 .toList();
         return ResponseEntity.ok(fields);
+    }
+
+    @Operation(summary = "List sibling Azure DevOps bindings on the same organization, excluding the given binding")
+    @ApiResponse(responseCode = "200", description = "Siblings listed")
+    @GetMapping("/bindings/{bindingId}/siblings")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureSiblingBindingResponse>> listSiblings(@PathVariable String bindingId) {
+        List<AzureSiblingBindingResponse> siblings = listSiblingAzureProjectBindingsUseCase.execute(bindingId)
+                .stream()
+                .map(b -> new AzureSiblingBindingResponse(b.getId(), b.getAzureProjectName()))
+                .toList();
+        return ResponseEntity.ok(siblings);
     }
 
     private AzureProjectBindingResponse toResponse(AzureProjectBinding binding) {

@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzurePatInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
@@ -13,18 +14,22 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
 public class ConfigureAzureDevOpsPatUseCase {
 
+    private static final Pattern DEV_AZURE_COM_URL =
+            Pattern.compile("^https://dev\\.azure\\.com/[^/\\s]+/?$");
+    private static final Pattern VISUALSTUDIO_COM_URL =
+            Pattern.compile("^https://[^/\\s.]+\\.visualstudio\\.com/?$");
+
     private final AzureConnectionRepository azureConnectionRepository;
     private final EncryptionService encryptionService;
 
     public void execute(AzurePatConnectionInput input) {
-        if (input.adoOrganizationUrl() == null || input.adoOrganizationUrl().isBlank()) {
-            throw new AzurePatInvalidException("adoOrganizationUrl must not be blank");
-        }
+        validateOrgUrl(input.adoOrganizationUrl());
         if (input.personalAccessToken() == null || input.personalAccessToken().isBlank()) {
             throw new AzurePatInvalidException("personalAccessToken must not be blank");
         }
@@ -62,5 +67,17 @@ public class ConfigureAzureDevOpsPatUseCase {
         }
 
         azureConnectionRepository.save(connection);
+    }
+
+    private void validateOrgUrl(String adoOrganizationUrl) {
+        if (adoOrganizationUrl == null || adoOrganizationUrl.isBlank()) {
+            throw new AzureOrgUrlInvalidException("adoOrganizationUrl must not be blank");
+        }
+        boolean matches = DEV_AZURE_COM_URL.matcher(adoOrganizationUrl).matches()
+                || VISUALSTUDIO_COM_URL.matcher(adoOrganizationUrl).matches();
+        if (!matches) {
+            throw new AzureOrgUrlInvalidException(
+                    "adoOrganizationUrl must match https://dev.azure.com/{org} or https://{org}.visualstudio.com");
+        }
     }
 }

@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzurePatInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
@@ -107,8 +108,57 @@ class ConfigureAzureDevOpsPatUseCaseTest {
     void execute_shouldThrowWhenOrgUrlIsBlank() {
         assertThatThrownBy(() ->
                 useCase.execute(new AzurePatConnectionInput("", "myPat")))
-                .isInstanceOf(AzurePatInvalidException.class);
+                .isInstanceOf(AzureOrgUrlInvalidException.class);
 
+        verify(azureConnectionRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldAcceptDevAzureComUrlOnCreate() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.empty());
+        when(encryptionService.encrypt("myPat")).thenReturn("encryptedPat");
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "myPat"));
+
+        verify(azureConnectionRepository).save(any());
+    }
+
+    @Test
+    void execute_shouldAcceptVisualStudioComUrlOnCreate() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.empty());
+        when(encryptionService.encrypt("myPat")).thenReturn("encryptedPat");
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(new AzurePatConnectionInput("https://myorg.visualstudio.com", "myPat"));
+
+        ArgumentCaptor<AzureConnection> captor = ArgumentCaptor.forClass(AzureConnection.class);
+        verify(azureConnectionRepository).save(captor.capture());
+        assertThat(captor.getValue().getAzureOrgUrl()).isEqualTo("https://myorg.visualstudio.com");
+    }
+
+    @Test
+    void execute_shouldRejectMalformedOrgUrlOnCreate() {
+        assertThatThrownBy(() ->
+                useCase.execute(new AzurePatConnectionInput("ghp_aFakePersonalAccessTokenValue1234567890", "myPat")))
+                .isInstanceOf(AzureOrgUrlInvalidException.class)
+                .hasFieldOrPropertyWithValue("code", "AZURE_ORG_URL_INVALID");
+
+        verify(azureConnectionRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldRejectMalformedOrgUrlOnUpdate_andNotSave() {
+        // Validation runs before the repository lookup, so no stub is needed for
+        // findByOrganizationIdAndActiveTrue here — the update path is short-circuited
+        // before it would ever be reached.
+        assertThatThrownBy(() ->
+                useCase.execute(new AzurePatConnectionInput("ghp_aFakePersonalAccessTokenValue1234567890", "newPat")))
+                .isInstanceOf(AzureOrgUrlInvalidException.class);
+
+        verify(azureConnectionRepository, never()).findByOrganizationIdAndActiveTrue(any());
         verify(azureConnectionRepository, never()).save(any());
     }
 }

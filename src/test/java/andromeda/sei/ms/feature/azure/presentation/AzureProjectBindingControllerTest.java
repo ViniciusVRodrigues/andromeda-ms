@@ -48,6 +48,7 @@ class AzureProjectBindingControllerTest {
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase forceResyncProjectUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypesUseCase listAzureWorkItemTypesUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
     @InjectMocks
     private AzureProjectBindingController controller;
@@ -152,6 +153,29 @@ class AzureProjectBindingControllerTest {
 
         mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Unknown/fields"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listSiblings_shouldReturn200WithSiblingsExcludingCurrentBinding() throws Exception {
+        var sibling = new AzureProjectBinding(
+                "bind-2", "org-1", "proj-2", "azure-id-2", "Other Project",
+                true, null, null, true, Instant.now(), Instant.now(), null);
+        when(listSiblingAzureProjectBindingsUseCase.execute("bind-1")).thenReturn(List.of(sibling));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/siblings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("bind-2"))
+                .andExpect(jsonPath("$[0].azureProjectName").value("Other Project"));
+    }
+
+    @Test
+    void listSiblings_shouldReturn200WithEmptyListWhenNoSiblingsExist() throws Exception {
+        when(listSiblingAzureProjectBindingsUseCase.execute("bind-1")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/siblings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
     }
 
     @Test

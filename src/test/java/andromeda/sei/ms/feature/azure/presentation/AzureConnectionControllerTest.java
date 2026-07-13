@@ -8,6 +8,7 @@ import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCas
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
 import andromeda.sei.ms.feature.azure.infrastructure.AzureSyncCooldownService;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -140,5 +141,18 @@ class AzureConnectionControllerTest {
                         .contentType("application/json")
                         .content("{\"adoOrganizationUrl\":\"\",\"personalAccessToken\":\"\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void connectPat_shouldReturn422WithAzureOrgUrlInvalidCodeWhenUrlMalformed() throws Exception {
+        doThrow(new AzureOrgUrlInvalidException(
+                "adoOrganizationUrl must match https://dev.azure.com/{org} or https://{org}.visualstudio.com"))
+                .when(configureAzureDevOpsPatUseCase).execute(any());
+
+        mockMvc.perform(post("/api/v1/integrations/azure/connection/pat")
+                        .contentType("application/json")
+                        .content("{\"adoOrganizationUrl\":\"ghp_aFakePersonalAccessTokenValue1234567890\",\"personalAccessToken\":\"myPat\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("AZURE_ORG_URL_INVALID"));
     }
 }

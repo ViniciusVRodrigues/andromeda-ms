@@ -8,5 +8,5 @@ public record AdoWorkItemTypeFieldDto(
         @JsonProperty("referenceName") String referenceName,
         @JsonProperty("name") String name,
         @JsonProperty("type") String type,
-        @JsonProperty("required") boolean required
+        @JsonProperty("alwaysRequired") boolean required
 ) {}
