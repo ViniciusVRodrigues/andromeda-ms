@@ -182,6 +182,123 @@ class AzureDevOpsClientTest {
     }
 
     @Test
+    void getWorkItemTypeStates_shouldDeserializeAndBuildExpectedUrl() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        String json = """
+                {
+                  "value": [
+                    { "name": "New", "color": "b2b2b2", "category": "Proposed" },
+                    { "name": "Active", "color": "007acc", "category": "InProgress" }
+                  ],
+                  "count": 2
+                }
+                """;
+        AzureDevOpsClient client = clientFor(webClientCapturingRequest(captured, json));
+
+        List<AdoWorkItemTypeStateDto> states = client.getWorkItemTypeStates(
+                "https://dev.azure.com/myorg", "proj-1", "Bug", "Basic dGVzdA==");
+
+        assertThat(states).hasSize(2);
+        assertThat(states.get(0).name()).isEqualTo("New");
+        assertThat(states.get(0).category()).isEqualTo("Proposed");
+        assertThat(states.get(1).name()).isEqualTo("Active");
+        assertThat(captured.get().url().toString())
+                .isEqualTo("https://dev.azure.com/myorg/proj-1/_apis/wit/workitemtypes/Bug/states?api-version=7.1");
+    }
+
+    @Test
+    void getWorkItemTypeStates_shouldRetryOn5xxThenSucceed() {
+        AtomicReference<Integer> attempt = new AtomicReference<>(0);
+        String json = """
+                { "value": [ { "name": "New", "color": "b2b2b2", "category": "Proposed" } ] }
+                """;
+        WebClient webClient = WebClient.builder()
+                .exchangeFunction(request -> {
+                    int current = attempt.updateAndGet(n -> n + 1);
+                    if (current < 2) {
+                        return Mono.just(ClientResponse.create(HttpStatus.SERVICE_UNAVAILABLE).build());
+                    }
+                    return Mono.just(ClientResponse.create(HttpStatus.OK)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                            .body(json)
+                            .build());
+                })
+                .build();
+        AzureDevOpsClient client = clientFor(webClient);
+
+        List<AdoWorkItemTypeStateDto> states = client.getWorkItemTypeStates(
+                "https://dev.azure.com/myorg", "proj-1", "Bug", "Basic dGVzdA==");
+
+        assertThat(states).hasSize(1);
+        assertThat(attempt.get()).isEqualTo(2);
+    }
+
+    @Test
+    void getWorkItemTypeStates_shouldRetryOn429ThenSucceed() {
+        AtomicReference<Integer> attempt = new AtomicReference<>(0);
+        String json = """
+                { "value": [ { "name": "New", "color": "b2b2b2", "category": "Proposed" } ] }
+                """;
+        WebClient webClient = WebClient.builder()
+                .exchangeFunction(request -> {
+                    int current = attempt.updateAndGet(n -> n + 1);
+                    if (current < 2) {
+                        return Mono.just(ClientResponse.create(HttpStatus.TOO_MANY_REQUESTS).build());
+                    }
+                    return Mono.just(ClientResponse.create(HttpStatus.OK)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                            .body(json)
+                            .build());
+                })
+                .build();
+        AzureDevOpsClient client = clientFor(webClient);
+
+        List<AdoWorkItemTypeStateDto> states = client.getWorkItemTypeStates(
+                "https://dev.azure.com/myorg", "proj-1", "Bug", "Basic dGVzdA==");
+
+        assertThat(states).hasSize(1);
+        assertThat(attempt.get()).isEqualTo(2);
+    }
+
+    @Test
+    void getWorkItemTypeStates_shouldNotRetryOnNon5xxClientError() {
+        AtomicReference<Integer> attempt = new AtomicReference<>(0);
+        WebClient webClient = WebClient.builder()
+                .exchangeFunction(request -> {
+                    attempt.updateAndGet(n -> n + 1);
+                    return Mono.just(ClientResponse.create(HttpStatus.NOT_FOUND).build());
+                })
+                .build();
+        AzureDevOpsClient client = clientFor(webClient);
+
+        assertThatThrownBy(() -> client.getWorkItemTypeStates(
+                "https://dev.azure.com/myorg", "proj-1", "Bug", "Basic dGVzdA=="))
+                .isInstanceOf(WebClientResponseException.class);
+        assertThat(attempt.get()).isEqualTo(1);
+    }
+
+    @Test
+    void getWorkItemTypeStates_shouldNotRetryOnNonWebClientResponseException() {
+        AtomicReference<Integer> attempt = new AtomicReference<>(0);
+        WebClient webClient = WebClient.builder()
+                .exchangeFunction(request -> {
+                    attempt.updateAndGet(n -> n + 1);
+                    return Mono.error(new WebClientRequestException(
+                            new RuntimeException("DNS resolution failed"),
+                            org.springframework.http.HttpMethod.GET,
+                            URI.create("https://dev.azure.com/myorg"),
+                            org.springframework.http.HttpHeaders.EMPTY));
+                })
+                .build();
+        AzureDevOpsClient client = clientFor(webClient);
+
+        assertThatThrownBy(() -> client.getWorkItemTypeStates(
+                "https://dev.azure.com/myorg", "proj-1", "Bug", "Basic dGVzdA=="))
+                .isInstanceOf(WebClientRequestException.class);
+        assertThat(attempt.get()).isEqualTo(1);
+    }
+
+    @Test
     void getWorkItemTypeFields_shouldNotRetryOnNonWebClientResponseException() {
         AtomicReference<Integer> attempt = new AtomicReference<>(0);
         WebClient webClient = WebClient.builder()

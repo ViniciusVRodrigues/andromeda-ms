@@ -13,7 +13,7 @@ public record WorkflowConfigResponse(
         String configSource,
         List<HierarchyLevelResponse> hierarchyLevels
 ) {
-    public record StatusMappingResponse(String rawStatus, WorkItem.ResolvedStatus resolvedStatus) {}
+    public record StatusMappingResponse(String workItemType, String rawStatus, WorkItem.ResolvedStatus resolvedStatus) {}
     public record TypeMappingResponse(String rawType, WorkItem.ResolvedType resolvedType) {}
     public record FieldMappingResponse(FieldMapping.InternalFieldTarget internalField,
                                         String azureFieldReferenceName, String azureFieldType) {}

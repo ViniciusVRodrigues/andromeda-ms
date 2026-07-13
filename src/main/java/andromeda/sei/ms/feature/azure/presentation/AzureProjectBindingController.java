@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.azure.application.usecase.BindAzureProjectUseCas
 import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeStatesUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypesUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.RemoveAzureProjectBindingUseCase;
@@ -21,6 +22,7 @@ import andromeda.sei.ms.feature.azure.presentation.dto.AzureProjectResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureSiblingBindingResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeFieldResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeStateResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.BindAzureProjectRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateAzureBindingRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateWorkflowConfigRequest;
@@ -62,6 +64,7 @@ public class AzureProjectBindingController {
     private final AzureProjectBindingRepository azureProjectBindingRepository;
     private final ListAzureWorkItemTypesUseCase listAzureWorkItemTypesUseCase;
     private final ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
+    private final ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
     private final ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
     @Operation(summary = "List available Azure DevOps projects")
@@ -164,7 +167,8 @@ public class AzureProjectBindingController {
         var input = new UpdateWorkflowConfigInput(
                 request.statusMappings() == null ? List.of() :
                         request.statusMappings().stream()
-                                .map(s -> new UpdateWorkflowConfigInput.StatusMappingInput(s.rawStatus(), s.resolvedStatus()))
+                                .map(s -> new UpdateWorkflowConfigInput.StatusMappingInput(
+                                        s.workItemType(), s.rawStatus(), s.resolvedStatus()))
                                 .toList(),
                 request.typeMappings() == null ? List.of() :
                         request.typeMappings().stream()
@@ -217,6 +221,21 @@ public class AzureProjectBindingController {
         return ResponseEntity.ok(fields);
     }
 
+    @Operation(summary = "List real Azure DevOps states for a work item type on the bound project")
+    @ApiResponse(responseCode = "200", description = "States listed")
+    @ApiResponse(responseCode = "404", description = "Binding or work item type not found")
+    @ApiResponse(responseCode = "422", description = "Azure DevOps introspection call failed")
+    @GetMapping("/bindings/{bindingId}/process/work-item-types/{typeName}/states")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureWorkItemTypeStateResponse>> listWorkItemTypeStates(
+            @PathVariable String bindingId, @PathVariable String typeName) {
+        List<AzureWorkItemTypeStateResponse> states = listAzureWorkItemTypeStatesUseCase.execute(bindingId, typeName)
+                .stream()
+                .map(s -> new AzureWorkItemTypeStateResponse(s.name(), s.color(), s.category()))
+                .toList();
+        return ResponseEntity.ok(states);
+    }
+
     @Operation(summary = "List sibling Azure DevOps bindings on the same organization, excluding the given binding")
     @ApiResponse(responseCode = "200", description = "Siblings listed")
     @GetMapping("/bindings/{bindingId}/siblings")
@@ -236,7 +255,8 @@ public class AzureProjectBindingController {
             List<WorkflowConfigResponse.StatusMappingResponse> statusMappings = wf.getStatusMappings() == null
                     ? List.of()
                     : wf.getStatusMappings().stream()
-                            .map(s -> new WorkflowConfigResponse.StatusMappingResponse(s.getRawStatus(), s.getResolvedStatus()))
+                            .map(s -> new WorkflowConfigResponse.StatusMappingResponse(
+                                    s.getWorkItemType(), s.getRawStatus(), s.getResolvedStatus()))
                             .toList();
             List<WorkflowConfigResponse.TypeMappingResponse> typeMappings = wf.getTypeMappings() == null
                     ? List.of()

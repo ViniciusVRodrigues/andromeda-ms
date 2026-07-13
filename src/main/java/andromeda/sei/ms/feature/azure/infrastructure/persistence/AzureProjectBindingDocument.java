@@ -59,6 +59,12 @@ public class AzureProjectBindingDocument {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class StatusMappingDocument {
+        /**
+         * Raw Azure work item type this status mapping applies to. {@code null} is the
+         * legacy-compatibility sentinel meaning "applies to all types" (documents persisted
+         * before status mapping became per-work-item-type).
+         */
+        private String workItemType;
         private String rawStatus;
         private WorkItem.ResolvedStatus resolvedStatus;
     }

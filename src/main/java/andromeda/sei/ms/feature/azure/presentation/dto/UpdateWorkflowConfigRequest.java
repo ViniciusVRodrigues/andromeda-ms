@@ -15,6 +15,7 @@ public record UpdateWorkflowConfigRequest(
         @Valid List<HierarchyLevelRequest> hierarchyLevels
 ) {
     public record StatusMappingRequest(
+            String workItemType,
             @NotNull String rawStatus,
             @NotNull WorkItem.ResolvedStatus resolvedStatus
     ) {}

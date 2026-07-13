@@ -137,6 +137,26 @@ public class AzureDevOpsClient {
     }
 
     /**
+     * Returns the real states defined for a given work item type on the given project
+     * (e.g. New, Active, Resolved, Closed for a default Bug type).
+     * Read-only introspection call — never invoked from the sync hot path.
+     */
+    public List<AdoWorkItemTypeStateDto> getWorkItemTypeStates(
+            String orgUrl, String projectId, String typeName, String authHeader) {
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/workitemtypes/" + typeName
+                + "/states?api-version=7.1";
+
+        ListResponse<AdoWorkItemTypeStateDto> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoWorkItemTypeStateDto>>() {})
+                .retryWhen(retrySpec())
+                .block();
+        return response != null && response.value() != null ? response.value() : List.of();
+    }
+
+    /**
      * Fetches a single page (up to {@link #WIQL_PAGE_SIZE} IDs) of work item IDs ordered
      * ascending by System.Id, applying the optional incremental-sync date filter, ID lower
      * bound (exclusive), and structured sync filter. Callers should loop, passing the

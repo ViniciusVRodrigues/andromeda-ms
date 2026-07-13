@@ -12,7 +12,7 @@ public record UpdateWorkflowConfigInput(
         WiqlFilterInput syncFilter,
         List<HierarchyLevelInput> hierarchyLevels
 ) {
-    public record StatusMappingInput(String rawStatus, WorkItem.ResolvedStatus resolvedStatus) {}
+    public record StatusMappingInput(String workItemType, String rawStatus, WorkItem.ResolvedStatus resolvedStatus) {}
     public record TypeMappingInput(String rawType, WorkItem.ResolvedType resolvedType) {}
     public record FieldMappingInput(FieldMapping.InternalFieldTarget internalField,
                                      String azureFieldReferenceName, String azureFieldType) {}

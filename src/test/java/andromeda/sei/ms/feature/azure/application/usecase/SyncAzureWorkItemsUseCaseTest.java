@@ -259,6 +259,77 @@ class SyncAzureWorkItemsUseCaseTest {
     }
 
     @Test
+    void shouldResolveStatusUsingOnlyEntryMatchingBothWorkItemTypeAndRawStatus() {
+        // Config has two entries sharing rawStatus "Active" but scoped to different types.
+        // The Bug-scoped entry should win for a Bug work item, not the Task-scoped one.
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(
+                        new andromeda.sei.ms.feature.azure.domain.StatusMapping("Bug", "Active", WorkItem.ResolvedStatus.IN_PROGRESS),
+                        new andromeda.sei.ms.feature.azure.domain.StatusMapping("Task", "Active", WorkItem.ResolvedStatus.DONE)
+                ),
+                List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                .thenReturn(List.of());
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getResolvedStatus()).isEqualTo(WorkItem.ResolvedStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void shouldTreatLegacyStatusMappingWithNullWorkItemTypeAsMatchingAnyType() {
+        // Legacy entry has no workItemType (predates per-type scoping) -- must still match
+        // a Bug work item's "Active" status.
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(new andromeda.sei.ms.feature.azure.domain.StatusMapping(null, "Active", WorkItem.ResolvedStatus.IN_PROGRESS)),
+                List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                .thenReturn(List.of());
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getResolvedStatus()).isEqualTo(WorkItem.ResolvedStatus.IN_PROGRESS);
+    }
+
+    @Test
     void shouldFailSyncWhenPageLimitExceeded() {
         when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), any(), any()))
                 .thenAnswer(inv -> {

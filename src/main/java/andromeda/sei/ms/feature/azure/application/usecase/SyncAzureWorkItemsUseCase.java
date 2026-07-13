@@ -183,7 +183,7 @@ public class SyncAzureWorkItemsUseCase {
         String rawType = getString(fields, "System.WorkItemType");
         String rawStatus = getString(fields, "System.State");
         WorkItem.ResolvedType resolvedType = resolveType(rawType, config);
-        WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawStatus, config);
+        WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawType, rawStatus, config);
 
         String iterationPath = getString(fields, "System.IterationPath");
         String sprintId = resolveSprintId(orgId, iterationPath);
@@ -242,7 +242,7 @@ public class SyncAzureWorkItemsUseCase {
         // Save first to ensure workItemId is set before building transitions
         WorkItem saved = workItemRepository.save(workItem);
 
-        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader);
+        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader, rawType);
 
         // Re-derive from transitions -- prefer transition-derived timestamps (more granular)
         // but fall back to the ADO field values already set above if transitions give nothing.
@@ -288,7 +288,7 @@ public class SyncAzureWorkItemsUseCase {
         WorkflowConfig effectiveConfig = config != null ? config : DefaultWorkflowConfigFactory.fallback();
 
         buildFullTransitionHistoryById(workItemId, item.getOrganizationId(), item.getExternalId(),
-                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt());
+                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt(), item.getRawType());
 
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(workItemId);
         item.setStartedAt(deriveStartedAt(transitions));
@@ -297,7 +297,7 @@ public class SyncAzureWorkItemsUseCase {
     }
 
     private void buildTransitions(WorkItem workItem, String storedRawStatus, AdoWorkItemDto adoItem,
-                                   WorkflowConfig config, String orgUrl, String authHeader) {
+                                   WorkflowConfig config, String orgUrl, String authHeader, String rawType) {
         String workItemId = workItem.getId();
         if (workItemId == null) return;
 
@@ -306,16 +306,16 @@ public class SyncAzureWorkItemsUseCase {
         if (!hasTransitions) {
             buildFullTransitionHistoryById(workItemId, workItem.getOrganizationId(),
                     String.valueOf(adoItem.id()), config, orgUrl, authHeader,
-                    workItem.getRawStatus(), workItem.getCreatedAt());
+                    workItem.getRawStatus(), workItem.getCreatedAt(), rawType);
         } else {
             appendIncrementalTransition(workItemId, workItem.getOrganizationId(),
-                    storedRawStatus, adoItem, config);
+                    storedRawStatus, adoItem, config, rawType);
         }
     }
 
     private void buildFullTransitionHistoryById(String workItemId, String orgId, String externalId,
                                                  WorkflowConfig config, String orgUrl, String authHeader,
-                                                 String currentRawStatus, Instant createdAt) {
+                                                 String currentRawStatus, Instant createdAt, String rawType) {
         int adoItemId;
         try {
             adoItemId = Integer.parseInt(externalId);
@@ -342,7 +342,7 @@ public class SyncAzureWorkItemsUseCase {
             Instant occurredAt = getChangedDateFromUpdate(update);
             if (occurredAt == null) occurredAt = Instant.now();
 
-            WorkItem.ResolvedStatus resolved = resolveStatus(newVal, config);
+            WorkItem.ResolvedStatus resolved = resolveStatus(rawType, newVal, config);
             transitions.add(new WorkItemTransition(
                     null, orgId, workItemId, prevStatus, newVal, resolved,
                     occurredAt, Instant.now(), true, null, Instant.now(), Instant.now()));
@@ -350,7 +350,7 @@ public class SyncAzureWorkItemsUseCase {
         }
 
         if (transitions.isEmpty()) {
-            WorkItem.ResolvedStatus resolved = resolveStatus(currentRawStatus, config);
+            WorkItem.ResolvedStatus resolved = resolveStatus(rawType, currentRawStatus, config);
             transitions.add(new WorkItemTransition(
                     null, orgId, workItemId, null, currentRawStatus, resolved,
                     createdAt != null ? createdAt : Instant.now(),
@@ -364,7 +364,7 @@ public class SyncAzureWorkItemsUseCase {
 
     private void appendIncrementalTransition(String workItemId, String orgId,
                                               String storedRawStatus, AdoWorkItemDto adoItem,
-                                              WorkflowConfig config) {
+                                              WorkflowConfig config, String rawType) {
         if (storedRawStatus == null) return;
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String incomingStatus = getString(fields, "System.State");
@@ -375,7 +375,7 @@ public class SyncAzureWorkItemsUseCase {
         Instant occurredAt = parseInstant(fields, "System.ChangedDate");
         if (occurredAt == null) occurredAt = Instant.now();
 
-        WorkItem.ResolvedStatus resolved = resolveStatus(incomingStatus, config);
+        WorkItem.ResolvedStatus resolved = resolveStatus(rawType, incomingStatus, config);
         WorkItemTransition transition = new WorkItemTransition(
                 null, orgId, workItemId, storedStatus, incomingStatus, resolved,
                 occurredAt, Instant.now(), true, null, Instant.now(), Instant.now());
@@ -409,12 +409,20 @@ public class SyncAzureWorkItemsUseCase {
                 .orElse(WorkItem.ResolvedType.TASK);
     }
 
-    private WorkItem.ResolvedStatus resolveStatus(String rawStatus, WorkflowConfig config) {
+    /**
+     * Resolves the status for a work item by matching both {@code workItemType} and
+     * {@code rawStatus}. A {@link StatusMapping} entry whose {@code workItemType} is {@code null}
+     * is a legacy record (predating per-type status mapping) and is treated as matching any
+     * work item type.
+     */
+    private WorkItem.ResolvedStatus resolveStatus(String rawType, String rawStatus, WorkflowConfig config) {
         if (rawStatus == null || config == null || config.getStatusMappings() == null) {
             return WorkItem.ResolvedStatus.TODO;
         }
         return config.getStatusMappings().stream()
                 .filter(m -> rawStatus.equalsIgnoreCase(m.getRawStatus()))
+                .filter(m -> m.getWorkItemType() == null
+                        || (rawType != null && rawType.equalsIgnoreCase(m.getWorkItemType())))
                 .map(StatusMapping::getResolvedStatus)
                 .findFirst()
                 .orElse(WorkItem.ResolvedStatus.TODO);

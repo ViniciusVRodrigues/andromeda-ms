@@ -52,7 +52,7 @@ public class AzureProjectBindingDocumentMapper {
         if (doc == null) return null;
         List<StatusMapping> statusMappings = doc.getStatusMappings() == null ? List.of() :
                 doc.getStatusMappings().stream()
-                        .map(s -> new StatusMapping(s.getRawStatus(), s.getResolvedStatus()))
+                        .map(s -> new StatusMapping(s.getWorkItemType(), s.getRawStatus(), s.getResolvedStatus()))
                         .toList();
         List<TypeMapping> typeMappings = doc.getTypeMappings() == null ? List.of() :
                 doc.getTypeMappings().stream()
@@ -80,7 +80,8 @@ public class AzureProjectBindingDocumentMapper {
         if (config == null) return null;
         List<AzureProjectBindingDocument.StatusMappingDocument> statusMappings = config.getStatusMappings() == null ? List.of() :
                 config.getStatusMappings().stream()
-                        .map(s -> new AzureProjectBindingDocument.StatusMappingDocument(s.getRawStatus(), s.getResolvedStatus()))
+                        .map(s -> new AzureProjectBindingDocument.StatusMappingDocument(
+                                s.getWorkItemType(), s.getRawStatus(), s.getResolvedStatus()))
                         .toList();
         List<AzureProjectBindingDocument.TypeMappingDocument> typeMappings = config.getTypeMappings() == null ? List.of() :
                 config.getTypeMappings().stream()
