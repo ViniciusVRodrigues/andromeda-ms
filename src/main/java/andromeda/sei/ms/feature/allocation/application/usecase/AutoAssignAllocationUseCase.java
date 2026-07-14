@@ -83,7 +83,7 @@ public class AutoAssignAllocationUseCase {
                         .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                                 organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS)
                         .stream()
-                        .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.STORY))
+                        .filter(wi -> isStoryTierWork(wi.getResolvedType())))
                 .toList();
 
         // Step 6: If no items found, skip — records stay unallocated for manual allocation
@@ -120,5 +120,13 @@ public class AutoAssignAllocationUseCase {
 
         log.debug("AutoAssign: allocation created id={} for user={} day={} covering {} records with {} splits",
                 saved.getId(), userId, day, unallocatedIds.size(), splits.size());
+    }
+
+    /**
+     * STORY and FEATURE are both developer-assignable, effort-bearing deliverable units — see
+     * GetTeamDashboardUseCase.isStoryTierWork for the same reasoning applied to dashboards.
+     */
+    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
+        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
     }
 }

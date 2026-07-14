@@ -77,6 +77,42 @@ class BindAzureProjectUseCaseTest {
     }
 
     @Test
+    void shouldCreateBindingWithSyncDisabled() {
+        when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(anyString(), anyString()))
+                .thenReturn(Optional.empty());
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.of(connection));
+        when(azureTokenRefreshService.refreshIfNeeded(connection)).thenReturn(connection);
+        when(azureDevOpsClient.getProjectCapabilities(anyString(), anyString(), anyString()))
+                .thenReturn(new AdoProjectCapabilitiesDto("Scrum"));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AzureProjectBinding result = useCase.execute("proj-1",
+                new BindAzureProjectInput("azure-proj-1", "My Project"));
+
+        assertThat(result.isSyncEnabled()).isFalse();
+    }
+
+    @Test
+    void shouldResetSyncDisabledOnRebind() {
+        AzureProjectBinding existing = new AzureProjectBinding("bind-1", "org-1", "proj-1",
+                "old-azure-id", "Old Project", true, null, null, true, NOW, NOW, null);
+        when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(anyString(), anyString()))
+                .thenReturn(Optional.of(existing));
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.of(connection));
+        when(azureTokenRefreshService.refreshIfNeeded(connection)).thenReturn(connection);
+        when(azureDevOpsClient.getProjectCapabilities(anyString(), anyString(), anyString()))
+                .thenReturn(new AdoProjectCapabilitiesDto("Agile"));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        AzureProjectBinding result = useCase.execute("proj-1",
+                new BindAzureProjectInput("azure-proj-2", "New Project"));
+
+        assertThat(result.isSyncEnabled()).isFalse();
+    }
+
+    @Test
     void shouldReseedWorkflowConfigOnUpdate() {
         AzureProjectBinding existing = new AzureProjectBinding("bind-1", "org-1", "proj-1",
                 "old-azure-id", "Old Project", true, null, null, true, NOW, NOW, null);

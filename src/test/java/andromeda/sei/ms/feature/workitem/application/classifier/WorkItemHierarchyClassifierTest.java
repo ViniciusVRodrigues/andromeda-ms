@@ -104,6 +104,21 @@ class WorkItemHierarchyClassifierTest {
     }
 
     @Test
+    void rankAware_shouldMatchRawTypeCaseAndWhitespaceInsensitively() {
+        // The wizard-declared rawType ("Epic"/"Task") can drift in casing/whitespace from what's
+        // persisted on a synced WorkItem ("epic "/" TASK") — matching must not silently miss.
+        WorkItem epic = workItem("epic-1", "epic ", null);
+        WorkItem task = workItem("task-1", " TASK", "epic-1");
+        List<HierarchyLevel> levels = List.of(new HierarchyLevel("Epic", 0), new HierarchyLevel("Task", 1));
+
+        var epicResult = classifier.classify(epic, levels, resolverOf());
+        assertThat(epicResult).isEqualTo(WorkItemHierarchyClassifier.Classification.ROOT);
+
+        var taskResult = classifier.classify(task, levels, resolverOf(epic));
+        assertThat(taskResult).isEqualTo(WorkItemHierarchyClassifier.Classification.CHILD);
+    }
+
+    @Test
     void structuralFallback_shouldClassifyNoParentAsRootWhenHierarchyLevelsEmpty() {
         WorkItem item = workItem("wi-1", "Task", null);
 

@@ -47,8 +47,12 @@ public class GetTeamDashboardUseCase {
                 : sprintOpt.map(s -> toLocalDate(s.getStartDate())).filter(d -> d != null).orElse(LocalDate.now().minusDays(30));
         LocalDate to = endDate != null ? endDate : LocalDate.now();
 
+        // STORY and FEATURE are both developer-assignable, effort-bearing deliverable units
+        // (Feature is a container one tier below Epic in Azure hierarchy, but unlike Epic it is
+        // routinely story-pointed and completed like a Story in Feature-heavy custom templates) —
+        // grouped together here so team velocity isn't silently blind to Feature-typed work.
         List<WorkItem> storyItems = items.stream()
-                .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                .filter(wi -> isStoryTierWork(wi.getResolvedType()))
                 .toList();
 
         List<String> memberUserIds = storyItems.stream()
@@ -139,7 +143,7 @@ public class GetTeamDashboardUseCase {
             List<WorkItem> sprintItems = workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(
                     orgId, projectId, sprint.getId());
             double sp = sprintItems.stream()
-                    .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                    .filter(wi -> isStoryTierWork(wi.getResolvedType()))
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                     .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
                     .sum();
@@ -157,6 +161,15 @@ public class GetTeamDashboardUseCase {
             trend.add(new TeamDashboardOutput.VelocityPoint(sprint.getId(), sprint.getName(), sp, sprintAiCost));
         }
         return trend;
+    }
+
+    /**
+     * STORY and FEATURE are both treated as developer-assignable, story-point-bearing
+     * deliverable work for this dashboard's velocity/cycle-time metrics — see reasoning
+     * at the storyItems filter above.
+     */
+    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
+        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
     }
 
     private Double averageNonNull(List<Double> values) {

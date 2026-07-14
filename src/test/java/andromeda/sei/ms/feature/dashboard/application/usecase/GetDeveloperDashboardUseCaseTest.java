@@ -322,6 +322,34 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.inProgressItems().get(0).getId()).isEqualTo("wi-1");
     }
 
+    @Test
+    void should_include_featureTypedWorkItem_in_storyPointsDelivered_not_drop_it() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+
+        WorkItem feature = new WorkItem("wi-feat", ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                "wi-feat", Instant.now(), "Feature Title",
+                "Feature", WorkItem.ResolvedType.FEATURE,
+                "Active", WorkItem.ResolvedStatus.DONE,
+                "Medium", 8.0, List.of(),
+                SPRINT_ID, "ext-user", USER, null, null,
+                Instant.now(), null, Instant.now(),
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, 8.0, null, null, null);
+
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of(feature));
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        // A FEATURE-typed item must be counted like a STORY here, not silently dropped (0 items).
+        assertThat(output.totalSprintItems()).isEqualTo(1);
+        assertThat(output.storyPointsDelivered()).isEqualTo(8.0);
+    }
+
     // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     private Sprint sprint(LocalDate start, LocalDate end) {

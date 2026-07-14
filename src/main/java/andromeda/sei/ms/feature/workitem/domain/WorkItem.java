@@ -7,7 +7,7 @@ public class WorkItem {
 
     public enum Source { AZURE_DEVOPS, JIRA }
 
-    public enum ResolvedType { STORY, BUG, TASK, EPIC, SUB_TASK }
+    public enum ResolvedType { STORY, BUG, TASK, EPIC, FEATURE, SUB_TASK }
 
     public enum ResolvedStatus { TODO, IN_PROGRESS, DONE }
 

@@ -35,6 +35,9 @@ class UpdateWorkflowConfigUseCaseTest {
     @Mock
     private AzureProjectBindingRepository azureProjectBindingRepository;
 
+    @Mock
+    private TriggerAzureSyncUseCase triggerAzureSyncUseCase;
+
     @InjectMocks
     private UpdateWorkflowConfigUseCase useCase;
 
@@ -162,9 +165,98 @@ class UpdateWorkflowConfigUseCaseTest {
         assertThat(result.getWorkflowConfig().getTypeMappings()).hasSize(1);
     }
 
+    @Test
+    void shouldEnableSyncAndTriggerScopedSyncOnFirstCompletion() {
+        AzureProjectBinding binding = bindingGatedClosed();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var input = new UpdateWorkflowConfigInput(List.of(), List.of(), List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        assertThat(result.isSyncEnabled()).isTrue();
+        verify(triggerAzureSyncUseCase).execute("bind-1");
+    }
+
+    @Test
+    void shouldNotRetriggerGateWhenSyncAlreadyEnabled() {
+        AzureProjectBinding binding = binding();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var input = new UpdateWorkflowConfigInput(List.of(), List.of(), List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        assertThat(result.isSyncEnabled()).isTrue();
+        verify(triggerAzureSyncUseCase, never()).execute(any());
+    }
+
+    @Test
+    void shouldNotFailSaveWhenScopedSyncThrows() {
+        AzureProjectBinding binding = bindingGatedClosed();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.doThrow(new RuntimeException("azure unavailable"))
+                .when(triggerAzureSyncUseCase).execute("bind-1");
+
+        var input = new UpdateWorkflowConfigInput(List.of(), List.of(), List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        assertThat(result.isSyncEnabled()).isTrue();
+    }
+
+    @Test
+    void shouldTriggerScopedResyncWhenEditingAlreadyCustomBinding() {
+        AzureProjectBinding binding = bindingWithNonEmptyMappings();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var input = new UpdateWorkflowConfigInput(
+                List.of(new UpdateWorkflowConfigInput.StatusMappingInput("Bug", "Resolved", WorkItem.ResolvedStatus.IN_PROGRESS)),
+                List.of(new UpdateWorkflowConfigInput.TypeMappingInput("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        assertThat(result.getWorkflowConfig().getConfigSource()).isEqualTo(WorkflowConfig.ConfigSource.CUSTOM);
+        verify(triggerAzureSyncUseCase).execute("bind-1");
+    }
+
+    @Test
+    void shouldNotDoubleTriggerResyncOnFirstTimeCompletion() {
+        // First-time completion: syncEnabled was false and config was DEFAULT before this save.
+        // Only the existing first-completion path (azure-staged-sync-gating) should fire —
+        // this edit-resync path must not also trigger, since configSource wasn't CUSTOM yet.
+        AzureProjectBinding binding = bindingGatedClosed();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var input = new UpdateWorkflowConfigInput(List.of(), List.of(), List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        assertThat(result.isSyncEnabled()).isTrue();
+        verify(triggerAzureSyncUseCase, org.mockito.Mockito.times(1)).execute("bind-1");
+    }
+
     private AzureProjectBinding binding() {
         return new AzureProjectBinding("bind-1", "org-1", "proj-1", "azure-1", "Azure Proj",
                 true, null,
+                new WorkflowConfig(List.of(), List.of(), List.of(), null, WorkflowConfig.ConfigSource.DEFAULT),
+                true, NOW, NOW, null);
+    }
+
+    private AzureProjectBinding bindingGatedClosed() {
+        return new AzureProjectBinding("bind-1", "org-1", "proj-1", "azure-1", "Azure Proj",
+                false, null,
                 new WorkflowConfig(List.of(), List.of(), List.of(), null, WorkflowConfig.ConfigSource.DEFAULT),
                 true, NOW, NOW, null);
     }

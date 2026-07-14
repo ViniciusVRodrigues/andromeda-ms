@@ -49,7 +49,7 @@ public class WorkItemHierarchyClassifier {
             return classifyStructural(item, resolveByExternalId);
         }
 
-        Integer itemRank = ranksByRawType.get(item.getRawType());
+        Integer itemRank = ranksByRawType.get(normalize(item.getRawType()));
         if (itemRank == null) {
             // 4.5: per-item fallback — this item's type has no declared rank, classify it
             // structurally without disturbing rank-aware classification of other items.
@@ -67,7 +67,7 @@ public class WorkItemHierarchyClassifier {
             return Classification.ORPHAN;
         }
 
-        Integer parentRank = ranksByRawType.get(parent.getRawType());
+        Integer parentRank = ranksByRawType.get(normalize(parent.getRawType()));
         if (parentRank != null && parentRank < itemRank) {
             return Classification.CHILD;
         }
@@ -94,6 +94,14 @@ public class WorkItemHierarchyClassifier {
         }
         return hierarchyLevels.stream()
                 .collect(java.util.stream.Collectors.toMap(
-                        HierarchyLevel::getRawType, HierarchyLevel::getRank, (a, b) -> a));
+                        level -> normalize(level.getRawType()), HierarchyLevel::getRank, (a, b) -> a));
+    }
+
+    // Azure's raw type names are matched case/whitespace-insensitively everywhere else in this
+    // codebase (see SyncAzureWorkItemsUseCase.resolveType/resolveStatus); hierarchyLevels lookups
+    // must do the same, since the wizard's discovered-type strings and a WorkItem's persisted
+    // rawType can otherwise drift in casing and silently miss the rank map.
+    private String normalize(String rawType) {
+        return rawType == null ? null : rawType.trim().toLowerCase(java.util.Locale.ROOT);
     }
 }

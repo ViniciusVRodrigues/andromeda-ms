@@ -40,7 +40,9 @@ public class BindAzureProjectUseCase {
 
         binding.setAzureProjectId(input.azureProjectId());
         binding.setAzureProjectName(input.azureProjectName());
-        binding.setSyncEnabled(true);
+        // Sync stays gated until the field-mapping wizard is completed for this binding
+        // (save or skip) — see CompleteAzureWizardOnboardingUseCase.
+        binding.setSyncEnabled(false);
 
         WorkflowConfig workflowConfig = detectAndSeedWorkflowConfig(orgId, input.azureProjectId());
         binding.setWorkflowConfig(workflowConfig);

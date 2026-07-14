@@ -37,6 +37,9 @@ class ConfigureAzureDevOpsPatUseCaseTest {
     @Mock
     private EncryptionService encryptionService;
 
+    @Mock
+    private SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
+
     @InjectMocks
     private ConfigureAzureDevOpsPatUseCase useCase;
 
@@ -160,5 +163,33 @@ class ConfigureAzureDevOpsPatUseCaseTest {
 
         verify(azureConnectionRepository, never()).findByOrganizationIdAndActiveTrue(any());
         verify(azureConnectionRepository, never()).save(any());
+    }
+
+    @Test
+    void execute_shouldTriggerOrgLevelSyncAfterSuccessfulConnection() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.empty());
+        when(encryptionService.encrypt("myPat")).thenReturn("encryptedPat");
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "myPat"));
+
+        verify(syncAzureOrgLevelDataUseCase).execute(any(AzureConnection.class));
+    }
+
+    @Test
+    void execute_shouldNotFailConnectionWhenOrgLevelSyncThrows() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.empty());
+        when(encryptionService.encrypt("myPat")).thenReturn("encryptedPat");
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.doThrow(new RuntimeException("ADO unavailable"))
+                .when(syncAzureOrgLevelDataUseCase).execute(any(AzureConnection.class));
+
+        useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "myPat"));
+
+        ArgumentCaptor<AzureConnection> captor = ArgumentCaptor.forClass(AzureConnection.class);
+        verify(azureConnectionRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(AzureConnectionStatus.CONNECTED);
     }
 }

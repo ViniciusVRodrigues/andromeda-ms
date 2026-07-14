@@ -53,8 +53,12 @@ public class GetDeveloperDashboardUseCase {
                                 orgId, userId, sprint.getId()))
                 .orElse(List.of());
 
+        // STORY and FEATURE are both developer-assignable, effort-bearing deliverable units
+        // (see GetTeamDashboardUseCase.isStoryTierWork for the same reasoning) — grouped
+        // together so this dashboard's burndown/velocity/AI-cost metrics aren't blind to
+        // Feature-typed work in Feature-heavy custom process templates.
         List<WorkItem> storyItems = currentSprintItems.stream()
-                .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                .filter(wi -> isStoryTierWork(wi.getResolvedType()))
                 .toList();
 
         List<WorkItem> doneItems = storyItems.stream()
@@ -290,6 +294,14 @@ public class GetDeveloperDashboardUseCase {
                 .collect(Collectors.toSet());
 
         return new AiSprintSummary(totalTokens, totalCostUsd, unallocatedDays.size());
+    }
+
+    /**
+     * STORY and FEATURE are both treated as developer-assignable, story-point-bearing
+     * deliverable work for this dashboard — see GetTeamDashboardUseCase.isStoryTierWork.
+     */
+    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
+        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
     }
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {

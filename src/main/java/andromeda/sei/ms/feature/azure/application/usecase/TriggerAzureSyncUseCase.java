@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureBindingNotFoundException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshService;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
@@ -26,7 +27,21 @@ public class TriggerAzureSyncUseCase {
     private final SyncAzureSprintsUseCase syncAzureSprintsUseCase;
     private final SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
 
+    /**
+     * Preserves today's behavior exactly: syncs every {@code syncEnabled && active} binding
+     * in the organization.
+     */
     public void execute() {
+        execute(null);
+    }
+
+    /**
+     * @param bindingId when present, scopes the sync to just that binding (regardless of its
+     *                  {@code syncEnabled} value — the caller, e.g. wizard-completion, is
+     *                  responsible for having already gated on that); when {@code null}, syncs
+     *                  every {@code syncEnabled && active} binding in the org (today's behavior).
+     */
+    public void execute(String bindingId) {
         String orgId = TenantContextHolder.get();
 
         AzureConnection connection = azureConnectionRepository
@@ -37,8 +52,11 @@ public class TriggerAzureSyncUseCase {
                 ? connection
                 : azureTokenRefreshService.refreshIfNeeded(connection);
 
-        List<AzureProjectBinding> bindings = azureProjectBindingRepository
-                .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(orgId);
+        List<AzureProjectBinding> bindings = bindingId == null
+                ? azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(orgId)
+                : List.of(azureProjectBindingRepository
+                        .findByIdAndOrganizationIdAndActiveTrue(bindingId, orgId)
+                        .orElseThrow(() -> new AzureBindingNotFoundException(bindingId)));
 
         for (AzureProjectBinding binding : bindings) {
             try {

@@ -15,17 +15,40 @@ import andromeda.sei.ms.feature.azure.domain.exception.AzureHierarchyLevelDuplic
 import andromeda.sei.ms.feature.azure.domain.exception.AzureWorkflowConfigMappingsEmptyException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Saves a binding's {@link WorkflowConfig}. This is also the single "wizard completion" signal
+ * used by both the field-mapping wizard's "Concluir" (save) action and its "Pular e usar
+ * padrões" (skip) action — skip calls this same endpoint with the current draft state rather
+ * than untouched defaults (see azure-staged-sync-gating design.md Decision 2). A bare wizard
+ * close never calls this endpoint, so it never completes onboarding.
+ *
+ * <p>If the binding's {@code syncEnabled} is still {@code false} at the time of this call (i.e.
+ * this is the binding's first-ever completion, not an edit to an already-onboarded binding),
+ * this flips it to {@code true} and triggers an immediate sync scoped to just this binding —
+ * see {@link TriggerAzureSyncUseCase#execute(String)}.
+ *
+ * <p>Separately, if the binding's {@code workflowConfig.configSource} was already {@code CUSTOM}
+ * before this save (i.e. this is an edit to an already-configured binding, not first-time setup),
+ * this also triggers an immediate scoped resync so {@code resolvedType}/{@code resolvedStatus}
+ * reflect the new mapping without waiting for the next scheduled sync (see
+ * {@code azure-wizard-smart-hierarchy} spec). These two resync triggers are mutually exclusive:
+ * first-time completion (config was {@code DEFAULT}) can never also have had a {@code CUSTOM}
+ * config already, so exactly one path fires per save, never both.
+ */
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class UpdateWorkflowConfigUseCase {
 
     private final AzureProjectBindingRepository azureProjectBindingRepository;
+    private final TriggerAzureSyncUseCase triggerAzureSyncUseCase;
 
     public AzureProjectBinding execute(String bindingId, UpdateWorkflowConfigInput input) {
         String orgId = TenantContextHolder.get();
@@ -33,6 +56,10 @@ public class UpdateWorkflowConfigUseCase {
         AzureProjectBinding binding = azureProjectBindingRepository
                 .findByIdAndOrganizationIdAndActiveTrue(bindingId, orgId)
                 .orElseThrow(() -> new AzureBindingNotFoundException(bindingId));
+
+        boolean isFirstCompletion = !binding.isSyncEnabled();
+        boolean wasAlreadyCustom = binding.getWorkflowConfig() != null
+                && binding.getWorkflowConfig().getConfigSource() == WorkflowConfig.ConfigSource.CUSTOM;
 
         List<StatusMapping> statusMappings = input.statusMappings() == null ? List.of() :
                 input.statusMappings().stream()
@@ -68,7 +95,29 @@ public class UpdateWorkflowConfigUseCase {
                 statusMappings, typeMappings, fieldMappings, syncFilter, WorkflowConfig.ConfigSource.CUSTOM,
                 hierarchyLevels));
 
-        return azureProjectBindingRepository.save(binding);
+        if (isFirstCompletion) {
+            binding.setSyncEnabled(true);
+        }
+
+        AzureProjectBinding saved = azureProjectBindingRepository.save(binding);
+
+        if (isFirstCompletion) {
+            try {
+                triggerAzureSyncUseCase.execute(saved.getId());
+            } catch (Exception e) {
+                log.warn("Immediate scoped sync failed after wizard completion for binding={}: {}",
+                        saved.getId(), e.getMessage(), e);
+            }
+        } else if (wasAlreadyCustom) {
+            try {
+                triggerAzureSyncUseCase.execute(saved.getId());
+            } catch (Exception e) {
+                log.warn("Immediate scoped resync failed after config edit for binding={}: {}",
+                        saved.getId(), e.getMessage(), e);
+            }
+        }
+
+        return saved;
     }
 
     /**

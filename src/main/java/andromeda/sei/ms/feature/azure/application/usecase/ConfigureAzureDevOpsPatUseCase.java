@@ -10,12 +10,14 @@ import andromeda.sei.ms.feature.azure.domain.exception.AzurePatInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ConfigureAzureDevOpsPatUseCase {
@@ -27,6 +29,7 @@ public class ConfigureAzureDevOpsPatUseCase {
 
     private final AzureConnectionRepository azureConnectionRepository;
     private final EncryptionService encryptionService;
+    private final SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
 
     public void execute(AzurePatConnectionInput input) {
         validateOrgUrl(input.adoOrganizationUrl());
@@ -66,7 +69,13 @@ public class ConfigureAzureDevOpsPatUseCase {
             );
         }
 
-        azureConnectionRepository.save(connection);
+        AzureConnection saved = azureConnectionRepository.save(connection);
+
+        try {
+            syncAzureOrgLevelDataUseCase.execute(saved);
+        } catch (Exception e) {
+            log.warn("Org-level Azure sync failed after PAT connection for org={}: {}", orgId, e.getMessage(), e);
+        }
     }
 
     private void validateOrgUrl(String adoOrganizationUrl) {

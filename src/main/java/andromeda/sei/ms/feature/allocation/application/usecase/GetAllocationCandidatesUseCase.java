@@ -32,8 +32,18 @@ public class GetAllocationCandidatesUseCase {
                         .findByOrganizationIdAndAssigneeUserIdAndSprintId(
                                 organizationId, userId, sprint.getId())
                         .stream()
-                        .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.STORY)
+                        .filter(wi -> isStoryTierWork(wi.getResolvedType()))
                         .map(wi -> new WorkItemCandidateOutput(wi.getId(), wi.getTitle(), sprint.getName())))
                 .toList();
+    }
+
+    /**
+     * STORY and FEATURE are both developer-assignable, effort-bearing deliverable units — a
+     * Feature-typed work item is just as legitimate an AI-allocation candidate as a Story in
+     * Feature-heavy custom process templates (see GetTeamDashboardUseCase.isStoryTierWork for
+     * the same reasoning applied to dashboards).
+     */
+    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
+        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
     }
 }

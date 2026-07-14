@@ -178,6 +178,33 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(anyList(), anyString());
     }
 
+    @Test
+    void should_includeFeatureTypedWorkItem_inAllocationSplits_notDropIt() {
+        AIUsage usage1 = aiUsage("usage-1");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(usage1));
+
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+
+        Sprint sprint = sprint("sprint-1");
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint));
+
+        WorkItem feature = featureWorkItem("wi-feat", "Ship new capability");
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(feature));
+
+        AiUsageAllocation savedAllocation = savedAllocation("alloc-1", List.of("usage-1"));
+        when(allocationRepository.save(any())).thenReturn(savedAllocation);
+
+        useCase.execute(ORG, USER, DAY);
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getSplits()).hasSize(1);
+        assertThat(captor.getValue().getSplits().get(0).getWorkItemId()).isEqualTo("wi-feat");
+    }
+
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private AIUsage aiUsage(String id) {
@@ -210,6 +237,17 @@ class AutoAssignAllocationUseCaseTest {
         return new WorkItem(id, ORG, "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 id, Instant.now(), title,
                 "Story", WorkItem.ResolvedType.STORY,
+                "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                "Medium", 3.0, List.of(),
+                "sprint-1", "ext-user", USER, null, null,
+                Instant.now(), Instant.now(), null,
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
+
+    private WorkItem featureWorkItem(String id, String title) {
+        return new WorkItem(id, ORG, "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                id, Instant.now(), title,
+                "Feature", WorkItem.ResolvedType.FEATURE,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
                 "Medium", 3.0, List.of(),
                 "sprint-1", "ext-user", USER, null, null,
