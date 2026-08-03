@@ -218,12 +218,7 @@ public class SyncAzureWorkItemsUseCase {
         workItem.setSprintId(sprintId);
         workItem.setAssigneeExternalId(getAssigneeId(fields));
         workItem.setAssigneeEmail(getAssigneeEmail(fields));
-        Object parentField = fields.get("System.Parent");
-        String parentExternalId = null;
-        if (parentField instanceof Number num) {
-            parentExternalId = String.valueOf(num.intValue());
-        }
-        workItem.setParentExternalId(parentExternalId);
+        workItem.setParentExternalId(extractParentExternalId(adoItem));
         resolveAssigneeUserId(orgId, workItem);
         if (workItem.getCreatedAt() == null) {
             workItem.setCreatedAt(parseInstant(fields, "System.CreatedDate"));
@@ -457,6 +452,24 @@ public class SyncAzureWorkItemsUseCase {
             // ADO uses 9999-01-01 as "not set" sentinel -- treat as null
             return instant.isAfter(ADO_SENTINEL) ? null : instant;
         } catch (Exception e) { return null; }
+    }
+
+    // Azure DevOps has no scalar "parent" field -- the parent link (if any) is expressed as a
+    // System.LinkTypes.Hierarchy-Reverse relation whose url ends in the parent's work item id
+    // (e.g. .../_apis/wit/workItems/1234). A work item has at most one parent, so at most one
+    // such relation is ever present.
+    private String extractParentExternalId(AdoWorkItemDto adoItem) {
+        List<AdoWorkItemDto.AdoWorkItemRelationDto> relations = adoItem.relations();
+        if (relations == null) return null;
+        for (AdoWorkItemDto.AdoWorkItemRelationDto relation : relations) {
+            if ("System.LinkTypes.Hierarchy-Reverse".equals(relation.rel()) && relation.url() != null) {
+                int lastSlash = relation.url().lastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash < relation.url().length() - 1) {
+                    return relation.url().substring(lastSlash + 1);
+                }
+            }
+        }
+        return null;
     }
 
     private String getAssigneeId(Map<String, Object> fields) {

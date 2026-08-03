@@ -111,6 +111,48 @@ class AzureDevOpsClientTest {
     }
 
     @Test
+    void getWorkItemsBatch_shouldDeserializeRelationsFromExpandAllResponse() {
+        // Realistic shape of an Azure DevOps "$expand=all" work item response: a Task with a
+        // System.LinkTypes.Hierarchy-Reverse relation pointing at its parent's work item id.
+        String json = """
+                {
+                  "value": [
+                    {
+                      "id": 100,
+                      "fields": {
+                        "System.Title": "My Task",
+                        "System.WorkItemType": "Task",
+                        "System.State": "Active"
+                      },
+                      "relations": [
+                        {
+                          "rel": "System.LinkTypes.Hierarchy-Reverse",
+                          "url": "https://dev.azure.com/myorg/_apis/wit/workItems/42"
+                        },
+                        {
+                          "rel": "System.LinkTypes.Related",
+                          "url": "https://dev.azure.com/myorg/_apis/wit/workItems/99"
+                        }
+                      ]
+                    }
+                  ],
+                  "count": 1
+                }
+                """;
+        AzureDevOpsClient client = clientFor(webClientReturning(200, json));
+
+        List<AdoWorkItemDto> items = client.getWorkItemsBatch(
+                "https://dev.azure.com/myorg", List.of(100), "Basic dGVzdA==");
+
+        assertThat(items).hasSize(1);
+        AdoWorkItemDto item = items.get(0);
+        assertThat(item.id()).isEqualTo(100);
+        assertThat(item.relations()).hasSize(2);
+        assertThat(item.relations().get(0).rel()).isEqualTo("System.LinkTypes.Hierarchy-Reverse");
+        assertThat(item.relations().get(0).url()).isEqualTo("https://dev.azure.com/myorg/_apis/wit/workItems/42");
+    }
+
+    @Test
     void getWorkItemTypeFields_shouldRetryOn5xxThenSucceed() {
         AtomicReference<Integer> attempt = new AtomicReference<>(0);
         String json = """
