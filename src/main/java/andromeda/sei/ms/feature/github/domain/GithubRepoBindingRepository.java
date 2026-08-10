@@ -14,5 +14,7 @@ public interface GithubRepoBindingRepository {
 
     List<GithubRepoBinding> findAllByOrganizationIdAndActiveTrue(String organizationId);
 
+    List<GithubRepoBinding> findAllByOrganizationIdAndProjectIdAndActiveTrue(String organizationId, String projectId);
+
     GithubRepoBinding save(GithubRepoBinding binding);
 }

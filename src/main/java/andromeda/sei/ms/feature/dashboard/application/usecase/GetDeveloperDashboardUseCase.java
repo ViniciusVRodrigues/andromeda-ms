@@ -9,6 +9,9 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
@@ -40,8 +43,11 @@ public class GetDeveloperDashboardUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
     private final OrganizationRepository organizationRepository;
+    private final GithubPullRequestRepository githubPullRequestRepository;
     private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
             effortBearingLevelResolver;
+
+    private static final long PR_LOOKBACK_DAYS = 30;
 
     public DeveloperDashboardOutput execute(String orgId, String userId, String projectId, String sprintId,
                                             LocalDate startDate, LocalDate endDate, String model) {
@@ -128,6 +134,8 @@ public class GetDeveloperDashboardUseCase {
                 .map(org -> org.getSubscriptionCostPerUserUsd())
                 .orElse(null);
 
+        int[] prCounts = computePrCounts(orgId, userId);
+
         return new DeveloperDashboardOutput(
                 storyItems,
                 avgCycleTimeHours,
@@ -137,8 +145,8 @@ public class GetDeveloperDashboardUseCase {
                 tokensByDay,
                 sprintCostUsd,
                 avgTokensPerSp,
-                null,
-                null,
+                prCounts[0],
+                prCounts[1],
                 inProgressItems,
                 storyItems.size(),
                 burndownSeries,
@@ -284,6 +292,24 @@ public class GetDeveloperDashboardUseCase {
         return new AiSprintSummary(totalTokens, totalCostUsd, unallocatedDays.size());
     }
 
+
+    /**
+     * openPrs/mergedPrs over the last 30 days. Returns {openCount, mergedCount}; both are 0
+     * (not null) when the developer has no linked GitHub account or no PR activity — authorUserId
+     * on github_pull_requests is only populated for linked accounts, so an unlinked developer
+     * simply matches zero rows here (design.md D2).
+     */
+    private int[] computePrCounts(String orgId, String userId) {
+        Instant to = Instant.now();
+        Instant from = to.minus(PR_LOOKBACK_DAYS, ChronoUnit.DAYS);
+
+        List<GithubPullRequest> prs = githubPullRequestRepository
+                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(orgId, userId, from, to);
+
+        int open = (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count();
+        int merged = (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).count();
+        return new int[] { open, merged };
+    }
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {
         if (sprintId != null) {

@@ -1,6 +1,10 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.RepoMetrics;
+import andromeda.sei.ms.feature.github.domain.RepoMetricsRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
@@ -18,7 +22,9 @@ import java.time.ZoneOffset;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
@@ -29,6 +35,8 @@ class GetStrategicDashboardUseCaseTest {
     @Mock private WorkItemRepository workItemRepository;
     @Mock private UserRepository userRepository;
     @Mock private GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
+    @Mock private GithubRepoBindingRepository githubRepoBindingRepository;
+    @Mock private RepoMetricsRepository repoMetricsRepository;
 
     private GetStrategicDashboardUseCase useCase;
 
@@ -38,8 +46,129 @@ class GetStrategicDashboardUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetStrategicDashboardUseCase(
-                projectRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(), userRepository, getDeveloperDashboardUseCase);
+                projectRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(),
+                userRepository, getDeveloperDashboardUseCase, githubRepoBindingRepository, repoMetricsRepository);
         lenient().when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
+        lenient().when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(any(), any()))
+                .thenReturn(List.of());
+    }
+
+    // ── Task 6.6-6.9: F-15 Change Failure Rate ───────────────────────────
+
+    @Test
+    void should_useRealCfr_estimatedFalse_when_repoMetricsPresent() {
+        LocalDate from = LocalDate.now().minusDays(90);
+        LocalDate to = LocalDate.now();
+
+        Project project = activeProject();
+        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(doneWorkItem(from, to)));
+
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("repo-1")));
+        when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
+                eq(ORG), eq(List.of("repo-1")), any(), any()))
+                .thenReturn(List.of(repoMetrics("repo-1", 3.5)));
+
+        StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
+
+        StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
+        assertThat(dora.changeFailureRatePercent()).isEqualTo(3.5);
+        assertThat(dora.estimated()).isFalse();
+    }
+
+    @Test
+    void should_fallBackToProxyCfr_estimatedTrue_when_noBoundRepos() {
+        LocalDate from = LocalDate.now().minusDays(90);
+        LocalDate to = LocalDate.now();
+
+        Project project = activeProject();
+        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(doneWorkItem(from, to)));
+
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of());
+
+        StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
+
+        StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
+        assertThat(dora.estimated()).isTrue();
+        // proxy: bugCount(0) * 100.0 / doneItems.size()(1) = 0.0
+        assertThat(dora.changeFailureRatePercent()).isEqualTo(0.0);
+    }
+
+    @Test
+    void should_fallBackToProxyCfr_estimatedTrue_when_boundReposHaveNoSyncedMetricsForPeriod() {
+        LocalDate from = LocalDate.now().minusDays(90);
+        LocalDate to = LocalDate.now();
+
+        Project project = activeProject();
+        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(doneWorkItem(from, to)));
+
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("repo-1")));
+        when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
+                eq(ORG), eq(List.of("repo-1")), any(), any()))
+                .thenReturn(List.of());
+
+        StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
+
+        StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
+        assertThat(dora.estimated()).isTrue();
+    }
+
+    @Test
+    void should_averageCfr_across_multipleBoundReposWithMetrics() {
+        LocalDate from = LocalDate.now().minusDays(90);
+        LocalDate to = LocalDate.now();
+
+        Project project = activeProject();
+        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(doneWorkItem(from, to)));
+
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("repo-1"), binding("repo-2")));
+        when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
+                eq(ORG), eq(List.of("repo-1", "repo-2")), any(), any()))
+                .thenReturn(List.of(repoMetrics("repo-1", 2.0), repoMetrics("repo-2", 8.0)));
+
+        StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
+
+        StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
+        assertThat(dora.changeFailureRatePercent()).isEqualTo(5.0);
+        assertThat(dora.estimated()).isFalse();
+    }
+
+    private Project activeProject() {
+        return new Project(PROJECT, ORG, "My Project", "my-project", "desc",
+                true, List.of(), 1L, Instant.now(), Instant.now());
+    }
+
+    private WorkItem doneWorkItem(LocalDate from, LocalDate to) {
+        Instant completedAt = to.atStartOfDay(ZoneOffset.UTC).toInstant().minusSeconds(3600);
+        return new WorkItem("wi-1", ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                "wi-1", Instant.now(), "Title",
+                "Story", WorkItem.ResolvedType.STORY,
+                "Closed", WorkItem.ResolvedStatus.DONE,
+                "Medium", 5.0, List.of(),
+                null, "ext-user", "user-1", null, null,
+                Instant.now(), null, completedAt,
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, 5.0, null, null, null);
+    }
+
+    private GithubRepoBinding binding(String repoId) {
+        return new GithubRepoBinding("binding-" + repoId, ORG, PROJECT, repoId, true, null, true,
+                Instant.now(), Instant.now(), 1L);
+    }
+
+    private RepoMetrics repoMetrics(String repoId, double cfr) {
+        return new RepoMetrics("rm-" + repoId, ORG, repoId, Instant.now().minusSeconds(86400), Instant.now(),
+                cfr, false, Instant.now(), true, Instant.now(), Instant.now(), 1L);
     }
 
     @Test

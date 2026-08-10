@@ -24,10 +24,16 @@ public class TeamDashboardMapper {
                                 m.aiCostUsd(), m.avgTokensPerSp(), m.workItemCount()))
                         .toList();
 
+        List<TeamDashboardResponse.StalePrSummaryResponse> stalePrs = output.stalePrs() == null ? List.of() :
+                output.stalePrs().stream()
+                        .map(pr -> new TeamDashboardResponse.StalePrSummaryResponse(
+                                pr.prId(), pr.title(), pr.authorName(), pr.createdAt(), pr.hoursOpen()))
+                        .toList();
+
         return new TeamDashboardResponse(
                 output.sprintId(), output.sprintName(), output.sprintStartDate(), output.sprintEndDate(),
                 output.teamVelocity(), output.avgCycleTimeHours(), output.avgLeadTimeHours(),
-                output.teamAiCostUsd(), velocityTrend, members
+                output.teamAiCostUsd(), velocityTrend, members, stalePrs
         );
     }
 }

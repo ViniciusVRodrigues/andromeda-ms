@@ -2,6 +2,10 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.RepoMetrics;
+import andromeda.sei.ms.feature.github.domain.RepoMetricsRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.user.domain.User;
@@ -32,6 +36,8 @@ public class GetStrategicDashboardUseCase {
             effortBearingLevelResolver;
     private final UserRepository userRepository;
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
+    private final GithubRepoBindingRepository githubRepoBindingRepository;
+    private final RepoMetricsRepository repoMetricsRepository;
 
     public StrategicDashboardOutput execute(String orgId, String authUserId,
                                              String projectId, String memberId,
@@ -82,7 +88,7 @@ public class GetStrategicDashboardUseCase {
         Double avgCycle = averageNonNull(doneStories.stream().map(WorkItem::getCycleTimeHours).toList());
         Double avgLead = averageNonNull(doneStories.stream().map(WorkItem::getLeadTimeHours).toList());
 
-        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to);
+        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to, orgId, project.getId());
 
         return new StrategicDashboardOutput.ProjectSummary(
                 project.getId(), project.getName(), items.size(), sp, avgCycle, avgLead, dora);
@@ -133,7 +139,7 @@ public class GetStrategicDashboardUseCase {
 
         List<WorkItem> done = items.stream()
                 .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus())).toList();
-        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to);
+        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to, orgId, projectId);
 
         StrategicDashboardOutput.ProjectDetail detail = new StrategicDashboardOutput.ProjectDetail(
                 project.getId(), project.getName(), members, dora);
@@ -148,7 +154,8 @@ public class GetStrategicDashboardUseCase {
         return new StrategicDashboardOutput("MEMBER", null, null, devOutput);
     }
 
-    private StrategicDashboardOutput.DoraMetrics computeDora(List<WorkItem> doneItems, LocalDate from, LocalDate to) {
+    private StrategicDashboardOutput.DoraMetrics computeDora(List<WorkItem> doneItems, LocalDate from, LocalDate to,
+                                                               String orgId, String projectId) {
         if (doneItems.isEmpty()) {
             return new StrategicDashboardOutput.DoraMetrics(null, "LOW", null, "LOW", null, "ELITE", null, true);
         }
@@ -161,18 +168,53 @@ public class GetStrategicDashboardUseCase {
         double deployFreq = doneItems.size() / weeks;
         String deployFreqClass = classifyDeployFreq(deployFreq);
 
-        long bugCount = doneItems.stream()
-                .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.BUG)
-                .count();
-        double changeFailureRate = doneItems.isEmpty() ? 0.0 : (bugCount * 100.0) / doneItems.size();
-        String changeFailureClass = classifyChangeFailure(changeFailureRate);
+        ChangeFailureRate cfr = resolveChangeFailureRate(orgId, projectId, doneItems, from, to);
+        String changeFailureClass = classifyChangeFailure(cfr.percent());
 
         return new StrategicDashboardOutput.DoraMetrics(
                 avgLeadTime, leadTimeClass,
                 deployFreq, deployFreqClass,
-                changeFailureRate, changeFailureClass,
-                null, true);
+                cfr.percent(), changeFailureClass,
+                null, cfr.estimated());
     }
+
+    /**
+     * Real CFR from repo_metrics when available for the project's bound repo(s), averaged across
+     * repos when there are several (design.md D1/D4) — otherwise gracefully falls back to the
+     * existing bug-count-over-done-items proxy, with estimated=true preserved exactly as before.
+     */
+    private ChangeFailureRate resolveChangeFailureRate(String orgId, String projectId,
+                                                         List<WorkItem> doneItems, LocalDate from, LocalDate to) {
+        if (projectId != null) {
+            List<String> repoIds = githubRepoBindingRepository
+                    .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
+                    .stream()
+                    .map(GithubRepoBinding::getRepoId)
+                    .distinct()
+                    .toList();
+
+            if (!repoIds.isEmpty()) {
+                Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+                Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
+
+                List<RepoMetrics> metrics = repoMetricsRepository
+                        .findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(orgId, repoIds, fromInstant, toInstant);
+
+                Double avgCfr = averageNonNull(metrics.stream().map(RepoMetrics::getCfr).toList());
+                if (avgCfr != null) {
+                    return new ChangeFailureRate(avgCfr, false);
+                }
+            }
+        }
+
+        long bugCount = doneItems.stream()
+                .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.BUG)
+                .count();
+        double changeFailureRate = doneItems.isEmpty() ? 0.0 : (bugCount * 100.0) / doneItems.size();
+        return new ChangeFailureRate(changeFailureRate, true);
+    }
+
+    private record ChangeFailureRate(double percent, boolean estimated) {}
 
     private String classifyLeadTime(Double hours) {
         if (hours == null) return "LOW";

@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -25,6 +26,22 @@ public class RepoMetricsRepositoryImpl implements RepoMetricsRepository {
             String organizationId, String repoId, Instant periodStart, Instant periodEnd) {
         return mongoRepository.findByOrganizationIdAndRepoIdAndPeriodStartAndPeriodEnd(
                 organizationId, repoId, periodStart, periodEnd).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<RepoMetrics> findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
+            String organizationId, List<String> repoIds, Instant from, Instant to) {
+        if (repoIds == null || repoIds.isEmpty()) return List.of();
+
+        // Overlap of [periodStart, periodEnd] with [from, to]: periodStart <= to AND periodEnd >= from.
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("repoId").in(repoIds)
+                .and("active").is(true)
+                .and("periodStart").lte(to)
+                .and("periodEnd").gte(from));
+
+        return mongoTemplate.find(query, RepoMetricsDocument.class)
+                .stream().map(mapper::toDomain).toList();
     }
 
     @Override

@@ -2,6 +2,12 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.TeamDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
+import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
@@ -12,6 +18,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -31,6 +39,10 @@ public class GetTeamDashboardUseCase {
             effortBearingLevelResolver;
     private final AIUsageRepository aiUsageRepository;
     private final UserRepository userRepository;
+    private final GithubRepoBindingRepository githubRepoBindingRepository;
+    private final GithubPullRequestRepository githubPullRequestRepository;
+
+    private static final long STALE_PR_THRESHOLD_HOURS = 24;
 
     public TeamDashboardOutput execute(String orgId, String authUserId, String projectId,
                                        String sprintId, LocalDate startDate, LocalDate endDate) {
@@ -96,11 +108,67 @@ public class GetTeamDashboardUseCase {
         String sprintStartDate = sprintOpt.map(s -> toLocalDateStr(s.getStartDate())).orElse(null);
         String sprintEndDate = sprintOpt.map(s -> toLocalDateStr(s.getEndDate())).orElse(null);
 
+        List<TeamDashboardOutput.StalePrSummary> stalePrs = computeStalePrs(orgId, projectId);
+
         return new TeamDashboardOutput(
                 resolvedSprintId, sprintName, sprintStartDate, sprintEndDate,
                 teamVelocity, avgCycleTime, avgLeadTime, teamAiCostUsd,
-                velocityTrend, members
+                velocityTrend, members, stalePrs
         );
+    }
+
+    /**
+     * PRs open with no first review yet and older than 24h, across the project's bound GitHub
+     * repo(s) (design.md D1/D3). A project with no bound repos simply yields an empty list, not
+     * an error. authorName falls back to the raw GitHub login when the author has no linked
+     * User account.
+     */
+    private List<TeamDashboardOutput.StalePrSummary> computeStalePrs(String orgId, String projectId) {
+        List<String> repoIds = githubRepoBindingRepository
+                .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
+                .stream()
+                .map(GithubRepoBinding::getRepoId)
+                .distinct()
+                .toList();
+
+        if (repoIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<GithubPullRequest> openPrs = githubPullRequestRepository
+                .findAllByOrganizationIdAndRepoIdInAndStatus(orgId, repoIds, PullRequestStatus.OPEN);
+
+        Instant now = Instant.now();
+
+        List<GithubPullRequest> stale = openPrs.stream()
+                .filter(pr -> pr.getTimeToFirstReviewHours() == null)
+                .filter(pr -> pr.getCreatedAt() != null
+                        && Duration.between(pr.getCreatedAt(), now).toHours() > STALE_PR_THRESHOLD_HOURS)
+                .toList();
+
+        if (stale.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, String> nameByGithubId = userRepository.findAllByOrganizationId(orgId).stream()
+                .filter(u -> u.getGithubId() != null)
+                .collect(Collectors.toMap(User::getGithubId,
+                        u -> u.getName() != null ? u.getName() : u.getEmail(), (a, b) -> a));
+
+        return stale.stream()
+                .map(pr -> new TeamDashboardOutput.StalePrSummary(
+                        pr.getId(),
+                        pr.getTitle(),
+                        resolveAuthorName(pr, nameByGithubId),
+                        pr.getCreatedAt(),
+                        Duration.between(pr.getCreatedAt(), now).toHours()))
+                .sorted(Comparator.comparingDouble(TeamDashboardOutput.StalePrSummary::hoursOpen).reversed())
+                .toList();
+    }
+
+    private String resolveAuthorName(GithubPullRequest pr, Map<String, String> nameByGithubId) {
+        String byLinkedAccount = nameByGithubId.get(pr.getAuthorGithubLogin());
+        return byLinkedAccount != null ? byLinkedAccount : pr.getAuthorGithubLogin();
     }
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {

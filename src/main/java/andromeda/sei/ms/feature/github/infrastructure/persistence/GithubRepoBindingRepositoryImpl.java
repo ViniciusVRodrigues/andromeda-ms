@@ -41,6 +41,13 @@ public class GithubRepoBindingRepositoryImpl implements GithubRepoBindingReposit
     }
 
     @Override
+    public List<GithubRepoBinding> findAllByOrganizationIdAndProjectIdAndActiveTrue(
+            String organizationId, String projectId) {
+        return mongoRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(organizationId, projectId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public GithubRepoBinding save(GithubRepoBinding binding) {
         GithubRepoBindingDocument doc = mapper.toDocument(binding);
         Instant now = Instant.now();

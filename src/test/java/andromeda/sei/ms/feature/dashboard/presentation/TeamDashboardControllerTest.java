@@ -72,7 +72,7 @@ class TeamDashboardControllerTest {
         TeamDashboardOutput output = new TeamDashboardOutput(
                 "sprint-1", "Sprint 1", "2026-06-01", "2026-06-14",
                 10.0, 4.5, 8.0, new BigDecimal("25.00"),
-                List.of(), List.of());
+                List.of(), List.of(), List.of());
 
         when(getTeamDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), isNull(), isNull(), isNull()))
                 .thenReturn(output);

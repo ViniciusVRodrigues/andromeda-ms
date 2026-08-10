@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.github.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -31,6 +32,21 @@ public class GithubPullRequestRepositoryImpl implements GithubPullRequestReposit
     @Override
     public List<GithubPullRequest> findAllByOrganizationIdAndRepoId(String organizationId, String repoId) {
         return mongoRepository.findAllByOrganizationIdAndRepoId(organizationId, repoId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<GithubPullRequest> findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+            String organizationId, String authorUserId, Instant from, Instant to) {
+        return mongoRepository.findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+                        organizationId, authorUserId, from, to)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<GithubPullRequest> findAllByOrganizationIdAndRepoIdInAndStatus(
+            String organizationId, List<String> repoIds, PullRequestStatus status) {
+        return mongoRepository.findAllByOrganizationIdAndRepoIdInAndStatus(organizationId, repoIds, status)
                 .stream().map(mapper::toDomain).toList();
     }
 
