@@ -1,5 +1,5 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM eclipse-temurin:26-jdk-alpine AS builder
+FROM --platform=$BUILDPLATFORM eclipse-temurin:26-jdk-alpine AS builder
 WORKDIR /app
 
 # Copy Gradle wrapper and build scripts first (better layer caching)
