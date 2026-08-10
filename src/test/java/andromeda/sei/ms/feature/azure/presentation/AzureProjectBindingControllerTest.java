@@ -1,6 +1,9 @@
 package andromeda.sei.ms.feature.azure.presentation;
 
 import andromeda.sei.ms.feature.azure.application.dto.AzureProjectOutput;
+import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemTypeFieldOutput;
+import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemTypeOutput;
+import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemTypeStateOutput;
 import andromeda.sei.ms.feature.azure.application.usecase.BindAzureProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.RemoveAzureProjectBindingUseCase;
@@ -8,6 +11,9 @@ import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureProjectBind
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureBindingNotFoundException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureIntrospectionFailedException;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureWorkItemTypeNotFoundException;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureWorkflowConfigMappingsEmptyException;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -29,6 +35,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -41,6 +48,11 @@ class AzureProjectBindingControllerTest {
     @Mock private UpdateAzureProjectBindingSyncUseCase updateAzureProjectBindingSyncUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.UpdateWorkflowConfigUseCase updateWorkflowConfigUseCase;
     @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase forceResyncProjectUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypesUseCase listAzureWorkItemTypesUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
     @InjectMocks
     private AzureProjectBindingController controller;
@@ -103,5 +115,127 @@ class AzureProjectBindingControllerTest {
     void removeBinding_shouldReturn204OnSuccess() throws Exception {
         mockMvc.perform(delete("/api/v1/integrations/azure/projects/proj-1/binding"))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void listWorkItemTypes_shouldReturn200WithTypes() throws Exception {
+        when(listAzureWorkItemTypesUseCase.execute("bind-1")).thenReturn(List.of(
+                new AzureWorkItemTypeOutput("Bug", "Microsoft.VSTS.WorkItemTypes.Bug"),
+                new AzureWorkItemTypeOutput("User Story", "Microsoft.VSTS.WorkItemTypes.UserStory")));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("Bug"))
+                .andExpect(jsonPath("$[1].name").value("User Story"));
+    }
+
+    @Test
+    void listWorkItemTypes_shouldReturn404WhenBindingNotFound() throws Exception {
+        when(listAzureWorkItemTypesUseCase.execute("bad-id"))
+                .thenThrow(new AzureBindingNotFoundException("bad-id"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bad-id/process/work-item-types"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listWorkItemTypeFields_shouldReturn200WithFields() throws Exception {
+        when(listAzureWorkItemTypeFieldsUseCase.execute("bind-1", "Bug")).thenReturn(List.of(
+                new AzureWorkItemTypeFieldOutput("Microsoft.VSTS.Scheduling.Effort", "Effort", "double", false),
+                new AzureWorkItemTypeFieldOutput("Custom.Complexidade", "Complexidade", "integer", false)));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Bug/fields"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].referenceName").value("Microsoft.VSTS.Scheduling.Effort"))
+                .andExpect(jsonPath("$[1].referenceName").value("Custom.Complexidade"));
+    }
+
+    @Test
+    void listWorkItemTypeFields_shouldReturn404WhenTypeNotFound() throws Exception {
+        when(listAzureWorkItemTypeFieldsUseCase.execute("bind-1", "Unknown"))
+                .thenThrow(new AzureWorkItemTypeNotFoundException("Unknown"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Unknown/fields"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void updateWorkflowConfig_shouldReturn422WhenEmptyMappingsWouldWipeExistingConfig() throws Exception {
+        when(updateWorkflowConfigUseCase.execute(org.mockito.ArgumentMatchers.eq("bind-1"), any()))
+                .thenThrow(new AzureWorkflowConfigMappingsEmptyException(
+                        "Refusing to replace existing non-empty statusMappings with an empty list for binding bind-1"));
+
+        mockMvc.perform(put("/api/v1/integrations/azure/bindings/bind-1/workflow-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"statusMappings":[],"typeMappings":[]}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("AZURE_WORKFLOW_CONFIG_MAPPINGS_EMPTY"));
+    }
+
+    @Test
+    void listWorkItemTypeStates_shouldReturn200WithStates() throws Exception {
+        when(listAzureWorkItemTypeStatesUseCase.execute("bind-1", "Bug")).thenReturn(List.of(
+                new AzureWorkItemTypeStateOutput("New", "b2b2b2", "Proposed"),
+                new AzureWorkItemTypeStateOutput("Active", "007acc", "InProgress")));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Bug/states"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("New"))
+                .andExpect(jsonPath("$[1].name").value("Active"));
+    }
+
+    @Test
+    void listWorkItemTypeStates_shouldReturn404WhenBindingNotFound() throws Exception {
+        when(listAzureWorkItemTypeStatesUseCase.execute("bad-id", "Bug"))
+                .thenThrow(new AzureBindingNotFoundException("bad-id"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bad-id/process/work-item-types/Bug/states"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listWorkItemTypeStates_shouldReturn404WhenTypeNotFound() throws Exception {
+        when(listAzureWorkItemTypeStatesUseCase.execute("bind-1", "Unknown"))
+                .thenThrow(new AzureWorkItemTypeNotFoundException("Unknown"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Unknown/states"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void listSiblings_shouldReturn200WithSiblingsExcludingCurrentBinding() throws Exception {
+        var sibling = new AzureProjectBinding(
+                "bind-2", "org-1", "proj-2", "azure-id-2", "Other Project",
+                true, null, null, true, Instant.now(), Instant.now(), null);
+        when(listSiblingAzureProjectBindingsUseCase.execute("bind-1")).thenReturn(List.of(sibling));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/siblings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("bind-2"))
+                .andExpect(jsonPath("$[0].azureProjectName").value("Other Project"));
+    }
+
+    @Test
+    void listSiblings_shouldReturn200WithEmptyListWhenNoSiblingsExist() throws Exception {
+        when(listSiblingAzureProjectBindingsUseCase.execute("bind-1")).thenReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/siblings"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$").isEmpty());
+    }
+
+    @Test
+    void listWorkItemTypeFields_shouldReturn422WhenIntrospectionFails() throws Exception {
+        // NOTE: proposal/spec describe this as HTTP 502, but GlobalExceptionHandler maps
+        // BusinessRuleException (the exception's actual base type) to 422 uniformly across
+        // the app; no per-exception override exists. Asserting actual behavior here.
+        when(listAzureWorkItemTypeFieldsUseCase.execute("bind-1", "Bug"))
+                .thenThrow(new AzureIntrospectionFailedException("ADO call failed"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Bug/fields"))
+                .andExpect(status().isUnprocessableEntity());
     }
 }

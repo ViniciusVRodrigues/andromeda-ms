@@ -1,0 +1,144 @@
+package andromeda.sei.ms.feature.workitem.application.usecase;
+
+import andromeda.sei.ms.feature.workitem.domain.EffortBearingLevel;
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+/**
+ * Covers the three ways teams model complexity/effort, which previously only worked for model 1
+ * because dashboards and AI allocation hard-coded "STORY or FEATURE" and ignored TASK.
+ */
+class EffortBearingLevelResolverTest {
+
+    private static final Instant NOW = Instant.parse("2026-01-01T00:00:00Z");
+
+    private final EffortBearingLevelResolver resolver = new EffortBearingLevelResolver();
+
+    // ---- Model 1: effort AND complexity on the Story ----
+
+    @Test
+    void model1_shouldTreatStoriesAsUnitsAndUseTheirOwnEffort() {
+        WorkItem storyA = story("1", null, 5.0, 3.0);
+        WorkItem storyB = story("2", null, 8.0, 5.0);
+        List<WorkItem> items = List.of(storyA, storyB);
+
+        var level = resolver.resolve(EffortBearingLevel.AUTO, items);
+        assertThat(level).isEqualTo(EffortBearingLevel.STORY);
+
+        assertThat(resolver.deliverableUnits(level, items)).containsExactly(storyA, storyB);
+        assertThat(resolver.totalEffort(items, items)).isEqualTo(13.0);
+    }
+
+    @Test
+    void model1_storyOwnEffortWinsOverChildTasks() {
+        // The decisive rule: the Story's own number is what the team agreed on, and its Tasks
+        // restate the same work at finer granularity — summing both would double count it.
+        WorkItem story = story("1", null, 8.0, 5.0);
+        WorkItem taskA = task("2", "1", 3.0);
+        WorkItem taskB = task("3", "1", 4.0);
+        List<WorkItem> items = List.of(story, taskA, taskB);
+
+        assertThat(resolver.effectiveEffort(story, items)).isEqualTo(8.0);
+        // 8, not 8+7 and not 7
+        assertThat(resolver.totalEffort(List.of(story), items)).isEqualTo(8.0);
+    }
+
+    // ---- Model 2: complexity on the Story, effort on its Tasks ----
+
+    @Test
+    void model2_shouldRollTaskEffortIntoTheParentStory() {
+        WorkItem story = story("1", null, null, 5.0);
+        WorkItem taskA = task("2", "1", 3.0);
+        WorkItem taskB = task("3", "1", 4.0);
+        List<WorkItem> items = List.of(story, taskA, taskB);
+
+        var level = resolver.resolve(EffortBearingLevel.AUTO, items);
+        assertThat(level).isEqualTo(EffortBearingLevel.TASK);
+
+        // The story has no effort of its own, so it inherits the sum of its tasks.
+        assertThat(resolver.effectiveEffort(story, items)).isEqualTo(7.0);
+        // Complexity still comes from the story itself.
+        assertThat(resolver.effectiveComplexity(story, items)).isEqualTo(5.0);
+    }
+
+    @Test
+    void model2_totalCountsEachDeliveryOnce() {
+        WorkItem storyA = story("1", null, null, 5.0);
+        WorkItem taskA = task("2", "1", 3.0);
+        WorkItem storyB = story("3", null, null, 2.0);
+        WorkItem taskB = task("4", "3", 4.0);
+        List<WorkItem> items = List.of(storyA, taskA, storyB, taskB);
+
+        // Whether counted at story level (3+4 via rollup) or task level (3+4 directly), the
+        // sprint total is 7 -- never 14.
+        assertThat(resolver.totalEffort(List.of(storyA, storyB), items)).isEqualTo(7.0);
+        assertThat(resolver.totalEffort(List.of(taskA, taskB), items)).isEqualTo(7.0);
+    }
+
+    // ---- Model 3: effort AND complexity on the Task ----
+
+    @Test
+    void model3_shouldTreatTasksAsDeliverableUnits() {
+        WorkItem taskA = task("1", null, 3.0);
+        WorkItem taskB = task("2", null, 4.0);
+        List<WorkItem> items = List.of(taskA, taskB);
+
+        var level = resolver.resolve(EffortBearingLevel.AUTO, items);
+        assertThat(level).isEqualTo(EffortBearingLevel.TASK);
+
+        // Previously these were filtered out entirely, so velocity read zero.
+        assertThat(resolver.deliverableUnits(level, items)).containsExactly(taskA, taskB);
+        assertThat(resolver.totalEffort(items, items)).isEqualTo(7.0);
+    }
+
+    // ---- Configuration ----
+
+    @Test
+    void shouldHonourAnExplicitlyPinnedLevelOverInference() {
+        WorkItem story = story("1", null, 5.0, 3.0);
+        WorkItem task = task("2", "1", 3.0);
+        List<WorkItem> items = List.of(story, task);
+
+        assertThat(resolver.resolve(EffortBearingLevel.STORY, items)).isEqualTo(EffortBearingLevel.STORY);
+        assertThat(resolver.resolve(EffortBearingLevel.TASK, items)).isEqualTo(EffortBearingLevel.TASK);
+    }
+
+    @Test
+    void shouldFallBackToStoryTierWhenPinnedToTaskButNoTasksExist() {
+        // An org mid-migration shouldn't get an empty dashboard.
+        WorkItem story = story("1", null, 5.0, 3.0);
+        List<WorkItem> items = List.of(story);
+
+        assertThat(resolver.deliverableUnits(EffortBearingLevel.TASK, items)).containsExactly(story);
+    }
+
+    @Test
+    void shouldReportNullTotalWhenNothingCarriesEffort() {
+        WorkItem story = story("1", null, null, null);
+
+        assertThat(resolver.totalEffort(List.of(story), List.of(story))).isNull();
+    }
+
+    private WorkItem story(String externalId, String parentExternalId, Double effort, Double complexity) {
+        return workItem(externalId, parentExternalId, "User Story", WorkItem.ResolvedType.STORY, effort, complexity);
+    }
+
+    private WorkItem task(String externalId, String parentExternalId, Double effort) {
+        return workItem(externalId, parentExternalId, "Task", WorkItem.ResolvedType.TASK, effort, null);
+    }
+
+    private WorkItem workItem(String externalId, String parentExternalId, String rawType,
+                               WorkItem.ResolvedType resolvedType, Double effort, Double complexity) {
+        return new WorkItem("id-" + externalId, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                externalId, NOW, "Title " + externalId, rawType, resolvedType,
+                "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                null, null, List.of(), null, null, null, null, parentExternalId,
+                NOW, null, null, null, null, null, true, null, NOW,
+                complexity, null, null, null, effort, null, null, null);
+    }
+}

@@ -42,7 +42,7 @@ class CalculateTokensPerSpUseCaseTest {
         return new WorkItem(id, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "ext-" + id, null, "Title", null, null, null, WorkItem.ResolvedStatus.DONE,
                 null, storyPoints, null, "sprint-1", null, "user-1", null, null,
-                Instant.now(), null, null, null, null, null, true, null, Instant.now());
+                Instant.now(), null, null, null, null, null, true, null, Instant.now(), null, null, null, null, storyPoints, null, null, null);
     }
 
     private AIUsage aiUsage(String id, String userId, LocalDate day, long inputTokens, long outputTokens) {

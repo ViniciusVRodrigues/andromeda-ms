@@ -35,7 +35,15 @@ public class WorkItemDocumentMapper {
                 doc.getTokensPerSp(),
                 doc.isActive(),
                 doc.getVersion(),
-                doc.getUpdatedAt()
+                doc.getUpdatedAt(),
+                doc.getComplexity(),
+                doc.getComplexitySource(),
+                doc.getComplexityOverriddenBy(),
+                doc.getComplexityOverriddenAt(),
+                doc.getEffort(),
+                doc.getEffortSource(),
+                doc.getEffortOverriddenBy(),
+                doc.getEffortOverriddenAt()
         );
     }
 
@@ -69,6 +77,14 @@ public class WorkItemDocumentMapper {
                 .active(item.isActive())
                 .version(item.getVersion())
                 .updatedAt(item.getUpdatedAt())
+                .complexity(item.getComplexity())
+                .complexitySource(item.getComplexitySource())
+                .complexityOverriddenBy(item.getComplexityOverriddenBy())
+                .complexityOverriddenAt(item.getComplexityOverriddenAt())
+                .effort(item.getEffort())
+                .effortSource(item.getEffortSource())
+                .effortOverriddenBy(item.getEffortOverriddenBy())
+                .effortOverriddenAt(item.getEffortOverriddenAt())
                 .build();
     }
 }

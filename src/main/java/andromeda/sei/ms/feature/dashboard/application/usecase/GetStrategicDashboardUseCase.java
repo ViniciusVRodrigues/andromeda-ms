@@ -28,6 +28,8 @@ public class GetStrategicDashboardUseCase {
 
     private final ProjectRepository projectRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
     private final UserRepository userRepository;
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
 
@@ -73,7 +75,7 @@ public class GetStrategicDashboardUseCase {
                 .toList();
 
         List<WorkItem> doneStories = done.stream()
-                .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                 .toList();
 
         double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
@@ -117,7 +119,7 @@ public class GetStrategicDashboardUseCase {
                     List<WorkItem> memberItems = entry.getValue();
                     List<WorkItem> doneStories = memberItems.stream()
                             .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                            .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                            .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                             .toList();
                     double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
                     Double cycleTime = averageNonNull(doneStories.stream().map(WorkItem::getCycleTimeHours).toList());
@@ -193,6 +195,13 @@ public class GetStrategicDashboardUseCase {
         if (percent <= 15.0) return "MEDIUM";
         return "LOW";
     }
+
+    /**
+     * STORY and FEATURE are both treated as developer-assignable, story-point-bearing
+     * deliverable work for this dashboard's velocity/cycle-time metrics — see
+     * GetTeamDashboardUseCase.isStoryTierWork for the same reasoning. DORA's changeFailureRate
+     * intentionally continues to check BUG only and is unaffected by this grouping.
+     */
 
     private Double averageNonNull(List<Double> values) {
         List<Double> nonNull = values.stream().filter(v -> v != null).toList();

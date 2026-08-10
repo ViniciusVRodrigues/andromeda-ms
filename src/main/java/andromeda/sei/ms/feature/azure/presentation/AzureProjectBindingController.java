@@ -6,14 +6,23 @@ import andromeda.sei.ms.feature.azure.application.dto.UpdateWorkflowConfigInput;
 import andromeda.sei.ms.feature.azure.application.usecase.BindAzureProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeStatesUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypesUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.RemoveAzureProjectBindingUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureProjectBindingSyncUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateWorkflowConfigUseCase;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
+import andromeda.sei.ms.feature.azure.domain.FieldMapping;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureProjectBindingResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureProjectResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureSiblingBindingResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeFieldResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeResponse;
+import andromeda.sei.ms.feature.azure.presentation.dto.AzureWorkItemTypeStateResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.BindAzureProjectRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateAzureBindingRequest;
 import andromeda.sei.ms.feature.azure.presentation.dto.UpdateWorkflowConfigRequest;
@@ -53,6 +62,10 @@ public class AzureProjectBindingController {
     private final UpdateWorkflowConfigUseCase updateWorkflowConfigUseCase;
     private final ForceResyncProjectUseCase forceResyncProjectUseCase;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
+    private final ListAzureWorkItemTypesUseCase listAzureWorkItemTypesUseCase;
+    private final ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
+    private final ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
+    private final ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
     @Operation(summary = "List available Azure DevOps projects")
     @ApiResponse(responseCode = "200", description = "Projects listed")
@@ -145,6 +158,7 @@ public class AzureProjectBindingController {
     @ApiResponse(responseCode = "200", description = "Workflow config updated")
     @ApiResponse(responseCode = "404", description = "Binding not found")
     @ApiResponse(responseCode = "403", description = "Missing AZURE_CONFIGURE permission")
+    @ApiResponse(responseCode = "400", description = "Duplicate field mapping target")
     @PutMapping("/bindings/{bindingId}/workflow-config")
     @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
     public ResponseEntity<AzureProjectBindingResponse> updateWorkflowConfig(
@@ -153,15 +167,86 @@ public class AzureProjectBindingController {
         var input = new UpdateWorkflowConfigInput(
                 request.statusMappings() == null ? List.of() :
                         request.statusMappings().stream()
-                                .map(s -> new UpdateWorkflowConfigInput.StatusMappingInput(s.rawStatus(), s.resolvedStatus()))
+                                .map(s -> new UpdateWorkflowConfigInput.StatusMappingInput(
+                                        s.workItemType(), s.rawStatus(), s.resolvedStatus()))
                                 .toList(),
                 request.typeMappings() == null ? List.of() :
                         request.typeMappings().stream()
                                 .map(t -> new UpdateWorkflowConfigInput.TypeMappingInput(t.rawType(), t.resolvedType()))
+                                .toList(),
+                request.fieldMappings() == null ? List.of() :
+                        request.fieldMappings().stream()
+                                .map(f -> new UpdateWorkflowConfigInput.FieldMappingInput(
+                                        f.internalField(), f.workItemType(),
+                                        f.azureFieldReferenceName(), f.azureFieldType()))
+                                .toList(),
+                request.syncFilter() == null ? null :
+                        new UpdateWorkflowConfigInput.WiqlFilterInput(
+                                request.syncFilter().workItemTypes(),
+                                request.syncFilter().areaPath(),
+                                request.syncFilter().iterationPath()),
+                request.hierarchyLevels() == null ? List.of() :
+                        request.hierarchyLevels().stream()
+                                .map(h -> new UpdateWorkflowConfigInput.HierarchyLevelInput(h.rawType(), h.rank()))
                                 .toList()
         );
         AzureProjectBinding updated = updateWorkflowConfigUseCase.execute(bindingId, input);
         return ResponseEntity.ok(toResponse(updated));
+    }
+
+    @Operation(summary = "List work item types discovered on the bound Azure DevOps project")
+    @ApiResponse(responseCode = "200", description = "Work item types listed")
+    @ApiResponse(responseCode = "404", description = "Binding not found")
+    @GetMapping("/bindings/{bindingId}/process/work-item-types")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureWorkItemTypeResponse>> listWorkItemTypes(@PathVariable String bindingId) {
+        List<AzureWorkItemTypeResponse> types = listAzureWorkItemTypesUseCase.execute(bindingId)
+                .stream()
+                .map(t -> new AzureWorkItemTypeResponse(t.name(), t.referenceName()))
+                .toList();
+        return ResponseEntity.ok(types);
+    }
+
+    @Operation(summary = "List fields available for a work item type on the bound project")
+    @ApiResponse(responseCode = "200", description = "Fields listed")
+    @ApiResponse(responseCode = "404", description = "Binding or work item type not found")
+    @ApiResponse(responseCode = "502", description = "Azure DevOps introspection call failed")
+    @GetMapping("/bindings/{bindingId}/process/work-item-types/{typeName}/fields")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureWorkItemTypeFieldResponse>> listWorkItemTypeFields(
+            @PathVariable String bindingId, @PathVariable String typeName) {
+        List<AzureWorkItemTypeFieldResponse> fields = listAzureWorkItemTypeFieldsUseCase.execute(bindingId, typeName)
+                .stream()
+                .map(f -> new AzureWorkItemTypeFieldResponse(f.referenceName(), f.name(), f.type(), f.required()))
+                .toList();
+        return ResponseEntity.ok(fields);
+    }
+
+    @Operation(summary = "List real Azure DevOps states for a work item type on the bound project")
+    @ApiResponse(responseCode = "200", description = "States listed")
+    @ApiResponse(responseCode = "404", description = "Binding or work item type not found")
+    @ApiResponse(responseCode = "422", description = "Azure DevOps introspection call failed")
+    @GetMapping("/bindings/{bindingId}/process/work-item-types/{typeName}/states")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureWorkItemTypeStateResponse>> listWorkItemTypeStates(
+            @PathVariable String bindingId, @PathVariable String typeName) {
+        List<AzureWorkItemTypeStateResponse> states = listAzureWorkItemTypeStatesUseCase.execute(bindingId, typeName)
+                .stream()
+                .map(s -> new AzureWorkItemTypeStateResponse(s.name(), s.color(), s.category()))
+                .toList();
+        return ResponseEntity.ok(states);
+    }
+
+    @Operation(summary = "List sibling Azure DevOps bindings on the same organization, excluding the given binding")
+    @ApiResponse(responseCode = "200", description = "Siblings listed")
+    @GetMapping("/bindings/{bindingId}/siblings")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<List<AzureSiblingBindingResponse>> listSiblings(@PathVariable String bindingId) {
+        List<AzureSiblingBindingResponse> siblings = listSiblingAzureProjectBindingsUseCase.execute(bindingId)
+                .stream()
+                .map(b -> new AzureSiblingBindingResponse(b.getId(), b.getAzureProjectName()))
+                .toList();
+        return ResponseEntity.ok(siblings);
     }
 
     private AzureProjectBindingResponse toResponse(AzureProjectBinding binding) {
@@ -171,15 +256,44 @@ public class AzureProjectBindingController {
             List<WorkflowConfigResponse.StatusMappingResponse> statusMappings = wf.getStatusMappings() == null
                     ? List.of()
                     : wf.getStatusMappings().stream()
-                            .map(s -> new WorkflowConfigResponse.StatusMappingResponse(s.getRawStatus(), s.getResolvedStatus()))
+                            .map(s -> new WorkflowConfigResponse.StatusMappingResponse(
+                                    s.getWorkItemType(), s.getRawStatus(), s.getResolvedStatus()))
                             .toList();
             List<WorkflowConfigResponse.TypeMappingResponse> typeMappings = wf.getTypeMappings() == null
                     ? List.of()
                     : wf.getTypeMappings().stream()
                             .map(t -> new WorkflowConfigResponse.TypeMappingResponse(t.getRawType(), t.getResolvedType()))
                             .toList();
-            wfConfig = new WorkflowConfigResponse(statusMappings, typeMappings,
-                    wf.getConfigSource() != null ? wf.getConfigSource().name() : null);
+            List<WorkflowConfigResponse.FieldMappingResponse> fieldMappings = wf.getFieldMappings() == null
+                    ? List.of()
+                    : wf.getFieldMappings().stream()
+                            .map(f -> new WorkflowConfigResponse.FieldMappingResponse(
+                                    f.getInternalField(), f.getWorkItemType(), f.getAzureFieldReferenceName(), f.getAzureFieldType()))
+                            .toList();
+            // Surface the implicit default EFFORT mapping for DEFAULT-config bindings so callers
+            // see the effective mapping without needing to know the default-fallback rule themselves.
+            if (wf.getConfigSource() == WorkflowConfig.ConfigSource.DEFAULT
+                    && fieldMappings.stream().noneMatch(f -> f.internalField() == FieldMapping.InternalFieldTarget.EFFORT)) {
+                var effective = wf.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT);
+                if (effective.isPresent()) {
+                    var m = effective.get();
+                    fieldMappings = new java.util.ArrayList<>(fieldMappings);
+                    fieldMappings.add(new WorkflowConfigResponse.FieldMappingResponse(
+                            m.getInternalField(), m.getWorkItemType(), m.getAzureFieldReferenceName(), m.getAzureFieldType()));
+                }
+            }
+            WorkflowConfigResponse.WiqlFilterResponse syncFilter = wf.getSyncFilter() == null ? null :
+                    new WorkflowConfigResponse.WiqlFilterResponse(
+                            wf.getSyncFilter().getWorkItemTypes(),
+                            wf.getSyncFilter().getAreaPath(),
+                            wf.getSyncFilter().getIterationPath());
+            List<WorkflowConfigResponse.HierarchyLevelResponse> hierarchyLevels = wf.getHierarchyLevels() == null
+                    ? List.of()
+                    : wf.getHierarchyLevels().stream()
+                            .map(h -> new WorkflowConfigResponse.HierarchyLevelResponse(h.getRawType(), h.getRank()))
+                            .toList();
+            wfConfig = new WorkflowConfigResponse(statusMappings, typeMappings, fieldMappings, syncFilter,
+                    wf.getConfigSource() != null ? wf.getConfigSource().name() : null, hierarchyLevels);
         }
         return new AzureProjectBindingResponse(
                 binding.getId(),

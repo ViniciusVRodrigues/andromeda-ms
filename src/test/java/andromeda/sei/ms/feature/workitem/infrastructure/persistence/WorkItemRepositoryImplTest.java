@@ -12,7 +12,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@Disabled("@DataMongoTest removed in Spring Boot 4 â€” needs rewrite as @SpringBootTest slice")
 class WorkItemRepositoryImplTest {
 
     @Autowired
@@ -69,11 +69,45 @@ class WorkItemRepositoryImplTest {
         assertThat(results).hasSize(2);
     }
 
+    @Test
+    void save_shouldPersistParentExternalId() {
+        // Regression test: save() previously omitted parentExternalId from its Update, so it was
+        // silently dropped on every upsert — the backlog tree never populated even when
+        // SyncAzureWorkItemsUseCase correctly set the field in memory before calling save().
+        WorkItem item = workItem("ext-1", "parent-ext-1");
+
+        WorkItem saved = repository.save(item);
+
+        assertThat(saved.getParentExternalId()).isEqualTo("parent-ext-1");
+        var reloaded = repository.findByOrganizationIdAndExternalIdAndSource(
+                ORG_ID, "ext-1", WorkItem.Source.AZURE_DEVOPS);
+        assertThat(reloaded).isPresent();
+        assertThat(reloaded.get().getParentExternalId()).isEqualTo("parent-ext-1");
+    }
+
+    @Test
+    void save_shouldUpdateParentExternalIdOnResync() {
+        WorkItem item = workItem("ext-1", null);
+        repository.save(item);
+
+        WorkItem reSynced = workItem("ext-1", "parent-ext-2");
+        repository.save(reSynced);
+
+        var reloaded = repository.findByOrganizationIdAndExternalIdAndSource(
+                ORG_ID, "ext-1", WorkItem.Source.AZURE_DEVOPS);
+        assertThat(reloaded).isPresent();
+        assertThat(reloaded.get().getParentExternalId()).isEqualTo("parent-ext-2");
+    }
+
     private WorkItem workItem(String externalId) {
+        return workItem(externalId, null);
+    }
+
+    private WorkItem workItem(String externalId, String parentExternalId) {
         return new WorkItem(null, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "2", null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW);
+                "2", null, List.of(), null, null, null, null, parentExternalId,
+                NOW, null, null, null, null, null, true, null, NOW, null, null, null, null, null, null, null, null);
     }
 }

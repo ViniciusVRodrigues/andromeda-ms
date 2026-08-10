@@ -3,8 +3,10 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
+import andromeda.sei.ms.feature.azure.domain.FieldMapping;
 import andromeda.sei.ms.feature.azure.domain.StatusMapping;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureSyncPageLimitExceededException;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemUpdateDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
@@ -15,6 +17,7 @@ import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
 import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.feature.workitem.domain.FieldValueSource;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -73,8 +76,8 @@ public class SyncAzureWorkItemsUseCase {
             log.info("Work item sync for org={} project={} mode={}", orgId, projectId,
                     fullSync ? "FULL" : "INCREMENTAL");
 
-            List<Integer> ids = azureDevOpsClient.queryWorkItemIds(
-                    orgUrl, azureProjectId, authHeader, binding.getLastSyncAt());
+            List<Integer> ids = fetchAllWorkItemIds(orgUrl, azureProjectId, authHeader,
+                    binding.getLastSyncAt(), config);
 
             if (ids.isEmpty()) {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
@@ -116,7 +119,11 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setDurationMs(finishedAt.toEpochMilli() - startedAt.toEpochMilli());
             syncLog.setItemsProcessed(processed);
             syncLog.setItemsFailed(failed);
-            syncLog.setErrorCode("AZURE_SYNC_WORK_ITEMS_FAILED");
+            if (e instanceof AzureSyncPageLimitExceededException pageLimitEx) {
+                syncLog.setErrorCode(pageLimitEx.getCode());
+            } else {
+                syncLog.setErrorCode("AZURE_SYNC_WORK_ITEMS_FAILED");
+            }
             syncLog.setErrorMessage(e.getMessage());
             if (e instanceof WebClientResponseException wex) {
                 syncLog.setHttpStatus(wex.getStatusCode().value());
@@ -128,6 +135,38 @@ public class SyncAzureWorkItemsUseCase {
             syncLogRepository.save(syncLog);
             throw e;
         }
+    }
+
+    /**
+     * Fetches all matching work item IDs by looping over WIQL pages ordered ascending by
+     * System.Id, until a page returns fewer than the page size (last page) or the hard
+     * page-count safety cap is reached (in which case the sync fails rather than looping
+     * forever or silently truncating results).
+     */
+    private List<Integer> fetchAllWorkItemIds(String orgUrl, String azureProjectId, String authHeader,
+                                               Instant since, WorkflowConfig config) {
+        List<Integer> allIds = new ArrayList<>();
+        Integer lastSeenId = null;
+        int pageCount = 0;
+
+        while (true) {
+            if (pageCount >= AzureDevOpsClient.WIQL_MAX_PAGES) {
+                throw new AzureSyncPageLimitExceededException(AzureDevOpsClient.WIQL_MAX_PAGES);
+            }
+
+            List<Integer> page = azureDevOpsClient.queryWorkItemIdsPage(
+                    orgUrl, azureProjectId, authHeader, since, lastSeenId, config.getSyncFilter());
+            pageCount++;
+
+            if (page.isEmpty()) break;
+
+            allIds.addAll(page);
+            lastSeenId = page.get(page.size() - 1);
+
+            if (page.size() < AzureDevOpsClient.WIQL_PAGE_SIZE) break;
+        }
+
+        return allIds;
     }
 
     private void processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
@@ -144,7 +183,7 @@ public class SyncAzureWorkItemsUseCase {
         String rawType = getString(fields, "System.WorkItemType");
         String rawStatus = getString(fields, "System.State");
         WorkItem.ResolvedType resolvedType = resolveType(rawType, config);
-        WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawStatus, config);
+        WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawType, rawStatus, config);
 
         String iterationPath = getString(fields, "System.IterationPath");
         String sprintId = resolveSprintId(orgId, iterationPath);
@@ -160,7 +199,8 @@ public class SyncAzureWorkItemsUseCase {
                 null, orgId, projectId, WorkItem.Source.AZURE_DEVOPS,
                 externalId, null, null, null, null, null, null,
                 null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, true, null, now));
+                null, null, null, null, null, null, null, true, null, now,
+                null, null, null, null, null, null, null, null));
 
         workItem.setProjectId(projectId);
         workItem.setExternalUpdatedAt(parseInstant(fields, "System.ChangedDate"));
@@ -170,23 +210,21 @@ public class SyncAzureWorkItemsUseCase {
         workItem.setRawStatus(rawStatus);
         workItem.setResolvedStatus(resolvedStatus);
         workItem.setPriority(getString(fields, "Microsoft.VSTS.Common.Priority"));
-        workItem.setStoryPoints(getDouble(fields, "Microsoft.VSTS.Scheduling.StoryPoints"));
+        applyComplexityAndEffort(workItem, fields, config, rawType);
+        // Dual-write: keep legacy storyPoints in sync with effort for this release
+        // (see design Migration Plan step 2) -- dashboards still read storyPoints until cutover.
+        workItem.setStoryPoints(workItem.getEffort());
         workItem.setLabels(labels);
         workItem.setSprintId(sprintId);
         workItem.setAssigneeExternalId(getAssigneeId(fields));
         workItem.setAssigneeEmail(getAssigneeEmail(fields));
-        Object parentField = fields.get("System.Parent");
-        String parentExternalId = null;
-        if (parentField instanceof Number num) {
-            parentExternalId = String.valueOf(num.intValue());
-        }
-        workItem.setParentExternalId(parentExternalId);
+        workItem.setParentExternalId(extractParentExternalId(adoItem));
         resolveAssigneeUserId(orgId, workItem);
         if (workItem.getCreatedAt() == null) {
             workItem.setCreatedAt(parseInstant(fields, "System.CreatedDate"));
         }
 
-        // Seed startedAt / completedAt directly from ADO fields — the transitions
+        // Seed startedAt / completedAt directly from ADO fields -- the transitions
         // history may be incomplete or unavailable, so these are authoritative fallbacks.
         Instant adoActivatedDate = parseInstant(fields, "Microsoft.VSTS.Common.ActivatedDate");
         Instant adoClosedDate = firstNonNull(
@@ -199,9 +237,9 @@ public class SyncAzureWorkItemsUseCase {
         // Save first to ensure workItemId is set before building transitions
         WorkItem saved = workItemRepository.save(workItem);
 
-        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader);
+        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader, rawType);
 
-        // Re-derive from transitions — prefer transition-derived timestamps (more granular)
+        // Re-derive from transitions -- prefer transition-derived timestamps (more granular)
         // but fall back to the ADO field values already set above if transitions give nothing.
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(saved.getId());
         Instant transitionStartedAt = deriveStartedAt(transitions);
@@ -209,6 +247,73 @@ public class SyncAzureWorkItemsUseCase {
         if (transitionStartedAt != null) saved.setStartedAt(transitionStartedAt);
         if (transitionCompletedAt != null) saved.setCompletedAt(transitionCompletedAt);
         workItemRepository.save(saved);
+    }
+
+    /**
+     * Applies complexity/effort from the mapped ADO fields, honoring manual overrides:
+     * a field whose current source is MANUAL_OVERRIDE is left untouched by this sync run.
+     */
+    private void applyComplexityAndEffort(WorkItem workItem, Map<String, Object> fields, WorkflowConfig config,
+                                           String rawType) {
+        if (workItem.getComplexitySource() != FieldValueSource.MANUAL_OVERRIDE) {
+            Double complexity = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.COMPLEXITY, rawType)
+                    .map(m -> getDouble(fields, m.getAzureFieldReferenceName()))
+                    .orElse(null);
+            workItem.setComplexity(complexity);
+            workItem.setComplexitySource(FieldValueSource.AZURE_SYNC);
+        }
+
+        if (workItem.getEffortSource() != FieldValueSource.MANUAL_OVERRIDE) {
+            Double effort = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT, rawType)
+                    .map(m -> getDouble(fields, m.getAzureFieldReferenceName()))
+                    .orElse(null);
+            workItem.setEffort(effort);
+            workItem.setEffortSource(FieldValueSource.AZURE_SYNC);
+        }
+    }
+
+    /**
+     * Re-fetches the given work items from Azure DevOps (batched) and updates only their
+     * {@code parentExternalId} from the current {@code System.LinkTypes.Hierarchy-Reverse}
+     * relation, saving each item whose parent link changed. Used by
+     * {@code WorkItemParentLinkBackfillMigration} to repair documents saved before
+     * WorkItemRepositoryImpl.save() persisted parentExternalId, and safe to re-run any number of
+     * times — it always reflects Azure's current state and is a no-op for items whose stored
+     * value already matches.
+     *
+     * @return the number of items whose stored parentExternalId was changed
+     */
+    public int backfillParentLinks(List<WorkItem> items, String orgUrl, String authHeader) {
+        if (items.isEmpty()) return 0;
+
+        Map<String, WorkItem> byExternalId = new java.util.HashMap<>();
+        List<Integer> ids = new ArrayList<>();
+        for (WorkItem item : items) {
+            byExternalId.put(item.getExternalId(), item);
+            try {
+                ids.add(Integer.parseInt(item.getExternalId()));
+            } catch (NumberFormatException e) {
+                log.warn("backfillParentLinks: invalid externalId={} for workItemId={}",
+                        item.getExternalId(), item.getId());
+            }
+        }
+        if (ids.isEmpty()) return 0;
+
+        List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
+
+        int updated = 0;
+        for (AdoWorkItemDto adoItem : adoItems) {
+            WorkItem item = byExternalId.get(String.valueOf(adoItem.id()));
+            if (item == null) continue;
+
+            String parentExternalId = extractParentExternalId(adoItem);
+            if (java.util.Objects.equals(parentExternalId, item.getParentExternalId())) continue;
+
+            item.setParentExternalId(parentExternalId);
+            workItemRepository.save(item);
+            updated++;
+        }
+        return updated;
     }
 
     /**
@@ -223,7 +328,7 @@ public class SyncAzureWorkItemsUseCase {
         WorkflowConfig effectiveConfig = config != null ? config : DefaultWorkflowConfigFactory.fallback();
 
         buildFullTransitionHistoryById(workItemId, item.getOrganizationId(), item.getExternalId(),
-                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt());
+                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt(), item.getRawType());
 
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(workItemId);
         item.setStartedAt(deriveStartedAt(transitions));
@@ -232,7 +337,7 @@ public class SyncAzureWorkItemsUseCase {
     }
 
     private void buildTransitions(WorkItem workItem, String storedRawStatus, AdoWorkItemDto adoItem,
-                                   WorkflowConfig config, String orgUrl, String authHeader) {
+                                   WorkflowConfig config, String orgUrl, String authHeader, String rawType) {
         String workItemId = workItem.getId();
         if (workItemId == null) return;
 
@@ -241,16 +346,16 @@ public class SyncAzureWorkItemsUseCase {
         if (!hasTransitions) {
             buildFullTransitionHistoryById(workItemId, workItem.getOrganizationId(),
                     String.valueOf(adoItem.id()), config, orgUrl, authHeader,
-                    workItem.getRawStatus(), workItem.getCreatedAt());
+                    workItem.getRawStatus(), workItem.getCreatedAt(), rawType);
         } else {
             appendIncrementalTransition(workItemId, workItem.getOrganizationId(),
-                    storedRawStatus, adoItem, config);
+                    storedRawStatus, adoItem, config, rawType);
         }
     }
 
     private void buildFullTransitionHistoryById(String workItemId, String orgId, String externalId,
                                                  WorkflowConfig config, String orgUrl, String authHeader,
-                                                 String currentRawStatus, Instant createdAt) {
+                                                 String currentRawStatus, Instant createdAt, String rawType) {
         int adoItemId;
         try {
             adoItemId = Integer.parseInt(externalId);
@@ -277,7 +382,7 @@ public class SyncAzureWorkItemsUseCase {
             Instant occurredAt = getChangedDateFromUpdate(update);
             if (occurredAt == null) occurredAt = Instant.now();
 
-            WorkItem.ResolvedStatus resolved = resolveStatus(newVal, config);
+            WorkItem.ResolvedStatus resolved = resolveStatus(rawType, newVal, config);
             transitions.add(new WorkItemTransition(
                     null, orgId, workItemId, prevStatus, newVal, resolved,
                     occurredAt, Instant.now(), true, null, Instant.now(), Instant.now()));
@@ -285,7 +390,7 @@ public class SyncAzureWorkItemsUseCase {
         }
 
         if (transitions.isEmpty()) {
-            WorkItem.ResolvedStatus resolved = resolveStatus(currentRawStatus, config);
+            WorkItem.ResolvedStatus resolved = resolveStatus(rawType, currentRawStatus, config);
             transitions.add(new WorkItemTransition(
                     null, orgId, workItemId, null, currentRawStatus, resolved,
                     createdAt != null ? createdAt : Instant.now(),
@@ -299,7 +404,7 @@ public class SyncAzureWorkItemsUseCase {
 
     private void appendIncrementalTransition(String workItemId, String orgId,
                                               String storedRawStatus, AdoWorkItemDto adoItem,
-                                              WorkflowConfig config) {
+                                              WorkflowConfig config, String rawType) {
         if (storedRawStatus == null) return;
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String incomingStatus = getString(fields, "System.State");
@@ -310,7 +415,7 @@ public class SyncAzureWorkItemsUseCase {
         Instant occurredAt = parseInstant(fields, "System.ChangedDate");
         if (occurredAt == null) occurredAt = Instant.now();
 
-        WorkItem.ResolvedStatus resolved = resolveStatus(incomingStatus, config);
+        WorkItem.ResolvedStatus resolved = resolveStatus(rawType, incomingStatus, config);
         WorkItemTransition transition = new WorkItemTransition(
                 null, orgId, workItemId, storedStatus, incomingStatus, resolved,
                 occurredAt, Instant.now(), true, null, Instant.now(), Instant.now());
@@ -344,12 +449,20 @@ public class SyncAzureWorkItemsUseCase {
                 .orElse(WorkItem.ResolvedType.TASK);
     }
 
-    private WorkItem.ResolvedStatus resolveStatus(String rawStatus, WorkflowConfig config) {
+    /**
+     * Resolves the status for a work item by matching both {@code workItemType} and
+     * {@code rawStatus}. A {@link StatusMapping} entry whose {@code workItemType} is {@code null}
+     * is a legacy record (predating per-type status mapping) and is treated as matching any
+     * work item type.
+     */
+    private WorkItem.ResolvedStatus resolveStatus(String rawType, String rawStatus, WorkflowConfig config) {
         if (rawStatus == null || config == null || config.getStatusMappings() == null) {
             return WorkItem.ResolvedStatus.TODO;
         }
         return config.getStatusMappings().stream()
                 .filter(m -> rawStatus.equalsIgnoreCase(m.getRawStatus()))
+                .filter(m -> m.getWorkItemType() == null
+                        || (rawType != null && rawType.equalsIgnoreCase(m.getWorkItemType())))
                 .map(StatusMapping::getResolvedStatus)
                 .findFirst()
                 .orElse(WorkItem.ResolvedStatus.TODO);
@@ -368,6 +481,7 @@ public class SyncAzureWorkItemsUseCase {
     }
 
     private Double getDouble(Map<String, Object> fields, String key) {
+        if (key == null) return null;
         Object val = fields.get(key);
         if (val == null) return null;
         try { return ((Number) val).doubleValue(); } catch (Exception e) { return null; }
@@ -380,9 +494,27 @@ public class SyncAzureWorkItemsUseCase {
         if (val == null) return null;
         try {
             Instant instant = Instant.parse(val);
-            // ADO uses 9999-01-01 as "not set" sentinel — treat as null
+            // ADO uses 9999-01-01 as "not set" sentinel -- treat as null
             return instant.isAfter(ADO_SENTINEL) ? null : instant;
         } catch (Exception e) { return null; }
+    }
+
+    // Azure DevOps has no scalar "parent" field -- the parent link (if any) is expressed as a
+    // System.LinkTypes.Hierarchy-Reverse relation whose url ends in the parent's work item id
+    // (e.g. .../_apis/wit/workItems/1234). A work item has at most one parent, so at most one
+    // such relation is ever present.
+    private String extractParentExternalId(AdoWorkItemDto adoItem) {
+        List<AdoWorkItemDto.AdoWorkItemRelationDto> relations = adoItem.relations();
+        if (relations == null) return null;
+        for (AdoWorkItemDto.AdoWorkItemRelationDto relation : relations) {
+            if ("System.LinkTypes.Hierarchy-Reverse".equals(relation.rel()) && relation.url() != null) {
+                int lastSlash = relation.url().lastIndexOf('/');
+                if (lastSlash >= 0 && lastSlash < relation.url().length() - 1) {
+                    return relation.url().substring(lastSlash + 1);
+                }
+            }
+        }
+        return null;
     }
 
     private String getAssigneeId(Map<String, Object> fields) {

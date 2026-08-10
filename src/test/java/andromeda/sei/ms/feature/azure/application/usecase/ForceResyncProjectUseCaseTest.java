@@ -65,7 +65,7 @@ class ForceResyncProjectUseCaseTest {
                 .thenReturn(Optional.of(binding));
         when(authStrategyResolver.resolve(connection)).thenReturn(AUTH_HEADER);
 
-        // 3 work items — each gets rebuildTransitionHistory called
+        // 3 work items â€” each gets rebuildTransitionHistory called
         WorkItem item1 = workItem("wi-1", 4.0, Instant.now().minusSeconds(3600), Instant.now());
         WorkItem item2 = workItem("wi-2", 8.0, Instant.now().minusSeconds(7200), Instant.now());
         WorkItem item3 = workItem("wi-3", null, null, null); // no metrics
@@ -119,7 +119,7 @@ class ForceResyncProjectUseCaseTest {
                 .isInstanceOf(AzureBindingNotFoundException.class);
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     private AzureConnection connection() {
         return new AzureConnection(
@@ -143,7 +143,7 @@ class ForceResyncProjectUseCaseTest {
                 "Medium", storyPoints, List.of(),
                 "sprint-1", "ext-user", "user-1", null, null,
                 Instant.now(), startedAt, completedAt,
-                null, null, null, true, 1L, Instant.now());
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
         return wi;
     }
 }

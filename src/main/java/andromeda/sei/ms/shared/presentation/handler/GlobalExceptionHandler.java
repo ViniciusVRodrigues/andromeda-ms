@@ -6,6 +6,7 @@ import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
 import andromeda.sei.ms.shared.domain.exception.ResourceNotFoundException;
 import andromeda.sei.ms.shared.domain.exception.UnauthorizedException;
 import andromeda.sei.ms.shared.presentation.dto.ErrorResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.stream.Collectors;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -51,8 +53,36 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("VALIDATION_ERROR", message));
     }
 
+    /**
+     * A @PreAuthorize denial is a 403, not a server fault. Without this handler it fell through to
+     * the catch-all below and surfaced as INTERNAL_ERROR/500, which made "this role is missing a
+     * permission" look identical to "the backend crashed" (see WORK_ITEM_MANAGE missing from
+     * RoleSeeder.ALL_PERMISSIONS -- every manual-fields save reported 500).
+     */
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            org.springframework.security.access.AccessDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ErrorResponse.of("ACCESS_DENIED", "Permissão insuficiente para esta operação"));
+    }
+
+    /**
+     * A malformed/unbindable request body is a client error (400), not a server fault. Without
+     * this it fell through to the catch-all and reported INTERNAL_ERROR/500 -- which is exactly
+     * how a partial PATCH body omitting a primitive-typed flag looked like a backend crash.
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(
+            org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("MALFORMED_REQUEST", "Corpo da requisição inválido"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
+        // The response body is deliberately generic (no internals leaked to callers), so the
+        // stack trace must be logged here -- otherwise unexpected 500s are invisible in ops.
+        log.error("Unhandled exception: {}", ex.toString(), ex);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("INTERNAL_ERROR", "An unexpected error occurred"));
     }

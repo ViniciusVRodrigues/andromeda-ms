@@ -40,6 +40,8 @@ public class GetDeveloperDashboardUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
     private final OrganizationRepository organizationRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
 
     public DeveloperDashboardOutput execute(String orgId, String userId, String projectId, String sprintId,
                                             LocalDate startDate, LocalDate endDate, String model) {
@@ -53,9 +55,11 @@ public class GetDeveloperDashboardUseCase {
                                 orgId, userId, sprint.getId()))
                 .orElse(List.of());
 
-        List<WorkItem> storyItems = currentSprintItems.stream()
-                .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
-                .toList();
+        // Which level carries effort depends on how the team models it (all effort on the Story,
+        // split Story-complexity/Task-effort, or everything on Tasks). Resolving it from the data
+        // is what keeps velocity and burndown from reading zero for the Task-based models.
+        var effortLevel = effortBearingLevelResolver.resolve(null, currentSprintItems);
+        List<WorkItem> storyItems = effortBearingLevelResolver.deliverableUnits(effortLevel, currentSprintItems);
 
         List<WorkItem> doneItems = storyItems.stream()
                 .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
@@ -77,19 +81,10 @@ public class GetDeveloperDashboardUseCase {
                 .mapToDouble(Double::doubleValue)
                 .toArray());
 
-        double[] spValues = doneItems.stream()
-                .map(WorkItem::getStoryPoints)
-                .filter(v -> v != null)
-                .mapToDouble(Double::doubleValue)
-                .toArray();
-        Double storyPointsDelivered = spValues.length == 0 ? null : Arrays.stream(spValues).sum();
-
-        double[] totalSpValues = storyItems.stream()
-                .map(WorkItem::getStoryPoints)
-                .filter(v -> v != null)
-                .mapToDouble(Double::doubleValue)
-                .toArray();
-        Double totalSpInSprint = totalSpValues.length == 0 ? null : Arrays.stream(totalSpValues).sum();
+        // effectiveEffort: the unit's own value when set, otherwise the sum of its children. Summing
+        // both would double count a Story whose Tasks restate the same work at finer granularity.
+        Double storyPointsDelivered = effortBearingLevelResolver.totalEffort(doneItems, currentSprintItems);
+        Double totalSpInSprint = effortBearingLevelResolver.totalEffort(storyItems, currentSprintItems);
 
         LocalDate sprintStart = sprintOpt.map(s -> toLocalDate(s.getStartDate())).orElse(null);
         LocalDate sprintEnd = sprintOpt.map(s -> toLocalDate(s.getEndDate())).orElse(null);
@@ -122,7 +117,7 @@ public class GetDeveloperDashboardUseCase {
                 .toArray());
 
         // Burndown series
-        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, sprintStart, sprintEnd);
+        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, currentSprintItems, sprintStart, sprintEnd);
 
         // AI sprint summary
         AiSprintSummary aiSprintSummary = computeAiSprintSummary(orgId, userId, sprintStart, sprintEnd);
@@ -217,16 +212,14 @@ public class GetDeveloperDashboardUseCase {
     }
 
     private List<BurndownPoint> computeBurndown(List<WorkItem> sprintItems,
+                                                 List<WorkItem> allSprintItems,
                                                  LocalDate sprintStart, LocalDate sprintEnd) {
         if (sprintStart == null || sprintEnd == null) {
             return List.of();
         }
 
-        double totalSp = sprintItems.stream()
-                .map(WorkItem::getStoryPoints)
-                .filter(sp -> sp != null)
-                .mapToDouble(Double::doubleValue)
-                .sum();
+        Double resolvedTotal = effortBearingLevelResolver.totalEffort(sprintItems, allSprintItems);
+        double totalSp = resolvedTotal == null ? 0d : resolvedTotal;
 
         LocalDate today = LocalDate.now();
         LocalDate seriesEnd = sprintEnd.isBefore(today) ? sprintEnd : today;
@@ -241,14 +234,13 @@ public class GetDeveloperDashboardUseCase {
 
         while (!cursor.isAfter(seriesEnd)) {
             final LocalDate currentDay = cursor;
-            double completedSp = sprintItems.stream()
+            List<WorkItem> completedByDay = sprintItems.stream()
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                     .filter(wi -> wi.getCompletedAt() != null)
                     .filter(wi -> !toLocalDate(wi.getCompletedAt()).isAfter(currentDay))
-                    .map(WorkItem::getStoryPoints)
-                    .filter(sp -> sp != null)
-                    .mapToDouble(Double::doubleValue)
-                    .sum();
+                    .toList();
+            Double completedResolved = effortBearingLevelResolver.totalEffort(completedByDay, allSprintItems);
+            double completedSp = completedResolved == null ? 0d : completedResolved;
 
             double remainingSp = totalSp - completedSp;
 
@@ -291,6 +283,7 @@ public class GetDeveloperDashboardUseCase {
 
         return new AiSprintSummary(totalTokens, totalCostUsd, unallocatedDays.size());
     }
+
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {
         if (sprintId != null) {

@@ -16,10 +16,14 @@ public class DeveloperDashboardMapper {
                                 wi.getId(),
                                 wi.getTitle(),
                                 wi.getResolvedStatus(),
-                                wi.getStoryPoints(),
+                                wi.getEffort(),
                                 wi.getCycleTimeHours(),
                                 wi.getLeadTimeHours(),
-                                wi.getTokensPerSp()
+                                wi.getTokensPerSp(),
+                                wi.getComplexity(),
+                                wi.getComplexitySource() != null ? wi.getComplexitySource().name() : null,
+                                wi.getEffort(),
+                                wi.getEffortSource() != null ? wi.getEffortSource().name() : null
                         ))
                         .toList();
 
@@ -30,7 +34,7 @@ public class DeveloperDashboardMapper {
                                 wi.getId(),
                                 wi.getTitle(),
                                 wi.getResolvedType(),
-                                wi.getStoryPoints(),
+                                wi.getEffort(),
                                 wi.getExternalId()
                         ))
                         .toList();

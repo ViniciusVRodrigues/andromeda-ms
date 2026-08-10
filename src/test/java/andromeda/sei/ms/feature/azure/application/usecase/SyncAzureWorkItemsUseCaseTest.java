@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureSyncPageLimitExceededException;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoWorkItemUpdateDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
@@ -11,6 +12,7 @@ import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.feature.workitem.domain.FieldValueSource;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -32,10 +34,12 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -76,7 +80,7 @@ class SyncAzureWorkItemsUseCaseTest {
 
     @Test
     void shouldBuildTransitionHistoryOnFirstSync() {
-        when(azureDevOpsClient.queryWorkItemIds(anyString(), anyString(), anyString(), eq(null)))
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
                 .thenReturn(List.of(100));
         when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
                 .thenReturn(List.of(adoItem(100, "Active")));
@@ -104,7 +108,7 @@ class SyncAzureWorkItemsUseCaseTest {
         Instant lastSync = NOW.minusSeconds(3600);
         binding.setLastSyncAt(lastSync);
 
-        when(azureDevOpsClient.queryWorkItemIds(anyString(), anyString(), anyString(), eq(lastSync)))
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(lastSync), isNull(), any()))
                 .thenReturn(List.of(100));
         when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
                 .thenReturn(List.of(adoItem(100, "Closed")));
@@ -132,7 +136,7 @@ class SyncAzureWorkItemsUseCaseTest {
 
     @Test
     void shouldDeriveStartedAtAndCompletedAtFromTransitions() {
-        when(azureDevOpsClient.queryWorkItemIds(anyString(), anyString(), anyString(), eq(null)))
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
                 .thenReturn(List.of(100));
         when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
                 .thenReturn(List.of(adoItem(100, "Closed")));
@@ -169,6 +173,315 @@ class SyncAzureWorkItemsUseCaseTest {
         assertThat(lastSaved.getCompletedAt()).isEqualTo(completedAtTime);
     }
 
+    @Test
+    void shouldApplyEffortFromDefaultStoryPointsMappingAndDualWriteStoryPoints() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
+                "System.Title", "My Task",
+                "System.WorkItemType", "Bug",
+                "System.State", "Active",
+                "System.CreatedDate", NOW.toString(),
+                "System.ChangedDate", NOW.toString(),
+                "Microsoft.VSTS.Scheduling.StoryPoints", 5.0
+        ), null);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(item));
+
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty());
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getEffort()).isEqualTo(5.0);
+        assertThat(firstSaved.getEffortSource()).isEqualTo(FieldValueSource.AZURE_SYNC);
+        assertThat(firstSaved.getStoryPoints()).isEqualTo(5.0);
+    }
+
+    @Test
+    void shouldSkipOverwritingManuallyOverriddenEffort() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
+                "System.Title", "My Task",
+                "System.WorkItemType", "Bug",
+                "System.State", "Active",
+                "System.CreatedDate", NOW.toString(),
+                "System.ChangedDate", NOW.toString(),
+                "Microsoft.VSTS.Scheduling.StoryPoints", 8.0
+        ), null);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(item));
+
+        WorkItem existing = workItem("100", "Active");
+        existing.setEffort(13.0);
+        existing.setEffortSource(FieldValueSource.MANUAL_OVERRIDE);
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.of(existing));
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getEffort()).isEqualTo(13.0);
+        assertThat(firstSaved.getEffortSource()).isEqualTo(FieldValueSource.MANUAL_OVERRIDE);
+    }
+
+    @Test
+    void shouldExtractParentExternalIdFromHierarchyReverseRelation() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
+                "System.Title", "My Task",
+                "System.WorkItemType", "Task",
+                "System.State", "Active",
+                "System.CreatedDate", NOW.toString(),
+                "System.ChangedDate", NOW.toString()
+        ), List.of(new AdoWorkItemDto.AdoWorkItemRelationDto(
+                "System.LinkTypes.Hierarchy-Reverse",
+                "https://dev.azure.com/org/_apis/wit/workItems/42")));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(item));
+
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getParentExternalId()).isEqualTo("42");
+    }
+
+    @Test
+    void shouldLeaveParentExternalIdNullWhenNoRelationsPresent() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getParentExternalId()).isNull();
+    }
+
+    @Test
+    void shouldLeaveParentExternalIdNullWhenRelationsHasOnlyUnrelatedLinkTypes() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
+                "System.Title", "My Task",
+                "System.WorkItemType", "Task",
+                "System.State", "Active",
+                "System.CreatedDate", NOW.toString(),
+                "System.ChangedDate", NOW.toString()
+        ), List.of(new AdoWorkItemDto.AdoWorkItemRelationDto(
+                "System.LinkTypes.Related",
+                "https://dev.azure.com/org/_apis/wit/workItems/99")));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(item));
+
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getParentExternalId()).isNull();
+    }
+
+    @Test
+    void shouldPaginateAcrossMultiplePagesAndStopOnShortPage() {
+        List<Integer> firstPage = new java.util.ArrayList<>();
+        for (int i = 1; i <= AzureDevOpsClient.WIQL_PAGE_SIZE; i++) firstPage.add(i);
+        List<Integer> secondPage = List.of(AzureDevOpsClient.WIQL_PAGE_SIZE + 1);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(firstPage);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(),
+                eq(AzureDevOpsClient.WIQL_PAGE_SIZE), any()))
+                .thenReturn(secondPage);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of());
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        verify(azureDevOpsClient).queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any());
+        verify(azureDevOpsClient).queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(),
+                eq(AzureDevOpsClient.WIQL_PAGE_SIZE), any());
+        verify(azureDevOpsClient, org.mockito.Mockito.times(2))
+                .queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), any(), any());
+    }
+
+    @Test
+    void shouldResolveStatusUsingOnlyEntryMatchingBothWorkItemTypeAndRawStatus() {
+        // Config has two entries sharing rawStatus "Active" but scoped to different types.
+        // The Bug-scoped entry should win for a Bug work item, not the Task-scoped one.
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(
+                        new andromeda.sei.ms.feature.azure.domain.StatusMapping("Bug", "Active", WorkItem.ResolvedStatus.IN_PROGRESS),
+                        new andromeda.sei.ms.feature.azure.domain.StatusMapping("Task", "Active", WorkItem.ResolvedStatus.DONE)
+                ),
+                List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                .thenReturn(List.of());
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getResolvedStatus()).isEqualTo(WorkItem.ResolvedStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void shouldTreatLegacyStatusMappingWithNullWorkItemTypeAsMatchingAnyType() {
+        // Legacy entry has no workItemType (predates per-type scoping) -- must still match
+        // a Bug work item's "Active" status.
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(new andromeda.sei.ms.feature.azure.domain.StatusMapping(null, "Active", WorkItem.ResolvedStatus.IN_PROGRESS)),
+                List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                .thenReturn(List.of());
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getResolvedStatus()).isEqualTo(WorkItem.ResolvedStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void shouldResolveTypeMappedToFeature() {
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(new andromeda.sei.ms.feature.azure.domain.StatusMapping("Feature", "Active", WorkItem.ResolvedStatus.IN_PROGRESS)),
+                List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Feature", WorkItem.ResolvedType.FEATURE)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
+                "System.Title", "My Feature",
+                "System.WorkItemType", "Feature",
+                "System.State", "Active",
+                "System.CreatedDate", NOW.toString(),
+                "System.ChangedDate", NOW.toString()
+        ), null);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(item));
+        WorkItem savedItem = new WorkItem("wi-100", "org-1", "proj-1",
+                WorkItem.Source.AZURE_DEVOPS, "100", NOW, "My Feature",
+                "Feature", WorkItem.ResolvedType.FEATURE, "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                null, null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, null, true, null, NOW,
+                null, null, null, null, null, null, null, null);
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(false);
+        when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                .thenReturn(List.of());
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem firstSaved = captor.getAllValues().get(0);
+        assertThat(firstSaved.getResolvedType()).isEqualTo(WorkItem.ResolvedType.FEATURE);
+    }
+
+    @Test
+    void shouldFailSyncWhenPageLimitExceeded() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), any(), any()))
+                .thenAnswer(inv -> {
+                    List<Integer> page = new java.util.ArrayList<>();
+                    for (int i = 0; i < AzureDevOpsClient.WIQL_PAGE_SIZE; i++) page.add(i);
+                    return page;
+                });
+
+        assertThatThrownBy(() -> useCase.execute(connection, binding, SyncTrigger.SCHEDULED))
+                .isInstanceOf(AzureSyncPageLimitExceededException.class);
+    }
+
     private AdoWorkItemDto adoItem(int id, String status) {
         return new AdoWorkItemDto(id, Map.of(
                 "System.Title", "My Task",
@@ -176,7 +489,7 @@ class SyncAzureWorkItemsUseCaseTest {
                 "System.State", status,
                 "System.CreatedDate", NOW.toString(),
                 "System.ChangedDate", NOW.toString()
-        ));
+        ), null);
     }
 
     private AdoWorkItemUpdateDto stateUpdate(String newState) {
@@ -190,6 +503,7 @@ class SyncAzureWorkItemsUseCaseTest {
                 WorkItem.Source.AZURE_DEVOPS, externalId, NOW, "Title",
                 "Bug", WorkItem.ResolvedType.BUG, rawStatus, WorkItem.ResolvedStatus.IN_PROGRESS,
                 null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW);
+                NOW, null, null, null, null, null, true, null, NOW,
+                null, null, null, null, null, null, null, null);
     }
 }

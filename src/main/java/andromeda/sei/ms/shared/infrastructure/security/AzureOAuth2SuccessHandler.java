@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.infrastructure.security;
 
+import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureOrgLevelDataUseCase;
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
@@ -9,6 +10,7 @@ import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientService;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.time.Instant;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
@@ -27,6 +30,7 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
     private final EncryptionService encryptionService;
     private final AzureConnectionRepository azureConnectionRepository;
     private final OAuth2AuthorizedClientService authorizedClientService;
+    private final SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -72,6 +76,7 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
                 .findByOrganizationIdAndActiveTrue(orgId).orElse(null);
 
         Instant now = Instant.now();
+        AzureConnection saved;
         if (existing != null) {
             existing.setAccessToken(encryptedAccessToken);
             existing.setRefreshToken(encryptedRefreshToken);
@@ -79,7 +84,7 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
             existing.setStatus(AzureConnectionStatus.CONNECTED);
             existing.setConsecutiveFailures(0);
             existing.setAuthorizedByUserId(userId);
-            azureConnectionRepository.save(existing);
+            saved = azureConnectionRepository.save(existing);
         } else {
             AzureConnection connection = new AzureConnection(
                     null, orgId, azureOrgUrl,
@@ -88,7 +93,13 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
                     null, 0, null, null,
                     true, now, now, null,
                     AzureAuthMethod.OAUTH, null);
-            azureConnectionRepository.save(connection);
+            saved = azureConnectionRepository.save(connection);
+        }
+
+        try {
+            syncAzureOrgLevelDataUseCase.execute(saved);
+        } catch (Exception e) {
+            log.warn("Org-level Azure sync failed after Entra ID connection for org={}: {}", orgId, e.getMessage(), e);
         }
 
         request.getSession().removeAttribute("ANDROMEDA_JWT");

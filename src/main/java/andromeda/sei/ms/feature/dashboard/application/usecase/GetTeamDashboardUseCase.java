@@ -27,6 +27,8 @@ public class GetTeamDashboardUseCase {
 
     private final SprintRepository sprintRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
     private final AIUsageRepository aiUsageRepository;
     private final UserRepository userRepository;
 
@@ -47,8 +49,12 @@ public class GetTeamDashboardUseCase {
                 : sprintOpt.map(s -> toLocalDate(s.getStartDate())).filter(d -> d != null).orElse(LocalDate.now().minusDays(30));
         LocalDate to = endDate != null ? endDate : LocalDate.now();
 
+        // STORY and FEATURE are both developer-assignable, effort-bearing deliverable units
+        // (Feature is a container one tier below Epic in Azure hierarchy, but unlike Epic it is
+        // routinely story-pointed and completed like a Story in Feature-heavy custom templates) —
+        // grouped together here so team velocity isn't silently blind to Feature-typed work.
         List<WorkItem> storyItems = items.stream()
-                .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                 .toList();
 
         List<String> memberUserIds = storyItems.stream()
@@ -111,7 +117,7 @@ public class GetTeamDashboardUseCase {
                 .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                 .toList();
 
-        double sp = done.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
+        double sp = done.stream().mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0).sum();
         Double cycleTime = averageNonNull(done.stream().map(WorkItem::getCycleTimeHours).toList());
         Double leadTime = averageNonNull(done.stream().map(WorkItem::getLeadTimeHours).toList());
         Double avgTokensPerSp = averageNonNull(items.stream().map(WorkItem::getTokensPerSp).toList());
@@ -139,9 +145,9 @@ public class GetTeamDashboardUseCase {
             List<WorkItem> sprintItems = workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(
                     orgId, projectId, sprint.getId());
             double sp = sprintItems.stream()
-                    .filter(wi -> WorkItem.ResolvedType.STORY.equals(wi.getResolvedType()))
+                    .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                    .mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0)
+                    .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
                     .sum();
             LocalDate sprintStart = toLocalDate(sprint.getStartDate());
             LocalDate sprintEnd = toLocalDate(sprint.getEndDate());
@@ -158,6 +164,12 @@ public class GetTeamDashboardUseCase {
         }
         return trend;
     }
+
+    /**
+     * STORY and FEATURE are both treated as developer-assignable, story-point-bearing
+     * deliverable work for this dashboard's velocity/cycle-time metrics — see reasoning
+     * at the storyItems filter above.
+     */
 
     private Double averageNonNull(List<Double> values) {
         List<Double> nonNull = values.stream().filter(v -> v != null).toList();

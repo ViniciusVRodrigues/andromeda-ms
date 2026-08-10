@@ -7,7 +7,7 @@ public class WorkItem {
 
     public enum Source { AZURE_DEVOPS, JIRA }
 
-    public enum ResolvedType { STORY, BUG, TASK, EPIC, SUB_TASK }
+    public enum ResolvedType { STORY, BUG, TASK, EPIC, FEATURE, SUB_TASK }
 
     public enum ResolvedStatus { TODO, IN_PROGRESS, DONE }
 
@@ -39,6 +39,14 @@ public class WorkItem {
     private boolean active;
     private Long version;
     private Instant updatedAt;
+    private Double complexity;
+    private FieldValueSource complexitySource;
+    private String complexityOverriddenBy;
+    private Instant complexityOverriddenAt;
+    private Double effort;
+    private FieldValueSource effortSource;
+    private String effortOverriddenBy;
+    private Instant effortOverriddenAt;
 
     public WorkItem(String id, String organizationId, String projectId, Source source,
                     String externalId, Instant externalUpdatedAt, String title,
@@ -47,7 +55,11 @@ public class WorkItem {
                     String sprintId, String assigneeExternalId, String assigneeUserId, String assigneeEmail,
                     String parentExternalId, Instant createdAt, Instant startedAt, Instant completedAt,
                     Double cycleTimeHours, Double leadTimeHours, Double tokensPerSp,
-                    boolean active, Long version, Instant updatedAt) {
+                    boolean active, Long version, Instant updatedAt,
+                    Double complexity, FieldValueSource complexitySource,
+                    String complexityOverriddenBy, Instant complexityOverriddenAt,
+                    Double effort, FieldValueSource effortSource,
+                    String effortOverriddenBy, Instant effortOverriddenAt) {
         this.id = id;
         this.organizationId = organizationId;
         this.projectId = projectId;
@@ -76,6 +88,14 @@ public class WorkItem {
         this.active = active;
         this.version = version;
         this.updatedAt = updatedAt;
+        this.complexity = complexity;
+        this.complexitySource = complexitySource;
+        this.complexityOverriddenBy = complexityOverriddenBy;
+        this.complexityOverriddenAt = complexityOverriddenAt;
+        this.effort = effort;
+        this.effortSource = effortSource;
+        this.effortOverriddenBy = effortOverriddenBy;
+        this.effortOverriddenAt = effortOverriddenAt;
     }
 
     public void updateMetrics(Double cycleTimeHours, Double leadTimeHours) {
@@ -166,4 +186,28 @@ public class WorkItem {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public Double getComplexity() { return complexity; }
+    public void setComplexity(Double complexity) { this.complexity = complexity; }
+
+    public FieldValueSource getComplexitySource() { return complexitySource; }
+    public void setComplexitySource(FieldValueSource complexitySource) { this.complexitySource = complexitySource; }
+
+    public String getComplexityOverriddenBy() { return complexityOverriddenBy; }
+    public void setComplexityOverriddenBy(String complexityOverriddenBy) { this.complexityOverriddenBy = complexityOverriddenBy; }
+
+    public Instant getComplexityOverriddenAt() { return complexityOverriddenAt; }
+    public void setComplexityOverriddenAt(Instant complexityOverriddenAt) { this.complexityOverriddenAt = complexityOverriddenAt; }
+
+    public Double getEffort() { return effort; }
+    public void setEffort(Double effort) { this.effort = effort; }
+
+    public FieldValueSource getEffortSource() { return effortSource; }
+    public void setEffortSource(FieldValueSource effortSource) { this.effortSource = effortSource; }
+
+    public String getEffortOverriddenBy() { return effortOverriddenBy; }
+    public void setEffortOverriddenBy(String effortOverriddenBy) { this.effortOverriddenBy = effortOverriddenBy; }
+
+    public Instant getEffortOverriddenAt() { return effortOverriddenAt; }
+    public void setEffortOverriddenAt(Instant effortOverriddenAt) { this.effortOverriddenAt = effortOverriddenAt; }
 }

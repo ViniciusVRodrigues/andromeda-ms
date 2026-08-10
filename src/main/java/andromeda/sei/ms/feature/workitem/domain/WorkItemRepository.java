@@ -30,4 +30,29 @@ public interface WorkItemRepository {
             String organizationId, String assigneeUserId, String sprintId, String projectId);
 
     List<WorkItem> findAllByOrganizationIdAndProjectIdAndSprintId(String organizationId, String projectId, String sprintId);
+
+    /**
+     * Returns a page of "root candidate" work items for a project — i.e. all active work items
+     * in the project, ordered deterministically by externalId. Root/orphan/child classification
+     * itself is applied in the application layer (see WorkItemHierarchyClassifier), since it
+     * depends on the binding's hierarchyLevels (a different aggregate) rather than being
+     * expressible as a Mongo query predicate alone.
+     */
+    WorkItemPageResult findRootCandidatesByOrganizationIdAndProjectId(
+            String organizationId, String projectId, int page, int size);
+
+    /**
+     * Fetches every active work item in the project whose parentExternalId is one of the given
+     * values. Used by the classifier to resolve parent types for rank validation across a whole
+     * page of candidates in one query.
+     */
+    List<WorkItem> findByOrganizationIdAndProjectIdAndParentExternalIdIn(
+            String organizationId, String projectId, List<String> parentExternalIds);
+
+    /**
+     * Fetches up to `limit` active children of a single parent, ordered by externalId ascending
+     * for deterministic truncation.
+     */
+    List<WorkItem> findChildCandidatesByOrganizationIdAndParentExternalId(
+            String organizationId, String projectId, String parentExternalId, int limit);
 }

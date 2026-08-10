@@ -48,7 +48,10 @@ public class AzureProjectBindingDocument {
     public static class WorkflowConfigDocument {
         private List<StatusMappingDocument> statusMappings;
         private List<TypeMappingDocument> typeMappings;
+        private List<FieldMappingDocument> fieldMappings;
+        private WiqlFilterDocument syncFilter;
         private String configSource;
+        private List<HierarchyLevelDocument> hierarchyLevels;
     }
 
     @Data
@@ -56,6 +59,12 @@ public class AzureProjectBindingDocument {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class StatusMappingDocument {
+        /**
+         * Raw Azure work item type this status mapping applies to. {@code null} is the
+         * legacy-compatibility sentinel meaning "applies to all types" (documents persisted
+         * before status mapping became per-work-item-type).
+         */
+        private String workItemType;
         private String rawStatus;
         private WorkItem.ResolvedStatus resolvedStatus;
     }
@@ -67,5 +76,40 @@ public class AzureProjectBindingDocument {
     public static class TypeMappingDocument {
         private String rawType;
         private WorkItem.ResolvedType resolvedType;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class FieldMappingDocument {
+        private String internalField;
+        /**
+         * Raw Azure work item type this field mapping applies to. {@code null} is the
+         * legacy-compatibility sentinel meaning "applies to all work item types" (documents
+         * persisted before field mapping became per-work-item-type).
+         */
+        private String workItemType;
+        private String azureFieldReferenceName;
+        private String azureFieldType;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WiqlFilterDocument {
+        private List<String> workItemTypes;
+        private String areaPath;
+        private String iterationPath;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class HierarchyLevelDocument {
+        private String rawType;
+        private Integer rank;
     }
 }

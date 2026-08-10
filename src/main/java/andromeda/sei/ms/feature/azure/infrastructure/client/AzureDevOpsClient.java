@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.azure.infrastructure.client;
 
+import andromeda.sei.ms.feature.azure.domain.WiqlFilter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,8 @@ import java.util.Map;
 public class AzureDevOpsClient {
 
     private static final int BATCH_SIZE = 200;
+    public static final int WIQL_PAGE_SIZE = 5000;
+    public static final int WIQL_MAX_PAGES = 50;
     private final WebClient azureWebClient;
 
     private Retry retrySpec() {
@@ -30,7 +33,7 @@ public class AzureDevOpsClient {
                         return ex.getStatusCode().value() == 429
                                 || ex.getStatusCode().is5xxServerError();
                     }
-                    return true;
+                    return false;
                 });
     }
 
@@ -96,13 +99,76 @@ public class AzureDevOpsClient {
         return new AdoProjectCapabilitiesDto(templateName);
     }
 
-    public List<Integer> queryWorkItemIds(String orgUrl, String projectId, String authHeader, Instant since) {
+    /**
+     * Returns the work item types defined for the given ADO project.
+     * Read-only introspection call — never invoked from the sync hot path.
+     */
+    public List<AdoWorkItemTypeDto> getWorkItemTypes(String orgUrl, String projectId, String authHeader) {
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/workitemtypes?api-version=7.1";
+
+        ListResponse<AdoWorkItemTypeDto> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoWorkItemTypeDto>>() {})
+                .retryWhen(retrySpec())
+                .block();
+        return response != null && response.value() != null ? response.value() : List.of();
+    }
+
+    /**
+     * Returns the authoritative field list (reference name, name, type, required) for a
+     * given work item type, regardless of whether any item currently has a value set.
+     * Read-only introspection call — never invoked from the sync hot path.
+     */
+    public List<AdoWorkItemTypeFieldDto> getWorkItemTypeFields(
+            String orgUrl, String projectId, String typeName, String authHeader) {
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/workitemtypes/" + typeName
+                + "/fields?api-version=7.1";
+
+        ListResponse<AdoWorkItemTypeFieldDto> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoWorkItemTypeFieldDto>>() {})
+                .retryWhen(retrySpec())
+                .block();
+        return response != null && response.value() != null ? response.value() : List.of();
+    }
+
+    /**
+     * Returns the real states defined for a given work item type on the given project
+     * (e.g. New, Active, Resolved, Closed for a default Bug type).
+     * Read-only introspection call — never invoked from the sync hot path.
+     */
+    public List<AdoWorkItemTypeStateDto> getWorkItemTypeStates(
+            String orgUrl, String projectId, String typeName, String authHeader) {
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/workitemtypes/" + typeName
+                + "/states?api-version=7.1";
+
+        ListResponse<AdoWorkItemTypeStateDto> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoWorkItemTypeStateDto>>() {})
+                .retryWhen(retrySpec())
+                .block();
+        return response != null && response.value() != null ? response.value() : List.of();
+    }
+
+    /**
+     * Fetches a single page (up to {@link #WIQL_PAGE_SIZE} IDs) of work item IDs ordered
+     * ascending by System.Id, applying the optional incremental-sync date filter, ID lower
+     * bound (exclusive), and structured sync filter. Callers should loop, passing the
+     * highest ID from the previous page as {@code lastSeenId}, until a page returns fewer
+     * than {@link #WIQL_PAGE_SIZE} IDs — this keeps each individual WIQL response safely
+     * under Azure DevOps's 20,000-row cap regardless of project size.
+     */
+    public List<Integer> queryWorkItemIdsPage(String orgUrl, String projectId, String authHeader,
+                                               Instant since, Integer lastSeenId, WiqlFilter filter) {
         String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/wiql?api-version=7.1";
 
-        String dateFilter = since != null
-                ? " WHERE [System.ChangedDate] >= '" + since.toString() + "'"
-                : "";
-        String wiql = "SELECT [System.Id] FROM WorkItems" + dateFilter;
+        String wiql = WiqlQueryBuilder.build(since, lastSeenId, filter);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> response = azureWebClient.post()
@@ -121,6 +187,7 @@ public class AzureDevOpsClient {
         List<Map<String, Object>> items = (List<Map<String, Object>>) response.get("workItems");
         return items.stream()
                 .map(item -> ((Number) item.get("id")).intValue())
+                .limit(WIQL_PAGE_SIZE)
                 .toList();
     }
 
