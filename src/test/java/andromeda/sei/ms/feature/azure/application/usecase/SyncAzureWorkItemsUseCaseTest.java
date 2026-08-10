@@ -54,6 +54,8 @@ class SyncAzureWorkItemsUseCaseTest {
     @Mock private WorkItemTransitionRepository workItemTransitionRepository;
     @Mock private SprintRepository sprintRepository;
     @Mock private AzureDevOpsClient azureDevOpsClient;
+    @Mock private andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
 
     @InjectMocks
     private SyncAzureWorkItemsUseCase useCase;

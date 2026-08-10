@@ -39,6 +39,7 @@ class SyncAzureSprintsUseCaseTest {
     @Mock private AzureAuthStrategyResolver authStrategyResolver;
     @Mock private SprintRepository sprintRepository;
     @Mock private AzureDevOpsClient azureDevOpsClient;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
 
     @InjectMocks
     private SyncAzureSprintsUseCase useCase;

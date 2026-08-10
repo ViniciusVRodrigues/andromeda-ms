@@ -47,6 +47,12 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
+    public Optional<User> findByOrganizationIdAndGithubId(String organizationId, String githubId) {
+        return mongoRepository.findByOrganizationIdAndGithubIdAndActiveTrue(organizationId, githubId)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<User> findByInviteToken(String inviteToken) {
         return mongoRepository.findByInviteToken(inviteToken).map(mapper::toDomain);
     }

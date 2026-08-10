@@ -17,6 +17,8 @@ public interface UserMongoRepository extends MongoRepository<UserDocument, Strin
 
     Optional<UserDocument> findByOrganizationIdAndAzureIdAndActiveTrue(String organizationId, String azureId);
 
+    Optional<UserDocument> findByOrganizationIdAndGithubIdAndActiveTrue(String organizationId, String githubId);
+
     Optional<UserDocument> findByInviteToken(String inviteToken);
 
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);
