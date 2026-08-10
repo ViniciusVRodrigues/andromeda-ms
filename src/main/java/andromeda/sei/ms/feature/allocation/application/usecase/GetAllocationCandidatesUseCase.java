@@ -18,6 +18,8 @@ public class GetAllocationCandidatesUseCase {
 
     private final SprintRepository sprintRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
 
     public List<WorkItemCandidateOutput> execute(String organizationId, String userId, LocalDate day) {
         List<Sprint> currentSprints = new ArrayList<>(
@@ -28,22 +30,17 @@ public class GetAllocationCandidatesUseCase {
         }
 
         return currentSprints.stream()
-                .flatMap(sprint -> workItemRepository
-                        .findByOrganizationIdAndAssigneeUserIdAndSprintId(
-                                organizationId, userId, sprint.getId())
-                        .stream()
-                        .filter(wi -> isStoryTierWork(wi.getResolvedType()))
-                        .map(wi -> new WorkItemCandidateOutput(wi.getId(), wi.getTitle(), sprint.getName())))
+                .flatMap(sprint -> {
+                    List<WorkItem> sprintItems = workItemRepository
+                            .findByOrganizationIdAndAssigneeUserIdAndSprintId(
+                                    organizationId, userId, sprint.getId());
+                    // Candidates must match the level the team actually books work at: when effort
+                    // lives on Tasks, offering only Stories left the developer with nothing to
+                    // attribute their AI usage to.
+                    var level = effortBearingLevelResolver.resolve(null, sprintItems);
+                    return effortBearingLevelResolver.deliverableUnits(level, sprintItems).stream()
+                            .map(wi -> new WorkItemCandidateOutput(wi.getId(), wi.getTitle(), sprint.getName()));
+                })
                 .toList();
-    }
-
-    /**
-     * STORY and FEATURE are both developer-assignable, effort-bearing deliverable units — a
-     * Feature-typed work item is just as legitimate an AI-allocation candidate as a Story in
-     * Feature-heavy custom process templates (see GetTeamDashboardUseCase.isStoryTierWork for
-     * the same reasoning applied to dashboards).
-     */
-    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
-        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
     }
 }

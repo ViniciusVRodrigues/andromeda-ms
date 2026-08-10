@@ -27,6 +27,8 @@ public class GetTeamDashboardUseCase {
 
     private final SprintRepository sprintRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
     private final AIUsageRepository aiUsageRepository;
     private final UserRepository userRepository;
 
@@ -52,7 +54,7 @@ public class GetTeamDashboardUseCase {
         // routinely story-pointed and completed like a Story in Feature-heavy custom templates) —
         // grouped together here so team velocity isn't silently blind to Feature-typed work.
         List<WorkItem> storyItems = items.stream()
-                .filter(wi -> isStoryTierWork(wi.getResolvedType()))
+                .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                 .toList();
 
         List<String> memberUserIds = storyItems.stream()
@@ -143,7 +145,7 @@ public class GetTeamDashboardUseCase {
             List<WorkItem> sprintItems = workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(
                     orgId, projectId, sprint.getId());
             double sp = sprintItems.stream()
-                    .filter(wi -> isStoryTierWork(wi.getResolvedType()))
+                    .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                     .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
                     .sum();
@@ -168,9 +170,6 @@ public class GetTeamDashboardUseCase {
      * deliverable work for this dashboard's velocity/cycle-time metrics — see reasoning
      * at the storyItems filter above.
      */
-    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
-        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
-    }
 
     private Double averageNonNull(List<Double> values) {
         List<Double> nonNull = values.stream().filter(v -> v != null).toList();

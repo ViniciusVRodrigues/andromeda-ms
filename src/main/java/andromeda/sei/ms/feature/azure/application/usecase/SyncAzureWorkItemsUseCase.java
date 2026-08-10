@@ -210,7 +210,7 @@ public class SyncAzureWorkItemsUseCase {
         workItem.setRawStatus(rawStatus);
         workItem.setResolvedStatus(resolvedStatus);
         workItem.setPriority(getString(fields, "Microsoft.VSTS.Common.Priority"));
-        applyComplexityAndEffort(workItem, fields, config);
+        applyComplexityAndEffort(workItem, fields, config, rawType);
         // Dual-write: keep legacy storyPoints in sync with effort for this release
         // (see design Migration Plan step 2) -- dashboards still read storyPoints until cutover.
         workItem.setStoryPoints(workItem.getEffort());
@@ -253,9 +253,10 @@ public class SyncAzureWorkItemsUseCase {
      * Applies complexity/effort from the mapped ADO fields, honoring manual overrides:
      * a field whose current source is MANUAL_OVERRIDE is left untouched by this sync run.
      */
-    private void applyComplexityAndEffort(WorkItem workItem, Map<String, Object> fields, WorkflowConfig config) {
+    private void applyComplexityAndEffort(WorkItem workItem, Map<String, Object> fields, WorkflowConfig config,
+                                           String rawType) {
         if (workItem.getComplexitySource() != FieldValueSource.MANUAL_OVERRIDE) {
-            Double complexity = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.COMPLEXITY)
+            Double complexity = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.COMPLEXITY, rawType)
                     .map(m -> getDouble(fields, m.getAzureFieldReferenceName()))
                     .orElse(null);
             workItem.setComplexity(complexity);
@@ -263,12 +264,56 @@ public class SyncAzureWorkItemsUseCase {
         }
 
         if (workItem.getEffortSource() != FieldValueSource.MANUAL_OVERRIDE) {
-            Double effort = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT)
+            Double effort = config.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT, rawType)
                     .map(m -> getDouble(fields, m.getAzureFieldReferenceName()))
                     .orElse(null);
             workItem.setEffort(effort);
             workItem.setEffortSource(FieldValueSource.AZURE_SYNC);
         }
+    }
+
+    /**
+     * Re-fetches the given work items from Azure DevOps (batched) and updates only their
+     * {@code parentExternalId} from the current {@code System.LinkTypes.Hierarchy-Reverse}
+     * relation, saving each item whose parent link changed. Used by
+     * {@code WorkItemParentLinkBackfillMigration} to repair documents saved before
+     * WorkItemRepositoryImpl.save() persisted parentExternalId, and safe to re-run any number of
+     * times — it always reflects Azure's current state and is a no-op for items whose stored
+     * value already matches.
+     *
+     * @return the number of items whose stored parentExternalId was changed
+     */
+    public int backfillParentLinks(List<WorkItem> items, String orgUrl, String authHeader) {
+        if (items.isEmpty()) return 0;
+
+        Map<String, WorkItem> byExternalId = new java.util.HashMap<>();
+        List<Integer> ids = new ArrayList<>();
+        for (WorkItem item : items) {
+            byExternalId.put(item.getExternalId(), item);
+            try {
+                ids.add(Integer.parseInt(item.getExternalId()));
+            } catch (NumberFormatException e) {
+                log.warn("backfillParentLinks: invalid externalId={} for workItemId={}",
+                        item.getExternalId(), item.getId());
+            }
+        }
+        if (ids.isEmpty()) return 0;
+
+        List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
+
+        int updated = 0;
+        for (AdoWorkItemDto adoItem : adoItems) {
+            WorkItem item = byExternalId.get(String.valueOf(adoItem.id()));
+            if (item == null) continue;
+
+            String parentExternalId = extractParentExternalId(adoItem);
+            if (java.util.Objects.equals(parentExternalId, item.getParentExternalId())) continue;
+
+            item.setParentExternalId(parentExternalId);
+            workItemRepository.save(item);
+            updated++;
+        }
+        return updated;
     }
 
     /**

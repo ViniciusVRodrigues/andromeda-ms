@@ -19,7 +19,11 @@ public class DeveloperDashboardMapper {
                                 wi.getEffort(),
                                 wi.getCycleTimeHours(),
                                 wi.getLeadTimeHours(),
-                                wi.getTokensPerSp()
+                                wi.getTokensPerSp(),
+                                wi.getComplexity(),
+                                wi.getComplexitySource() != null ? wi.getComplexitySource().name() : null,
+                                wi.getEffort(),
+                                wi.getEffortSource() != null ? wi.getEffortSource().name() : null
                         ))
                         .toList();
 

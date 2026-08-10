@@ -46,7 +46,7 @@ class AutoAssignAllocationUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new AutoAssignAllocationUseCase(
-                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository);
+                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
     }
 
     // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

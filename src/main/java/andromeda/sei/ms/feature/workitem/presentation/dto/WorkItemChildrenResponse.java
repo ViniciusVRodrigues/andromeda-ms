@@ -10,7 +10,9 @@ public record WorkItemChildrenResponse(
 ) {
     public static WorkItemChildrenResponse from(WorkItemChildrenOutput output) {
         return new WorkItemChildrenResponse(
-                output.children().stream().map(WorkItemSummaryResponse::from).toList(),
+                output.children().stream()
+                        .map(child -> WorkItemSummaryResponse.from(child, output.metricsFor(child.getId())))
+                        .toList(),
                 output.truncated());
     }
 }

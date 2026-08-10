@@ -84,6 +84,12 @@ public class AzureProjectBindingDocument {
     @AllArgsConstructor
     public static class FieldMappingDocument {
         private String internalField;
+        /**
+         * Raw Azure work item type this field mapping applies to. {@code null} is the
+         * legacy-compatibility sentinel meaning "applies to all work item types" (documents
+         * persisted before field mapping became per-work-item-type).
+         */
+        private String workItemType;
         private String azureFieldReferenceName;
         private String azureFieldType;
     }

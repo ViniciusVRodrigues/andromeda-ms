@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.azure.domain.HierarchyLevel;
 import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier;
 import andromeda.sei.ms.feature.workitem.application.dto.WorkItemChildrenOutput;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
@@ -12,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 
 /**
@@ -28,6 +30,7 @@ public class ListWorkItemChildrenUseCase {
     private final WorkItemRepository workItemRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
     private final WorkItemHierarchyClassifier classifier;
+    private final WorkItemHierarchyMetricsCalculator metricsCalculator;
 
     public WorkItemChildrenOutput execute(String workItemId) {
         String orgId = TenantContextHolder.get();
@@ -57,6 +60,17 @@ public class ListWorkItemChildrenUseCase {
         boolean truncated = validChildren.size() > CHILDREN_SOFT_CAP;
         List<WorkItem> page = truncated ? validChildren.subList(0, CHILDREN_SOFT_CAP) : validChildren;
 
-        return new WorkItemChildrenOutput(page, truncated);
+        // Metrics are derived from the whole project set: a returned child's own rollup depends on
+        // descendants that aren't in `page`, and its hasChildren flag depends on grandchildren.
+        // One extra query per expand-click, reusing the same in-memory index the backlog uses.
+        List<WorkItem> projectItems = workItemRepository
+                .findAllByOrganizationIdAndProjectId(orgId, parent.getProjectId())
+                .stream()
+                .filter(WorkItem::isActive)
+                .toList();
+        Map<String, WorkItemHierarchyMetrics> metrics =
+                metricsCalculator.calculate(projectItems, hierarchyLevels);
+
+        return new WorkItemChildrenOutput(page, truncated, metrics);
     }
 }

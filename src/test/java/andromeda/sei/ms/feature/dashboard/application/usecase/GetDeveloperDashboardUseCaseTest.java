@@ -59,7 +59,7 @@ class GetDeveloperDashboardUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetDeveloperDashboardUseCase(
-                sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository);
+                sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
         // Default: no validated allocations. Individual tests override as needed.
         lenient().when(allocationRepository.findValidatedByOrgUserAndWorkItemId(any(), any(), any()))
                 .thenReturn(List.of());

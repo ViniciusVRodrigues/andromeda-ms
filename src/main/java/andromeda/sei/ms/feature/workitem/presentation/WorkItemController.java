@@ -43,12 +43,12 @@ public class WorkItemController {
         String callingUserId = SecurityContextHolder.getContext().getAuthentication().getName();
 
         var input = new UpdateWorkItemManualFieldsInput(
-                request.complexity() != null || request.clearComplexityOverride(),
+                request.complexity() != null || request.clearComplexityOverrideOrFalse(),
                 request.complexity(),
-                request.clearComplexityOverride(),
-                request.effort() != null || request.clearEffortOverride(),
+                request.clearComplexityOverrideOrFalse(),
+                request.effort() != null || request.clearEffortOverrideOrFalse(),
                 request.effort(),
-                request.clearEffortOverride());
+                request.clearEffortOverrideOrFalse());
 
         WorkItem updated = updateWorkItemManualFieldsUseCase.execute(id, callingUserId, input);
 

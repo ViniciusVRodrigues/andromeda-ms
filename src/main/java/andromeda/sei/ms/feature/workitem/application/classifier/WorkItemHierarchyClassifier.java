@@ -21,9 +21,11 @@ import java.util.function.Function;
  *       rank.</li>
  *   <li>Orphan: {@code parentExternalId} is non-null and either doesn't resolve within the project,
  *       or resolves but violates the "strictly lower" rank ordering (a hierarchy-violating link).</li>
- *   <li>Per-item fallback: if an item's raw type has no entry in {@code hierarchyLevels} (e.g. a new
- *       custom type added after onboarding), that single item is classified using the structural
- *       fallback rule below, without affecting classification of other, ranked items.</li>
+ *   <li>Per-item fallback: if an item's raw type -- or its parent's raw type -- has no entry in
+ *       {@code hierarchyLevels} (e.g. a new custom type added after onboarding, or a type the org
+ *       simply never ranked), that single item is classified using the structural fallback rule
+ *       below, without affecting classification of other, ranked items. An unranked type means the
+ *       ordering is unknown, not violated, so such links are still valid children.</li>
  * </ul>
  *
  * <p>Structural fallback tier (used when {@code hierarchyLevels} is empty/absent, or per-item per
@@ -56,8 +58,6 @@ public class WorkItemHierarchyClassifier {
             return classifyStructural(item, resolveByExternalId);
         }
 
-        int lowestRank = ranksByRawType.values().stream().mapToInt(Integer::intValue).min().orElseThrow();
-
         if (item.getParentExternalId() == null) {
             return Classification.ROOT;
         }
@@ -68,13 +68,18 @@ public class WorkItemHierarchyClassifier {
         }
 
         Integer parentRank = ranksByRawType.get(normalize(parent.getRawType()));
-        if (parentRank != null && parentRank < itemRank) {
-            return Classification.CHILD;
+        if (parentRank == null) {
+            // The parent's type has no declared rank (e.g. "User Story" missing from an org's
+            // hierarchyLevels). An unranked parent means *unknown* ordering, not *violating* it, so
+            // fall back to structural inference for this link rather than calling it an orphan --
+            // the parent resolves within the project, so this is a valid child. Treating it as an
+            // orphan would strand every item under an unranked type in the "Sem item pai" bucket
+            // even though its parent link is perfectly good (design.md Decision 3: an unranked type
+            // "falls back to structural inference for that type").
+            return classifyStructural(item, resolveByExternalId);
         }
-        if (parentRank == null && itemRank == lowestRank) {
-            // Parent's type is itself unranked; treat this item as root only if it's already at
-            // the lowest declared rank (no valid ranked parent could exist above it anyway).
-            return Classification.ROOT;
+        if (parentRank < itemRank) {
+            return Classification.CHILD;
         }
         // parent resolves but violates "strictly lower" rank ordering — hierarchy-violating link.
         return Classification.ORPHAN;

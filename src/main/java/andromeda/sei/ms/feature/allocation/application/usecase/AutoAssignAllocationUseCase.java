@@ -30,6 +30,8 @@ public class AutoAssignAllocationUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final SprintRepository sprintRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
 
     public void execute(String organizationId, String userId, LocalDate day) {
         // Step 1: Collect all AIUsage record IDs for the day where allocationId == null
@@ -79,11 +81,15 @@ public class AutoAssignAllocationUseCase {
         }
 
         List<WorkItem> inProgressItems = currentSprints.stream()
-                .flatMap(sprint -> workItemRepository
-                        .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                                organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS)
-                        .stream()
-                        .filter(wi -> isStoryTierWork(wi.getResolvedType())))
+                .flatMap(sprint -> {
+                    List<WorkItem> items = workItemRepository
+                            .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                                    organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS);
+                    // Auto-assignment has to target the same level the team books work at, or teams
+                    // that track effort on Tasks would never get an automatic allocation.
+                    var level = effortBearingLevelResolver.resolve(null, items);
+                    return effortBearingLevelResolver.deliverableUnits(level, items).stream();
+                })
                 .toList();
 
         // Step 6: If no items found, skip — records stay unallocated for manual allocation
@@ -122,11 +128,4 @@ public class AutoAssignAllocationUseCase {
                 saved.getId(), userId, day, unallocatedIds.size(), splits.size());
     }
 
-    /**
-     * STORY and FEATURE are both developer-assignable, effort-bearing deliverable units — see
-     * GetTeamDashboardUseCase.isStoryTierWork for the same reasoning applied to dashboards.
-     */
-    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
-        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
-    }
 }

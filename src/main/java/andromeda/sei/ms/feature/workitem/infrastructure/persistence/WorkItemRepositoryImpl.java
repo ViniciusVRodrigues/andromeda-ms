@@ -52,6 +52,7 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("assigneeExternalId", doc.getAssigneeExternalId())
                 .set("assigneeUserId", doc.getAssigneeUserId())
                 .set("assigneeEmail", doc.getAssigneeEmail())
+                .set("parentExternalId", doc.getParentExternalId())
                 .set("startedAt", doc.getStartedAt())
                 .set("completedAt", doc.getCompletedAt())
                 .set("active", doc.isActive())

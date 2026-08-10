@@ -104,6 +104,38 @@ class WorkItemHierarchyClassifierTest {
     }
 
     @Test
+    void unrankedParentType_shouldStillClassifyAsChildNotOrphan() {
+        // Regression: a real org declared hierarchyLevels as Epic/Feature/Bug/Task/Issue but never
+        // ranked "User Story". Every Task parented to a User Story then resolved to a parent with
+        // no rank and was routed to ORPHAN, stranding 7 of 19 items in the "Sem item pai" bucket
+        // even though their parent links were perfectly valid. An unranked parent type means the
+        // ordering is unknown, not violated — fall back to structural inference for that link.
+        WorkItem story = workItem("story-1", "User Story", "feature-1");
+        WorkItem task = workItem("task-1", "Task", "story-1");
+        List<HierarchyLevel> levels = List.of(
+                new HierarchyLevel("Epic", 0), new HierarchyLevel("Feature", 1),
+                new HierarchyLevel("Bug", 2), new HierarchyLevel("Task", 2),
+                new HierarchyLevel("Issue", 2));
+
+        var result = classifier.classify(task, levels, resolverOf(story));
+
+        assertThat(result).isEqualTo(WorkItemHierarchyClassifier.Classification.CHILD);
+    }
+
+    @Test
+    void unrankedParentType_shouldStillOrphanWhenParentDoesNotResolve() {
+        // The unranked-parent fallback must not swallow genuinely broken links: if the parent
+        // doesn't resolve in the project at all, it's still an orphan.
+        WorkItem task = workItem("task-1", "Task", "story-missing");
+        List<HierarchyLevel> levels = List.of(
+                new HierarchyLevel("Epic", 0), new HierarchyLevel("Task", 2));
+
+        var result = classifier.classify(task, levels, resolverOf());
+
+        assertThat(result).isEqualTo(WorkItemHierarchyClassifier.Classification.ORPHAN);
+    }
+
+    @Test
     void rankAware_shouldMatchRawTypeCaseAndWhitespaceInsensitively() {
         // The wizard-declared rawType ("Epic"/"Task") can drift in casing/whitespace from what's
         // persisted on a synced WorkItem ("epic "/" TASK") — matching must not silently miss.

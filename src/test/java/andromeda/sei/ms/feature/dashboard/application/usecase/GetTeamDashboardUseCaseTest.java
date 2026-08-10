@@ -44,7 +44,7 @@ class GetTeamDashboardUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new GetTeamDashboardUseCase(sprintRepository, workItemRepository, aiUsageRepository, userRepository);
+        useCase = new GetTeamDashboardUseCase(sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(), aiUsageRepository, userRepository);
         lenient().when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
         lenient().when(aiUsageRepository.findTotalCostByUserIdsAndDateRange(any(), any(), any(), any()))
                 .thenReturn(Map.of());

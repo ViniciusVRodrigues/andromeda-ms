@@ -177,7 +177,8 @@ public class AzureProjectBindingController {
                 request.fieldMappings() == null ? List.of() :
                         request.fieldMappings().stream()
                                 .map(f -> new UpdateWorkflowConfigInput.FieldMappingInput(
-                                        f.internalField(), f.azureFieldReferenceName(), f.azureFieldType()))
+                                        f.internalField(), f.workItemType(),
+                                        f.azureFieldReferenceName(), f.azureFieldType()))
                                 .toList(),
                 request.syncFilter() == null ? null :
                         new UpdateWorkflowConfigInput.WiqlFilterInput(
@@ -267,7 +268,7 @@ public class AzureProjectBindingController {
                     ? List.of()
                     : wf.getFieldMappings().stream()
                             .map(f -> new WorkflowConfigResponse.FieldMappingResponse(
-                                    f.getInternalField(), f.getAzureFieldReferenceName(), f.getAzureFieldType()))
+                                    f.getInternalField(), f.getWorkItemType(), f.getAzureFieldReferenceName(), f.getAzureFieldType()))
                             .toList();
             // Surface the implicit default EFFORT mapping for DEFAULT-config bindings so callers
             // see the effective mapping without needing to know the default-fallback rule themselves.
@@ -278,7 +279,7 @@ public class AzureProjectBindingController {
                     var m = effective.get();
                     fieldMappings = new java.util.ArrayList<>(fieldMappings);
                     fieldMappings.add(new WorkflowConfigResponse.FieldMappingResponse(
-                            m.getInternalField(), m.getAzureFieldReferenceName(), m.getAzureFieldType()));
+                            m.getInternalField(), m.getWorkItemType(), m.getAzureFieldReferenceName(), m.getAzureFieldType()));
                 }
             }
             WorkflowConfigResponse.WiqlFilterResponse syncFilter = wf.getSyncFilter() == null ? null :

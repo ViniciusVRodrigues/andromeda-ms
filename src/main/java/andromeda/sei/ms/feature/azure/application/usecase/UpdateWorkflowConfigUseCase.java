@@ -75,7 +75,7 @@ public class UpdateWorkflowConfigUseCase {
 
         List<FieldMapping> fieldMappings = input.fieldMappings() == null ? List.of() :
                 input.fieldMappings().stream()
-                        .map(f -> new FieldMapping(f.internalField(), f.azureFieldReferenceName(), f.azureFieldType()))
+                        .map(f -> new FieldMapping(f.internalField(), f.workItemType(), f.azureFieldReferenceName(), f.azureFieldType()))
                         .toList();
         validateNoDuplicateTargets(fieldMappings);
 
@@ -143,13 +143,24 @@ public class UpdateWorkflowConfigUseCase {
         }
     }
 
+    /**
+     * Duplicate-target detection is keyed on (internalField, normalized workItemType): two entries
+     * with the same internalField but different workItemType are not duplicates (they apply to
+     * different work item types), but two entries with the same internalField and the same
+     * (or both-null/wildcard) workItemType are.
+     */
     private void validateNoDuplicateTargets(List<FieldMapping> fieldMappings) {
-        Set<FieldMapping.InternalFieldTarget> seen = new HashSet<>();
+        Set<String> seen = new HashSet<>();
         for (FieldMapping mapping : fieldMappings) {
-            if (!seen.add(mapping.getInternalField())) {
-                throw new AzureFieldMappingDuplicateTargetException(mapping.getInternalField().name());
+            String key = mapping.getInternalField().name() + "|" + normalizeWorkItemType(mapping.getWorkItemType());
+            if (!seen.add(key)) {
+                throw new AzureFieldMappingDuplicateTargetException(mapping.getInternalField().name(), mapping.getWorkItemType());
             }
         }
+    }
+
+    private String normalizeWorkItemType(String workItemType) {
+        return workItemType == null ? null : workItemType.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     private void validateNoDuplicateRawTypes(List<HierarchyLevel> hierarchyLevels) {

@@ -53,21 +53,58 @@ public class WorkflowConfig {
     public void setHierarchyLevels(List<HierarchyLevel> hierarchyLevels) { this.hierarchyLevels = hierarchyLevels == null ? List.of() : hierarchyLevels; }
 
     /**
-     * Resolves the effective field mapping for the given internal field target, applying the
-     * implicit default EFFORT-to-StoryPoints mapping when this config is DEFAULT (unconfigured)
-     * and no explicit mapping exists. CUSTOM configs never receive an implicit default.
+     * Resolves the effective field mapping for the given internal field target, matching only
+     * wildcard entries ({@code workItemType == null}) — preserves the exact behavior of this
+     * method before per-work-item-type field mapping existed. Delegates to
+     * {@link #resolveFieldMapping(FieldMapping.InternalFieldTarget, String)} with a null rawType.
      */
     public Optional<FieldMapping> resolveFieldMapping(FieldMapping.InternalFieldTarget target) {
-        Optional<FieldMapping> explicit = fieldMappings == null ? Optional.empty() :
-                fieldMappings.stream().filter(f -> f.getInternalField() == target).findFirst();
-        if (explicit.isPresent()) return explicit;
+        return resolveFieldMapping(target, null);
+    }
+
+    /**
+     * Resolves the effective field mapping for the given internal field target and raw Azure work
+     * item type. Resolution order:
+     * <ol>
+     *   <li>Exact match on (target, rawType), case/whitespace-insensitive.</li>
+     *   <li>Wildcard match: an entry for target whose {@code workItemType} is {@code null}
+     *       (legacy-compatibility sentinel meaning "applies to all work item types").</li>
+     *   <li>Implicit default EFFORT-to-StoryPoints mapping when this config is DEFAULT
+     *       (unconfigured) and no explicit/wildcard mapping exists. CUSTOM configs never receive
+     *       an implicit default.</li>
+     *   <li>Empty.</li>
+     * </ol>
+     */
+    public Optional<FieldMapping> resolveFieldMapping(FieldMapping.InternalFieldTarget target, String rawType) {
+        if (fieldMappings != null) {
+            if (rawType != null) {
+                Optional<FieldMapping> exact = fieldMappings.stream()
+                        .filter(f -> f.getInternalField() == target)
+                        .filter(f -> f.getWorkItemType() != null && normalize(f.getWorkItemType()).equals(normalize(rawType)))
+                        .findFirst();
+                if (exact.isPresent()) return exact;
+            }
+
+            Optional<FieldMapping> wildcard = fieldMappings.stream()
+                    .filter(f -> f.getInternalField() == target)
+                    .filter(f -> f.getWorkItemType() == null)
+                    .findFirst();
+            if (wildcard.isPresent()) return wildcard;
+        }
 
         if (configSource == ConfigSource.DEFAULT && target == FieldMapping.InternalFieldTarget.EFFORT) {
             return Optional.of(new FieldMapping(
                     FieldMapping.InternalFieldTarget.EFFORT,
+                    null,
                     DEFAULT_EFFORT_FIELD_REFERENCE_NAME,
                     DEFAULT_EFFORT_FIELD_TYPE));
         }
         return Optional.empty();
+    }
+
+    // Matches the normalization idiom used elsewhere for Azure raw type/status comparisons (see
+    // SyncAzureWorkItemsUseCase.resolveStatus, WorkItemHierarchyClassifier.normalize).
+    private String normalize(String rawType) {
+        return rawType == null ? null : rawType.trim().toLowerCase(java.util.Locale.ROOT);
     }
 }

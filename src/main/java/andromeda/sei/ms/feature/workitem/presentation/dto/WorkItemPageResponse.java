@@ -15,6 +15,8 @@ public record WorkItemPageResponse(
                 result.getPage(),
                 result.getSize(),
                 result.getTotalElements(),
-                result.getContent().stream().map(WorkItemSummaryResponse::from).toList());
+                result.getContent().stream()
+                        .map(item -> WorkItemSummaryResponse.from(item, result.metricsFor(item.getId())))
+                        .toList());
     }
 }

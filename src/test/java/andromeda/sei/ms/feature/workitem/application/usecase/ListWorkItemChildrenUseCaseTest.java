@@ -41,8 +41,9 @@ class ListWorkItemChildrenUseCaseTest {
     @BeforeEach
     void setUp() {
         TenantContextHolder.set("org-1");
+        var classifier = new WorkItemHierarchyClassifier();
         useCase = new ListWorkItemChildrenUseCase(workItemRepository, azureProjectBindingRepository,
-                new WorkItemHierarchyClassifier());
+                classifier, new WorkItemHierarchyMetricsCalculator(classifier));
     }
 
     @AfterEach

@@ -8,4 +8,10 @@ public class AzureFieldMappingDuplicateTargetException extends BusinessRuleExcep
         super("AZURE_FIELD_MAPPING_DUPLICATE_TARGET",
                 "Duplicate field mapping for internal field: " + internalField);
     }
+
+    public AzureFieldMappingDuplicateTargetException(String internalField, String workItemType) {
+        super("AZURE_FIELD_MAPPING_DUPLICATE_TARGET",
+                "Duplicate field mapping for internal field: " + internalField
+                        + (workItemType == null ? " (applies to all work item types)" : ", workItemType: " + workItemType));
+    }
 }

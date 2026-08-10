@@ -28,6 +28,8 @@ public class GetStrategicDashboardUseCase {
 
     private final ProjectRepository projectRepository;
     private final WorkItemRepository workItemRepository;
+    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
+            effortBearingLevelResolver;
     private final UserRepository userRepository;
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
 
@@ -73,7 +75,7 @@ public class GetStrategicDashboardUseCase {
                 .toList();
 
         List<WorkItem> doneStories = done.stream()
-                .filter(wi -> isStoryTierWork(wi.getResolvedType()))
+                .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                 .toList();
 
         double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
@@ -117,7 +119,7 @@ public class GetStrategicDashboardUseCase {
                     List<WorkItem> memberItems = entry.getValue();
                     List<WorkItem> doneStories = memberItems.stream()
                             .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                            .filter(wi -> isStoryTierWork(wi.getResolvedType()))
+                            .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
                             .toList();
                     double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
                     Double cycleTime = averageNonNull(doneStories.stream().map(WorkItem::getCycleTimeHours).toList());
@@ -200,9 +202,6 @@ public class GetStrategicDashboardUseCase {
      * GetTeamDashboardUseCase.isStoryTierWork for the same reasoning. DORA's changeFailureRate
      * intentionally continues to check BUG only and is unaffected by this grouping.
      */
-    private boolean isStoryTierWork(WorkItem.ResolvedType resolvedType) {
-        return resolvedType == WorkItem.ResolvedType.STORY || resolvedType == WorkItem.ResolvedType.FEATURE;
-    }
 
     private Double averageNonNull(List<Double> values) {
         List<Double> nonNull = values.stream().filter(v -> v != null).toList();

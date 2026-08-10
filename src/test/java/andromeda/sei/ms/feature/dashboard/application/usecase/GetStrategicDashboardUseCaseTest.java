@@ -38,7 +38,7 @@ class GetStrategicDashboardUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetStrategicDashboardUseCase(
-                projectRepository, workItemRepository, userRepository, getDeveloperDashboardUseCase);
+                projectRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(), userRepository, getDeveloperDashboardUseCase);
         lenient().when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
     }
 

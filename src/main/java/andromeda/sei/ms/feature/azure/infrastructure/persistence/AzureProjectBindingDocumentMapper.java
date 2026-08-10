@@ -62,6 +62,7 @@ public class AzureProjectBindingDocumentMapper {
                 doc.getFieldMappings().stream()
                         .map(f -> new FieldMapping(
                                 FieldMapping.InternalFieldTarget.valueOf(f.getInternalField()),
+                                f.getWorkItemType(),
                                 f.getAzureFieldReferenceName(),
                                 f.getAzureFieldType()))
                         .toList();
@@ -90,7 +91,8 @@ public class AzureProjectBindingDocumentMapper {
         List<AzureProjectBindingDocument.FieldMappingDocument> fieldMappings = config.getFieldMappings() == null ? List.of() :
                 config.getFieldMappings().stream()
                         .map(f -> new AzureProjectBindingDocument.FieldMappingDocument(
-                                f.getInternalField().name(), f.getAzureFieldReferenceName(), f.getAzureFieldType()))
+                                f.getInternalField().name(), f.getWorkItemType(),
+                                f.getAzureFieldReferenceName(), f.getAzureFieldType()))
                         .toList();
         AzureProjectBindingDocument.WiqlFilterDocument syncFilter = toWiqlFilterDocument(config.getSyncFilter());
         List<AzureProjectBindingDocument.HierarchyLevelDocument> hierarchyLevels = config.getHierarchyLevels() == null ? List.of() :

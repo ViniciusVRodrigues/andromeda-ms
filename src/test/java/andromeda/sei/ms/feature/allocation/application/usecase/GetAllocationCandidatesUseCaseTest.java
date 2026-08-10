@@ -32,7 +32,7 @@ class GetAllocationCandidatesUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new GetAllocationCandidatesUseCase(sprintRepository, workItemRepository);
+        useCase = new GetAllocationCandidatesUseCase(sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
     }
 
     @Test

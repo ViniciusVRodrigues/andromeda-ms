@@ -27,6 +27,7 @@ public record UpdateWorkflowConfigRequest(
 
     public record FieldMappingRequest(
             @NotNull FieldMapping.InternalFieldTarget internalField,
+            String workItemType,
             @NotNull String azureFieldReferenceName,
             String azureFieldType
     ) {}
