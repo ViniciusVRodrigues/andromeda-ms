@@ -166,7 +166,11 @@ public class AzureDevOpsClient {
      */
     public List<Integer> queryWorkItemIdsPage(String orgUrl, String projectId, String authHeader,
                                                Instant since, Integer lastSeenId, WiqlFilter filter) {
-        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/wiql?api-version=7.1";
+        // $top caps the rows ADO materializes for this page. Without it a single WIQL
+        // response can exceed ADO's hard 20,000-row cap, which comes back as an
+        // HTTP 400 (VS403496) rather than a truncated result.
+        String url = baseUrl(orgUrl) + "/" + projectId + "/_apis/wit/wiql?api-version=7.1"
+                + "&$top=" + WIQL_PAGE_SIZE;
 
         String wiql = WiqlQueryBuilder.build(since, lastSeenId, filter);
 

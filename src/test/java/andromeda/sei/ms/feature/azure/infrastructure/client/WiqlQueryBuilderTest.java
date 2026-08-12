@@ -27,6 +27,30 @@ class WiqlQueryBuilderTest {
                 "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01T00:00:00Z' ORDER BY [System.Id] ASC");
     }
 
+    /**
+     * Azure DevOps rejects WIQL DateTime literals carrying sub-second digits with
+     * HTTP 400, so the bound must be truncated to second precision.
+     */
+    @Test
+    void shouldTruncateSubSecondPrecisionFromChangedDateFilter() {
+        Instant since = Instant.parse("2026-08-12T12:34:56.789123Z");
+
+        String wiql = WiqlQueryBuilder.build(since, null, null);
+
+        assertThat(wiql).isEqualTo(
+                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-08-12T12:34:56Z' ORDER BY [System.Id] ASC");
+        assertThat(wiql).doesNotContain("789");
+    }
+
+    @Test
+    void shouldFormatChangedDateBoundInUtcRegardlessOfSourceOffset() {
+        Instant since = Instant.parse("2026-08-12T23:59:59.999Z");
+
+        String wiql = WiqlQueryBuilder.build(since, null, null);
+
+        assertThat(wiql).contains("[System.ChangedDate] >= '2026-08-12T23:59:59Z'");
+    }
+
     @Test
     void shouldIncludeIdLowerBoundWhenLastSeenIdProvided() {
         String wiql = WiqlQueryBuilder.build(null, 100, null);

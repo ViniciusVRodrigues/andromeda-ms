@@ -20,5 +20,7 @@ public record SyncLogOutput(
         Integer itemsProcessed,
         Integer itemsFailed,
         String errorCode,
-        String errorMessage
+        String errorMessage,
+        Integer httpStatus,
+        String errorDetail
 ) {}

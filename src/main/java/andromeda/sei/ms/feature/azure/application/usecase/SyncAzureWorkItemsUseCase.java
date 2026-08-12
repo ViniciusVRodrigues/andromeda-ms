@@ -129,7 +129,14 @@ public class SyncAzureWorkItemsUseCase {
                 syncLog.setErrorCode("AZURE_SYNC_WORK_ITEMS_FAILED");
             }
             syncLog.setErrorMessage(e.getMessage());
-            if (e instanceof WebClientResponseException wex) {
+            // When Reactor exhausts its retries it wraps the original response
+            // exception, which is where the Azure DevOps error body lives.
+            Throwable root = e;
+            while (!(root instanceof WebClientResponseException) && root.getCause() != null
+                    && root.getCause() != root) {
+                root = root.getCause();
+            }
+            if (root instanceof WebClientResponseException wex) {
                 syncLog.setHttpStatus(wex.getStatusCode().value());
                 String body = wex.getResponseBodyAsString();
                 syncLog.setErrorDetail(body.length() > 2000 ? body.substring(0, 2000) : body);

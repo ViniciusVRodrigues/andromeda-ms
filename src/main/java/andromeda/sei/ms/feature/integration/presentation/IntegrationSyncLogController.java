@@ -57,7 +57,8 @@ public class IntegrationSyncLogController {
         List<SyncLogResponse> response = logs.stream().map(l -> new SyncLogResponse(
                 l.id(), l.integration(), l.operation(), l.status(), l.triggeredBy(),
                 l.projectId(), l.startedAt(), l.finishedAt(), l.durationMs(),
-                l.itemsProcessed(), l.itemsFailed(), l.errorCode(), l.errorMessage()
+                l.itemsProcessed(), l.itemsFailed(), l.errorCode(), l.errorMessage(),
+                l.httpStatus(), l.errorDetail()
         )).toList();
 
         return ResponseEntity.ok(response);
