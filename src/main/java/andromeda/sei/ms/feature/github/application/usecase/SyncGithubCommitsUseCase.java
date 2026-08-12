@@ -6,7 +6,6 @@ import andromeda.sei.ms.feature.github.domain.GithubConnection;
 import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhCommitDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,11 +14,10 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 
 /**
- * Watermark-based commit sync. Resolves {@code authorUserId} by matching {@code User.githubId}
- * against the author's numeric GitHub id (the value {@code GitHubOAuth2SuccessHandler} stores in
- * {@code githubId}), leaving it {@code null} when the commit has no top-level {@code author} or
- * no user matches, while always preserving the raw {@code authorGithubLogin}
- * (spec: author resolution scenario, BUG 2 fix — design.md D2).
+ * Watermark-based commit sync. Resolves {@code authorUserId} via {@link GithubAuthorResolver}
+ * (provider account first, legacy {@code User.githubId} fallback second, design.md D7), leaving
+ * it {@code null} when the commit has no top-level {@code author} or no match, while always
+ * preserving the raw {@code authorGithubLogin}.
  */
 @Slf4j
 @Component
@@ -29,7 +27,7 @@ public class SyncGithubCommitsUseCase {
     private final GithubCommitRepository githubCommitRepository;
     private final GithubApiClient githubApiClient;
     private final EncryptionService encryptionService;
-    private final UserRepository userRepository;
+    private final GithubAuthorResolver githubAuthorResolver;
 
     public int execute(GithubConnection connection, GithubRepo repo, Instant lastSyncAt) {
         String authHeader = "Bearer " + encryptionService.decrypt(connection.getPersonalAccessToken());
@@ -75,10 +73,7 @@ public class SyncGithubCommitsUseCase {
     }
 
     private String resolveAuthorUserId(String orgId, Long authorGithubNumericId) {
-        if (authorGithubNumericId == null) return null;
-        return userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(authorGithubNumericId))
-                .map(u -> u.getId())
-                .orElse(null);
+        return githubAuthorResolver.resolve(orgId, authorGithubNumericId);
     }
 
     private Instant parseInstant(String iso) {

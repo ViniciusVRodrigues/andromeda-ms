@@ -8,7 +8,6 @@ import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhPullRequestDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,7 +33,7 @@ class SyncGithubPullRequestsUseCaseTest {
     @Mock private GithubPullRequestRepository githubPullRequestRepository;
     @Mock private GithubApiClient githubApiClient;
     @Mock private EncryptionService encryptionService;
-    @Mock private UserRepository userRepository;
+    @Mock private GithubAuthorResolver githubAuthorResolver;
 
     @InjectMocks
     private SyncGithubPullRequestsUseCase useCase;
@@ -53,7 +52,7 @@ class SyncGithubPullRequestsUseCaseTest {
         lenient().when(githubPullRequestRepository.findByOrganizationIdAndRepoIdAndExternalId(any(), any(), any()))
                 .thenReturn(Optional.empty());
         lenient().when(githubPullRequestRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(userRepository.findByOrganizationIdAndGithubId(any(), any())).thenReturn(Optional.empty());
+        lenient().when(githubAuthorResolver.resolve(any(), any())).thenReturn(null);
     }
 
     @Test
@@ -76,8 +75,7 @@ class SyncGithubPullRequestsUseCaseTest {
                 new GhPullRequestDto.UserDto("octocat", 58421L),
                 "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "58421"))
-                .thenReturn(Optional.of(userWithId("user-42")));
+        when(githubAuthorResolver.resolve("org-1", 58421L)).thenReturn("user-42");
 
         useCase.execute(connection, repo, null);
 
@@ -129,8 +127,4 @@ class SyncGithubPullRequestsUseCaseTest {
         assertThat(captor.getValue().getStatus()).isEqualTo(PullRequestStatus.OPEN);
     }
 
-    private andromeda.sei.ms.feature.user.domain.User userWithId(String id) {
-        return new andromeda.sei.ms.feature.user.domain.User(id, "org-1", "e@x.com", null, "Name",
-                "role-1", null, "58421", null, null, null, true, true, 0L, Instant.now(), Instant.now());
-    }
 }

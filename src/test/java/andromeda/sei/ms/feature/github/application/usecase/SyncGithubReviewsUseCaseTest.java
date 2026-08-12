@@ -9,8 +9,6 @@ import andromeda.sei.ms.feature.github.domain.GithubReviewRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhReviewDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.User;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,7 +37,7 @@ class SyncGithubReviewsUseCaseTest {
     @Mock private GithubReviewRepository githubReviewRepository;
     @Mock private GithubApiClient githubApiClient;
     @Mock private EncryptionService encryptionService;
-    @Mock private UserRepository userRepository;
+    @Mock private GithubAuthorResolver githubAuthorResolver;
 
     @InjectMocks
     private SyncGithubReviewsUseCase useCase;
@@ -95,8 +93,7 @@ class SyncGithubReviewsUseCaseTest {
         GhReviewDto dto = new GhReviewDto(77L, new GhReviewDto.UserDto("octocat", 58421L),
                 "APPROVED", "2024-01-02T00:00:00Z");
         when(githubApiClient.getReviews("octo", "hello", 5, "Bearer plain-pat")).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "58421"))
-                .thenReturn(Optional.of(userWithId("user-42")));
+        when(githubAuthorResolver.resolve("org-1", 58421L)).thenReturn("user-42");
 
         useCase.execute(connection, repo, List.of(pr), null);
 
@@ -112,8 +109,4 @@ class SyncGithubReviewsUseCaseTest {
                 null, null, true, Instant.now(), null);
     }
 
-    private User userWithId(String id) {
-        return new User(id, "org-1", "e@x.com", null, "Name", "role-1", null, "58421",
-                null, null, null, true, true, 0L, Instant.now(), Instant.now());
-    }
 }

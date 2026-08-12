@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.presentation.handler;
 
+import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderInvalidException;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
@@ -37,6 +38,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.from(ex));
+    }
+
+    @ExceptionHandler(ProviderInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleProviderInvalid(ProviderInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
     }
 
     @ExceptionHandler(ForbiddenOperationException.class)

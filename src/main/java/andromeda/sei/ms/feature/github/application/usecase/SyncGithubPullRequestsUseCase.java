@@ -7,7 +7,6 @@ import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhPullRequestDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,8 +18,8 @@ import java.util.List;
 /**
  * Watermark-based PR sync (upsert key {@code organizationId,repoId,externalId}); derives
  * {@code status} from GitHub's {@code state}/{@code merged_at}. Resolves {@code authorUserId}
- * by matching {@code User.githubId} against the author's numeric GitHub id (BUG 2 fix,
- * design.md D2).
+ * via {@link GithubAuthorResolver} (provider account first, legacy {@code User.githubId}
+ * fallback second, design.md D7).
  */
 @Slf4j
 @Component
@@ -30,7 +29,7 @@ public class SyncGithubPullRequestsUseCase {
     private final GithubPullRequestRepository githubPullRequestRepository;
     private final GithubApiClient githubApiClient;
     private final EncryptionService encryptionService;
-    private final UserRepository userRepository;
+    private final GithubAuthorResolver githubAuthorResolver;
 
     public List<GithubPullRequest> execute(GithubConnection connection, GithubRepo repo, Instant lastSyncAt) {
         String authHeader = "Bearer " + encryptionService.decrypt(connection.getPersonalAccessToken());
@@ -46,10 +45,7 @@ public class SyncGithubPullRequestsUseCase {
     private GithubPullRequest upsertPullRequest(String orgId, String repoId, GhPullRequestDto dto) {
         String authorLogin = dto.user() != null ? dto.user().login() : null;
         Long authorGithubNumericId = dto.user() != null ? dto.user().id() : null;
-        String authorUserId = authorGithubNumericId != null
-                ? userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(authorGithubNumericId))
-                        .map(u -> u.getId()).orElse(null)
-                : null;
+        String authorUserId = githubAuthorResolver.resolve(orgId, authorGithubNumericId);
 
         Instant createdAt = parseInstant(dto.createdAt());
         Instant mergedAt = parseInstant(dto.mergedAt());

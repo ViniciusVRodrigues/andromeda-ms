@@ -7,8 +7,6 @@ import andromeda.sei.ms.feature.github.domain.GithubConnectionStatus;
 import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhCommitDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.User;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -36,7 +33,7 @@ class SyncGithubCommitsUseCaseTest {
     @Mock private GithubCommitRepository githubCommitRepository;
     @Mock private GithubApiClient githubApiClient;
     @Mock private EncryptionService encryptionService;
-    @Mock private UserRepository userRepository;
+    @Mock private GithubAuthorResolver githubAuthorResolver;
 
     @InjectMocks
     private SyncGithubCommitsUseCase useCase;
@@ -65,8 +62,7 @@ class SyncGithubCommitsUseCaseTest {
                 new GhCommitDto.CommitDetailDto("msg", new GhCommitDto.GitAuthorDto("A", "a@x.com", "2024-01-01T00:00:00Z")),
                 new GhCommitDto.AuthorDto("octocat", 58421L));
         when(githubApiClient.getCommits("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "58421"))
-                .thenReturn(Optional.of(userWithId("user-42")));
+        when(githubAuthorResolver.resolve("org-1", 58421L)).thenReturn("user-42");
 
         useCase.execute(connection, repo, null);
 
@@ -82,7 +78,7 @@ class SyncGithubCommitsUseCaseTest {
                 new GhCommitDto.CommitDetailDto("msg", new GhCommitDto.GitAuthorDto("B", "b@x.com", "2024-01-02T00:00:00Z")),
                 new GhCommitDto.AuthorDto("unlinked-user", 99999L));
         when(githubApiClient.getCommits("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "99999")).thenReturn(Optional.empty());
+        when(githubAuthorResolver.resolve("org-1", 99999L)).thenReturn(null);
 
         useCase.execute(connection, repo, null);
 
@@ -106,7 +102,7 @@ class SyncGithubCommitsUseCaseTest {
         verify(githubCommitRepository).save(captor.capture());
         assertThat(captor.getValue().getAuthorUserId()).isNull();
         assertThat(captor.getValue().getAuthorGithubLogin()).isNull();
-        verify(userRepository, never()).findByOrganizationIdAndGithubId(any(), any());
+        verify(githubAuthorResolver).resolve("org-1", null);
     }
 
     @Test
@@ -118,11 +114,5 @@ class SyncGithubCommitsUseCaseTest {
         useCase.execute(connection, repo, watermark);
 
         verify(githubApiClient).getCommits("octo", "hello", "Bearer plain-pat", watermark);
-    }
-
-    private User userWithId(String id) {
-        User user = new User(id, "org-1", "e@x.com", null, "Name", "role-1", null, "58421",
-                null, null, null, true, true, 0L, Instant.now(), Instant.now());
-        return user;
     }
 }

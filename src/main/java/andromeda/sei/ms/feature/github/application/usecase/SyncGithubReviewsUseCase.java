@@ -8,7 +8,6 @@ import andromeda.sei.ms.feature.github.domain.GithubReviewRepository;
 import andromeda.sei.ms.feature.github.domain.ReviewResult;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhReviewDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
-import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +28,7 @@ public class SyncGithubReviewsUseCase {
     private final GithubReviewRepository githubReviewRepository;
     private final GithubApiClient githubApiClient;
     private final EncryptionService encryptionService;
-    private final UserRepository userRepository;
+    private final GithubAuthorResolver githubAuthorResolver;
 
     public int execute(GithubConnection connection, GithubRepo repo, List<GithubPullRequest> pullRequests,
                         Instant lastSyncAt) {
@@ -63,10 +62,7 @@ public class SyncGithubReviewsUseCase {
     private void upsertReview(String orgId, String pullRequestId, GhReviewDto dto) {
         String reviewerLogin = dto.user() != null ? dto.user().login() : null;
         Long reviewerGithubNumericId = dto.user() != null ? dto.user().id() : null;
-        String reviewerUserId = reviewerGithubNumericId != null
-                ? userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(reviewerGithubNumericId))
-                        .map(u -> u.getId()).orElse(null)
-                : null;
+        String reviewerUserId = githubAuthorResolver.resolve(orgId, reviewerGithubNumericId);
         ReviewResult result = parseResult(dto.state());
         Instant submittedAt = parseInstant(dto.submittedAt());
         String externalId = String.valueOf(dto.id());
