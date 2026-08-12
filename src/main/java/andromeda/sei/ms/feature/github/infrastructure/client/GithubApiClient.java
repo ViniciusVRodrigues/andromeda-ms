@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.github.infrastructure.client;
 import andromeda.sei.ms.feature.github.domain.exception.GithubPermissionDeniedException;
 import andromeda.sei.ms.feature.github.domain.exception.GithubSecondaryRateLimitException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -30,6 +31,7 @@ public class GithubApiClient {
     private final GithubResponseCache responseCache;
     private final Duration secondaryRateLimitMinWait;
 
+    @Autowired
     public GithubApiClient(WebClient githubWebClient, GithubResponseCache responseCache) {
         this(githubWebClient, responseCache, DEFAULT_SECONDARY_RATE_LIMIT_MIN_WAIT);
     }
