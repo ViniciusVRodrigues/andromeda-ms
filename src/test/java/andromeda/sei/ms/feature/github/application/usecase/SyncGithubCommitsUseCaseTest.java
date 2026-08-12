@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,12 +58,14 @@ class SyncGithubCommitsUseCaseTest {
     }
 
     @Test
-    void shouldResolveAuthorUserId_whenGithubLoginMatchesLinkedUser() {
+    void shouldResolveAuthorUserId_whenNumericGithubIdMatchesLinkedUser() {
+        // BUG 2 fix: resolution matches User.githubId against the NUMERIC author.id returned by
+        // the GitHub API (the value GitHubOAuth2SuccessHandler stores), not the login.
         GhCommitDto dto = new GhCommitDto("sha1",
                 new GhCommitDto.CommitDetailDto("msg", new GhCommitDto.GitAuthorDto("A", "a@x.com", "2024-01-01T00:00:00Z")),
-                new GhCommitDto.AuthorDto("octocat"));
+                new GhCommitDto.AuthorDto("octocat", 58421L));
         when(githubApiClient.getCommits("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "octocat"))
+        when(userRepository.findByOrganizationIdAndGithubId("org-1", "58421"))
                 .thenReturn(Optional.of(userWithId("user-42")));
 
         useCase.execute(connection, repo, null);
@@ -74,12 +77,12 @@ class SyncGithubCommitsUseCaseTest {
     }
 
     @Test
-    void shouldLeaveAuthorUserIdNull_whenGithubLoginHasNoLinkedUser() {
+    void shouldLeaveAuthorUserIdNull_whenNumericGithubIdHasNoLinkedUser_butKeepLogin() {
         GhCommitDto dto = new GhCommitDto("sha2",
                 new GhCommitDto.CommitDetailDto("msg", new GhCommitDto.GitAuthorDto("B", "b@x.com", "2024-01-02T00:00:00Z")),
-                new GhCommitDto.AuthorDto("unlinked-user"));
+                new GhCommitDto.AuthorDto("unlinked-user", 99999L));
         when(githubApiClient.getCommits("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
-        when(userRepository.findByOrganizationIdAndGithubId("org-1", "unlinked-user")).thenReturn(Optional.empty());
+        when(userRepository.findByOrganizationIdAndGithubId("org-1", "99999")).thenReturn(Optional.empty());
 
         useCase.execute(connection, repo, null);
 
@@ -87,6 +90,23 @@ class SyncGithubCommitsUseCaseTest {
         verify(githubCommitRepository).save(captor.capture());
         assertThat(captor.getValue().getAuthorUserId()).isNull();
         assertThat(captor.getValue().getAuthorGithubLogin()).isEqualTo("unlinked-user");
+    }
+
+    @Test
+    void shouldLeaveAuthorUserIdNull_whenTopLevelAuthorIsMissing() {
+        // Commits authored outside GitHub have no top-level author object at all.
+        GhCommitDto dto = new GhCommitDto("sha3",
+                new GhCommitDto.CommitDetailDto("msg", new GhCommitDto.GitAuthorDto("C", "c@x.com", "2024-01-03T00:00:00Z")),
+                null);
+        when(githubApiClient.getCommits("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
+
+        useCase.execute(connection, repo, null);
+
+        ArgumentCaptor<GithubCommit> captor = ArgumentCaptor.forClass(GithubCommit.class);
+        verify(githubCommitRepository).save(captor.capture());
+        assertThat(captor.getValue().getAuthorUserId()).isNull();
+        assertThat(captor.getValue().getAuthorGithubLogin()).isNull();
+        verify(userRepository, never()).findByOrganizationIdAndGithubId(any(), any());
     }
 
     @Test
@@ -101,7 +121,7 @@ class SyncGithubCommitsUseCaseTest {
     }
 
     private User userWithId(String id) {
-        User user = new User(id, "org-1", "e@x.com", null, "Name", "role-1", null, "octocat",
+        User user = new User(id, "org-1", "e@x.com", null, "Name", "role-1", null, "58421",
                 null, null, null, true, true, 0L, Instant.now(), Instant.now());
         return user;
     }

@@ -25,6 +25,11 @@ public record GhCommitDto(
             @JsonProperty("email") String email,
             @JsonProperty("date") String date) {}
 
+    /**
+     * {@code id} is GitHub's numeric user id (nullable — top-level {@code author} is null for
+     * commits authored outside GitHub); used to resolve {@code authorUserId} against
+     * {@code User.githubId}, which stores the numeric id (BUG 2 fix, design.md D2).
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record AuthorDto(@JsonProperty("login") String login) {}
+    public record AuthorDto(@JsonProperty("login") String login, @JsonProperty("id") Long id) {}
 }

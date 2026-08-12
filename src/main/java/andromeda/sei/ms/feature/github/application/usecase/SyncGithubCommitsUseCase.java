@@ -15,9 +15,11 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 
 /**
- * Watermark-based commit sync. Resolves {@code authorUserId} via {@code User.githubId} lookup,
- * leaving it {@code null} when unmatched while always preserving the raw {@code authorGithubLogin}
- * (spec: author resolution scenario).
+ * Watermark-based commit sync. Resolves {@code authorUserId} by matching {@code User.githubId}
+ * against the author's numeric GitHub id (the value {@code GitHubOAuth2SuccessHandler} stores in
+ * {@code githubId}), leaving it {@code null} when the commit has no top-level {@code author} or
+ * no user matches, while always preserving the raw {@code authorGithubLogin}
+ * (spec: author resolution scenario, BUG 2 fix — design.md D2).
  */
 @Slf4j
 @Component
@@ -49,7 +51,8 @@ public class SyncGithubCommitsUseCase {
 
     private void upsertCommit(String orgId, String repoId, GhCommitDto dto) {
         String authorLogin = dto.author() != null ? dto.author().login() : null;
-        String authorUserId = resolveAuthorUserId(orgId, authorLogin);
+        Long authorGithubNumericId = dto.author() != null ? dto.author().id() : null;
+        String authorUserId = resolveAuthorUserId(orgId, authorGithubNumericId);
 
         String message = dto.commit() != null ? dto.commit().message() : null;
         Instant authoredAt = dto.commit() != null && dto.commit().author() != null
@@ -71,9 +74,9 @@ public class SyncGithubCommitsUseCase {
         githubCommitRepository.save(commit);
     }
 
-    private String resolveAuthorUserId(String orgId, String authorLogin) {
-        if (authorLogin == null) return null;
-        return userRepository.findByOrganizationIdAndGithubId(orgId, authorLogin)
+    private String resolveAuthorUserId(String orgId, Long authorGithubNumericId) {
+        if (authorGithubNumericId == null) return null;
+        return userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(authorGithubNumericId))
                 .map(u -> u.getId())
                 .orElse(null);
     }

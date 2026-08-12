@@ -11,5 +11,7 @@ public interface GithubRepoRepository {
 
     List<GithubRepo> findAllByOrganizationId(String organizationId);
 
+    List<GithubRepo> findAllByOrganizationIdAndFullNameInAndActiveTrue(String organizationId, List<String> fullNames);
+
     GithubRepo save(GithubRepo repo);
 }

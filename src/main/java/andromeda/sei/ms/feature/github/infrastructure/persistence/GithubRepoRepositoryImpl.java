@@ -33,6 +33,13 @@ public class GithubRepoRepositoryImpl implements GithubRepoRepository {
     }
 
     @Override
+    public List<GithubRepo> findAllByOrganizationIdAndFullNameInAndActiveTrue(
+            String organizationId, List<String> fullNames) {
+        return mongoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(organizationId, fullNames)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public GithubRepo save(GithubRepo repo) {
         GithubRepoDocument doc = mapper.toDocument(repo);
         Instant now = Instant.now();

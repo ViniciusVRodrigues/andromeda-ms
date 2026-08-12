@@ -24,6 +24,13 @@ public class AzureProjectBindingRepositoryImpl implements AzureProjectBindingRep
     }
 
     @Override
+    public Optional<AzureProjectBinding> findByOrganizationIdAndAzureProjectIdAndActiveTrue(
+            String organizationId, String azureProjectId) {
+        return mongoRepository.findByOrganizationIdAndAzureProjectIdAndActiveTrue(organizationId, azureProjectId)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<AzureProjectBinding> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId) {
         return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId)
                 .map(mapper::toDomain);

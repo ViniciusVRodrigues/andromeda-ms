@@ -12,4 +12,7 @@ public interface GithubRepoMongoRepository extends MongoRepository<GithubRepoDoc
     Optional<GithubRepoDocument> findByIdAndOrganizationId(String id, String organizationId);
 
     List<GithubRepoDocument> findAllByOrganizationIdAndActiveTrue(String organizationId);
+
+    List<GithubRepoDocument> findAllByOrganizationIdAndFullNameInAndActiveTrue(
+            String organizationId, List<String> fullNames);
 }

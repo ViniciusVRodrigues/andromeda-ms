@@ -64,6 +64,34 @@ class AzureProjectBindingRepositoryImplTest {
         assertThat(results.get(0).getProjectId()).isEqualTo("proj-1");
     }
 
+    @Test
+    void findByAzureProjectId_shouldReturnActiveBinding() {
+        repository.save(binding("proj-1", true, true));
+
+        var result = repository.findByOrganizationIdAndAzureProjectIdAndActiveTrue(ORG_ID, "azure-proj-1");
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getProjectId()).isEqualTo("proj-1");
+    }
+
+    @Test
+    void findByAzureProjectId_shouldNotReturnInactiveBinding() {
+        repository.save(binding("proj-1", true, false));
+
+        var result = repository.findByOrganizationIdAndAzureProjectIdAndActiveTrue(ORG_ID, "azure-proj-1");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findByAzureProjectId_shouldScopeByOrganization() {
+        repository.save(binding("proj-1", true, true));
+
+        var result = repository.findByOrganizationIdAndAzureProjectIdAndActiveTrue("org-other", "azure-proj-1");
+
+        assertThat(result).isEmpty();
+    }
+
     private AzureProjectBinding binding(String projectId, boolean syncEnabled, boolean active) {
         return new AzureProjectBinding(null, ORG_ID, projectId, "azure-proj-1", "My Project",
                 syncEnabled, null, null, active, NOW, NOW, null);

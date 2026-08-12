@@ -18,7 +18,9 @@ import java.util.List;
 
 /**
  * Watermark-based PR sync (upsert key {@code organizationId,repoId,externalId}); derives
- * {@code status} from GitHub's {@code state}/{@code merged_at}.
+ * {@code status} from GitHub's {@code state}/{@code merged_at}. Resolves {@code authorUserId}
+ * by matching {@code User.githubId} against the author's numeric GitHub id (BUG 2 fix,
+ * design.md D2).
  */
 @Slf4j
 @Component
@@ -43,8 +45,10 @@ public class SyncGithubPullRequestsUseCase {
 
     private GithubPullRequest upsertPullRequest(String orgId, String repoId, GhPullRequestDto dto) {
         String authorLogin = dto.user() != null ? dto.user().login() : null;
-        String authorUserId = authorLogin != null
-                ? userRepository.findByOrganizationIdAndGithubId(orgId, authorLogin).map(u -> u.getId()).orElse(null)
+        Long authorGithubNumericId = dto.user() != null ? dto.user().id() : null;
+        String authorUserId = authorGithubNumericId != null
+                ? userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(authorGithubNumericId))
+                        .map(u -> u.getId()).orElse(null)
                 : null;
 
         Instant createdAt = parseInstant(dto.createdAt());

@@ -10,6 +10,9 @@ public interface GithubRepoBindingMongoRepository extends MongoRepository<Github
     Optional<GithubRepoBindingDocument> findByOrganizationIdAndProjectIdAndRepoIdAndActiveTrue(
             String organizationId, String projectId, String repoId);
 
+    Optional<GithubRepoBindingDocument> findByOrganizationIdAndRepoIdAndActiveTrue(
+            String organizationId, String repoId);
+
     Optional<GithubRepoBindingDocument> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
 
     List<GithubRepoBindingDocument> findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(String organizationId);

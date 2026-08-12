@@ -4,8 +4,10 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.TeamDashboardOutput;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
@@ -40,6 +42,7 @@ class GetTeamDashboardUseCaseTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private UserRepository userRepository;
     @Mock private GithubRepoBindingRepository githubRepoBindingRepository;
+    @Mock private GithubRepoRepository githubRepoRepository;
     @Mock private GithubPullRequestRepository githubPullRequestRepository;
 
     private GetTeamDashboardUseCase useCase;
@@ -53,7 +56,8 @@ class GetTeamDashboardUseCaseTest {
     void setUp() {
         useCase = new GetTeamDashboardUseCase(sprintRepository, workItemRepository,
                 new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(),
-                aiUsageRepository, userRepository, githubRepoBindingRepository, githubPullRequestRepository);
+                aiUsageRepository, userRepository, githubRepoBindingRepository,
+                githubRepoRepository, githubPullRequestRepository);
         lenient().when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
         lenient().when(aiUsageRepository.findTotalCostByUserIdsAndDateRange(any(), any(), any(), any()))
                 .thenReturn(Map.of());
@@ -67,12 +71,17 @@ class GetTeamDashboardUseCaseTest {
     @Test
     void should_includeStalePr_when_openMoreThan24hWithNoReview() {
         when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
-                .thenReturn(List.of(binding("repo-1")));
+                .thenReturn(List.of(binding("octo/hello")));
+        // BUG 1 fix: the binding's "owner/name" fullName must be resolved to the github_repos
+        // Mongo id BEFORE querying github_pull_requests (children are keyed by Mongo id).
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                ORG, List.of("octo/hello")))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
 
         GithubPullRequest stalePr = pullRequest("pr-1", PullRequestStatus.OPEN,
                 NOW.minusSeconds(48 * 3600), null);
         when(githubPullRequestRepository.findAllByOrganizationIdAndRepoIdInAndStatus(
-                ORG, List.of("repo-1"), PullRequestStatus.OPEN))
+                ORG, List.of("mongo-repo-1"), PullRequestStatus.OPEN))
                 .thenReturn(List.of(stalePr));
 
         TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
@@ -85,14 +94,17 @@ class GetTeamDashboardUseCaseTest {
     @Test
     void should_excludePr_when_anyReviewTypeAlreadyPresent_notJustApproved() {
         when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
-                .thenReturn(List.of(binding("repo-1")));
+                .thenReturn(List.of(binding("octo/hello")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                ORG, List.of("octo/hello")))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
 
         // timeToFirstReviewHours is non-null the moment ANY review exists, regardless of its
         // result (approve/comment/changes-requested) — see CalculatePrMetricsUseCase.
         GithubPullRequest reviewedPr = pullRequest("pr-2", PullRequestStatus.OPEN,
                 NOW.minusSeconds(48 * 3600), 10.0);
         when(githubPullRequestRepository.findAllByOrganizationIdAndRepoIdInAndStatus(
-                ORG, List.of("repo-1"), PullRequestStatus.OPEN))
+                ORG, List.of("mongo-repo-1"), PullRequestStatus.OPEN))
                 .thenReturn(List.of(reviewedPr));
 
         TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
@@ -110,13 +122,78 @@ class GetTeamDashboardUseCaseTest {
         assertThat(output.stalePrs()).isEmpty();
     }
 
+    @Test
+    void should_returnEmptyStalePrs_when_boundFullNameNeverSyncedToGithubRepos() {
+        // BUG 1 fix: an unresolvable fullName is skipped (correctly empty, not accidentally).
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("octo/never-synced")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                ORG, List.of("octo/never-synced")))
+                .thenReturn(List.of());
+
+        TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
+
+        assertThat(output.stalePrs()).isEmpty();
+    }
+
+    @Test
+    void should_resolveAuthorName_viaLinkedAuthorUserId_beforeFallingBackToLogin() {
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("octo/hello")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                ORG, List.of("octo/hello")))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
+        when(userRepository.findAllByOrganizationId(ORG))
+                .thenReturn(List.of(new User("user-42", ORG, "dev@example.com", "hash",
+                        "Linked Dev", null, null, "58421", null, null, null, true, true, 1L, NOW, NOW)));
+
+        GithubPullRequest linkedPr = new GithubPullRequest("pr-1", ORG, "mongo-repo-1", "ext-pr-1",
+                1, "Linked PR", PullRequestStatus.OPEN, "octocat", "user-42",
+                NOW.minusSeconds(48 * 3600), null, null, NOW.minusSeconds(48 * 3600),
+                null, null, true, NOW, 1L);
+        when(githubPullRequestRepository.findAllByOrganizationIdAndRepoIdInAndStatus(
+                ORG, List.of("mongo-repo-1"), PullRequestStatus.OPEN))
+                .thenReturn(List.of(linkedPr));
+
+        TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
+
+        assertThat(output.stalePrs()).hasSize(1);
+        assertThat(output.stalePrs().get(0).authorName()).isEqualTo("Linked Dev");
+    }
+
+    @Test
+    void should_fallBackToGithubLogin_when_authorHasNoLinkedUser() {
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("octo/hello")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                ORG, List.of("octo/hello")))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
+
+        GithubPullRequest unlinkedPr = new GithubPullRequest("pr-1", ORG, "mongo-repo-1", "ext-pr-1",
+                1, "Unlinked PR", PullRequestStatus.OPEN, "octocat", null,
+                NOW.minusSeconds(48 * 3600), null, null, NOW.minusSeconds(48 * 3600),
+                null, null, true, NOW, 1L);
+        when(githubPullRequestRepository.findAllByOrganizationIdAndRepoIdInAndStatus(
+                ORG, List.of("mongo-repo-1"), PullRequestStatus.OPEN))
+                .thenReturn(List.of(unlinkedPr));
+
+        TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
+
+        assertThat(output.stalePrs()).hasSize(1);
+        assertThat(output.stalePrs().get(0).authorName()).isEqualTo("octocat");
+    }
+
     private GithubRepoBinding binding(String repoId) {
         return new GithubRepoBinding("binding-1", ORG, PROJECT, repoId, true, null, true, NOW, NOW, 1L);
     }
 
+    private GithubRepo repo(String id, String fullName) {
+        return new GithubRepo(id, ORG, "ext-" + id, "octo", "hello", fullName, NOW, true, NOW, NOW, 1L);
+    }
+
     private GithubPullRequest pullRequest(String id, PullRequestStatus status, Instant createdAt,
                                            Double timeToFirstReviewHours) {
-        return new GithubPullRequest(id, ORG, "repo-1", "ext-" + id, 1, "PR " + id, status,
+        return new GithubPullRequest(id, ORG, "mongo-repo-1", "ext-" + id, 1, "PR " + id, status,
                 "gh-author", null, createdAt, null, null, createdAt,
                 null, timeToFirstReviewHours, true, NOW, 1L);
     }

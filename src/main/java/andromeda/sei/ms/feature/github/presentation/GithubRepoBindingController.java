@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.github.application.dto.BindGithubRepoInput;
 import andromeda.sei.ms.feature.github.application.dto.ToggleGithubRepoSyncInput;
 import andromeda.sei.ms.feature.github.application.usecase.BindGithubRepoUseCase;
 import andromeda.sei.ms.feature.github.application.usecase.ToggleGithubRepoSyncUseCase;
+import andromeda.sei.ms.feature.github.application.usecase.UnbindGithubRepoUseCase;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
 import andromeda.sei.ms.feature.github.presentation.dto.BindGithubRepoRequest;
@@ -17,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,6 +37,7 @@ public class GithubRepoBindingController {
 
     private final BindGithubRepoUseCase bindGithubRepoUseCase;
     private final ToggleGithubRepoSyncUseCase toggleGithubRepoSyncUseCase;
+    private final UnbindGithubRepoUseCase unbindGithubRepoUseCase;
     private final GithubRepoBindingRepository githubRepoBindingRepository;
 
     @Operation(summary = "Bind a GitHub repo to an Andromeda project")
@@ -77,6 +80,37 @@ public class GithubRepoBindingController {
         GithubRepoBinding binding = toggleGithubRepoSyncUseCase.execute(bindingId,
                 new ToggleGithubRepoSyncInput(request.syncEnabled()));
         return ResponseEntity.ok(toResponse(binding));
+    }
+
+    @Operation(summary = "Unbind a GitHub repo from an Andromeda project",
+            description = "Soft-deletes the binding and keeps synced data; the freed repo becomes "
+                    + "bindable to other projects (design.md D8)")
+    @ApiResponse(responseCode = "204", description = "Binding removed")
+    @ApiResponse(responseCode = "404", description = "Binding not found")
+    @ApiResponse(responseCode = "403", description = "No permission")
+    @DeleteMapping("/projects/{projectId}/bindings/{bindingId}")
+    @PreAuthorize("hasAuthority('GITHUB_CONFIGURE')")
+    public ResponseEntity<Void> unbindRepo(
+            @PathVariable String projectId,
+            @PathVariable String bindingId) {
+        unbindGithubRepoUseCase.execute(projectId, bindingId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "List the GitHub repo bindings of a single project",
+            description = "Active bindings of the given project, for the project modal (design.md D9)")
+    @ApiResponse(responseCode = "200", description = "Bindings listed")
+    @ApiResponse(responseCode = "403", description = "No permission")
+    @GetMapping("/projects/{projectId}/bindings")
+    @PreAuthorize("hasAuthority('GITHUB_CONFIGURE')")
+    public ResponseEntity<List<GithubRepoBindingResponse>> listProjectBindings(@PathVariable String projectId) {
+        String orgId = TenantContextHolder.get();
+        List<GithubRepoBindingResponse> bindings = githubRepoBindingRepository
+                .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+        return ResponseEntity.ok(bindings);
     }
 
     private GithubRepoBindingResponse toResponse(GithubRepoBinding binding) {

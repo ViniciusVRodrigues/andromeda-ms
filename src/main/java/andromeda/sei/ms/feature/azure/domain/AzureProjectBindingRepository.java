@@ -7,6 +7,9 @@ public interface AzureProjectBindingRepository {
 
     Optional<AzureProjectBinding> findByOrganizationIdAndProjectIdAndActiveTrue(String organizationId, String projectId);
 
+    Optional<AzureProjectBinding> findByOrganizationIdAndAzureProjectIdAndActiveTrue(
+            String organizationId, String azureProjectId);
+
     Optional<AzureProjectBinding> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
 
     List<AzureProjectBinding> findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(String organizationId);

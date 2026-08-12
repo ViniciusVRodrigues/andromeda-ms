@@ -2,8 +2,10 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.domain.RepoMetrics;
 import andromeda.sei.ms.feature.github.domain.RepoMetricsRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
@@ -37,6 +39,7 @@ public class GetStrategicDashboardUseCase {
     private final UserRepository userRepository;
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
     private final GithubRepoBindingRepository githubRepoBindingRepository;
+    private final GithubRepoRepository githubRepoRepository;
     private final RepoMetricsRepository repoMetricsRepository;
 
     public StrategicDashboardOutput execute(String orgId, String authUserId,
@@ -186,23 +189,35 @@ public class GetStrategicDashboardUseCase {
     private ChangeFailureRate resolveChangeFailureRate(String orgId, String projectId,
                                                          List<WorkItem> doneItems, LocalDate from, LocalDate to) {
         if (projectId != null) {
-            List<String> repoIds = githubRepoBindingRepository
+            List<String> boundFullNames = githubRepoBindingRepository
                     .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
                     .stream()
                     .map(GithubRepoBinding::getRepoId)
                     .distinct()
                     .toList();
 
-            if (!repoIds.isEmpty()) {
-                Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-                Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
+            if (!boundFullNames.isEmpty()) {
+                // BUG 1 fix: bindings carry the "owner/name" fullName, but repo_metrics rows are
+                // keyed by the github_repos Mongo id — resolve before querying (unresolved
+                // fullNames are skipped; a never-synced repo has no metrics rows anyway).
+                List<String> repoIds = githubRepoRepository
+                        .findAllByOrganizationIdAndFullNameInAndActiveTrue(orgId, boundFullNames)
+                        .stream()
+                        .map(GithubRepo::getId)
+                        .distinct()
+                        .toList();
 
-                List<RepoMetrics> metrics = repoMetricsRepository
-                        .findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(orgId, repoIds, fromInstant, toInstant);
+                if (!repoIds.isEmpty()) {
+                    Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
+                    Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
 
-                Double avgCfr = averageNonNull(metrics.stream().map(RepoMetrics::getCfr).toList());
-                if (avgCfr != null) {
-                    return new ChangeFailureRate(avgCfr, false);
+                    List<RepoMetrics> metrics = repoMetricsRepository
+                            .findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(orgId, repoIds, fromInstant, toInstant);
+
+                    Double avgCfr = averageNonNull(metrics.stream().map(RepoMetrics::getCfr).toList());
+                    if (avgCfr != null) {
+                        return new ChangeFailureRate(avgCfr, false);
+                    }
                 }
             }
         }

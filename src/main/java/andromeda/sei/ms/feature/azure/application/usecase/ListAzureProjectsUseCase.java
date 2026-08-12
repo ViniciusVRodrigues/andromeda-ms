@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 import andromeda.sei.ms.feature.azure.application.dto.AzureProjectOutput;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
+import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
+import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
@@ -20,6 +22,8 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -30,8 +34,15 @@ public class ListAzureProjectsUseCase {
     private final AzureDevOpsClient azureDevOpsClient;
     private final AzureAuthStrategyResolver authStrategyResolver;
     private final IntegrationSyncLogRepository syncLogRepository;
+    private final AzureProjectBindingRepository azureProjectBindingRepository;
 
-    public List<AzureProjectOutput> execute() {
+    /**
+     * @param forProjectId when present, ADO projects actively bound to a DIFFERENT Andromeda
+     *                     project are excluded, while the one bound to {@code forProjectId}
+     *                     itself is kept (preselection when editing); when absent the list is
+     *                     unfiltered — byte-for-byte today's behavior (design.md D4).
+     */
+    public List<AzureProjectOutput> execute(String forProjectId) {
         String orgId = TenantContextHolder.get();
         AzureConnection connection = azureConnectionRepository
                 .findByOrganizationIdAndActiveTrue(orgId)
@@ -46,6 +57,10 @@ public class ListAzureProjectsUseCase {
                     .stream()
                     .map(p -> new AzureProjectOutput(p.id(), p.name()))
                     .toList();
+
+            if (forProjectId != null) {
+                projects = applyExclusivityFilter(orgId, forProjectId, projects);
+            }
 
             log.info("Azure projects fetched: org={} count={} projects={}",
                     orgId, projects.size(), projects.stream().map(AzureProjectOutput::azureProjectName).toList());
@@ -65,6 +80,30 @@ public class ListAzureProjectsUseCase {
             writeSyncLog(orgId, startedAt, SyncStatus.FAILED, 0, "AZURE_LIST_PROJECTS_FAILED", e.getMessage(), null, null);
             throw e;
         }
+    }
+
+    /**
+     * Drops every ADO project actively bound to a project other than {@code forProjectId};
+     * the one bound to {@code forProjectId} itself stays so the modal can preselect it
+     * (design.md D4).
+     */
+    private List<AzureProjectOutput> applyExclusivityFilter(String orgId, String forProjectId,
+                                                             List<AzureProjectOutput> projects) {
+        Map<String, String> boundProjectByAzureProjectId = azureProjectBindingRepository
+                .findAllByOrganizationIdAndActiveTrue(orgId)
+                .stream()
+                .filter(b -> b.getAzureProjectId() != null)
+                .collect(Collectors.toMap(
+                        AzureProjectBinding::getAzureProjectId,
+                        AzureProjectBinding::getProjectId,
+                        (a, b) -> a));
+
+        return projects.stream()
+                .filter(p -> {
+                    String boundToProjectId = boundProjectByAzureProjectId.get(p.azureProjectId());
+                    return boundToProjectId == null || boundToProjectId.equals(forProjectId);
+                })
+                .toList();
     }
 
     private void writeSyncLog(String orgId, Instant startedAt, SyncStatus status, int count,

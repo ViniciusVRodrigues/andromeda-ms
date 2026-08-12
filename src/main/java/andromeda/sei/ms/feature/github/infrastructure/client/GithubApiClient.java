@@ -207,6 +207,27 @@ public class GithubApiClient {
     }
 
     /**
+     * Repos visible to the PAT's user (owner, collaborator, or org membership) -- used by the
+     * available-repos listing (design.md D5), NOT by sync. Follows {@code Link: rel="next"} via
+     * the shared {@code fetchPage} plumbing (conditional-request caching included) but is bounded
+     * to {@code maxPages} pages to cap rate-limit spend on what is a UI affordance.
+     */
+    public List<GhRepoDto> getUserRepos(String authHeader, int maxPages) {
+        List<GhRepoDto> all = new ArrayList<>();
+        String url = BASE_URL + "/user/repos?sort=updated&direction=desc&per_page=100";
+
+        int pages = 0;
+        while (url != null && pages < maxPages) {
+            PagedResult<GhRepoDto> page = fetchPage(url, authHeader,
+                    new ParameterizedTypeReference<List<GhRepoDto>>() {});
+            all.addAll(page.items());
+            pages++;
+            url = page.nextUrl();
+        }
+        return all;
+    }
+
+    /**
      * Fetches a single repo by owner/name -- used by {@code SyncGithubReposUseCase} to refresh
      * the one repo a {@code GithubRepoBinding} points at, since bindings are per-repo (identified
      * by "owner/name") rather than requiring a full org repo listing per sync run.

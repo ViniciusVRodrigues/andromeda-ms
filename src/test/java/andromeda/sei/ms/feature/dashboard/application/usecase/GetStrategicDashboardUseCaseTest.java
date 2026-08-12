@@ -1,8 +1,10 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.domain.RepoMetrics;
 import andromeda.sei.ms.feature.github.domain.RepoMetricsRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
@@ -36,6 +38,7 @@ class GetStrategicDashboardUseCaseTest {
     @Mock private UserRepository userRepository;
     @Mock private GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
     @Mock private GithubRepoBindingRepository githubRepoBindingRepository;
+    @Mock private GithubRepoRepository githubRepoRepository;
     @Mock private RepoMetricsRepository repoMetricsRepository;
 
     private GetStrategicDashboardUseCase useCase;
@@ -47,7 +50,8 @@ class GetStrategicDashboardUseCaseTest {
     void setUp() {
         useCase = new GetStrategicDashboardUseCase(
                 projectRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(),
-                userRepository, getDeveloperDashboardUseCase, githubRepoBindingRepository, repoMetricsRepository);
+                userRepository, getDeveloperDashboardUseCase, githubRepoBindingRepository,
+                githubRepoRepository, repoMetricsRepository);
         lenient().when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
         lenient().when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(any(), any()))
                 .thenReturn(List.of());
@@ -66,10 +70,15 @@ class GetStrategicDashboardUseCaseTest {
                 .thenReturn(List.of(doneWorkItem(from, to)));
 
         when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
-                .thenReturn(List.of(binding("repo-1")));
+                .thenReturn(List.of(binding("octo/hello")));
+        // BUG 1 fix: the binding's "owner/name" fullName must be resolved to the github_repos
+        // Mongo id BEFORE querying repo_metrics (metrics rows are keyed by Mongo id).
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                eq(ORG), eq(List.of("octo/hello"))))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
         when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
-                eq(ORG), eq(List.of("repo-1")), any(), any()))
-                .thenReturn(List.of(repoMetrics("repo-1", 3.5)));
+                eq(ORG), eq(List.of("mongo-repo-1")), any(), any()))
+                .thenReturn(List.of(repoMetrics("mongo-repo-1", 3.5)));
 
         StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
 
@@ -110,15 +119,44 @@ class GetStrategicDashboardUseCaseTest {
                 .thenReturn(List.of(doneWorkItem(from, to)));
 
         when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
-                .thenReturn(List.of(binding("repo-1")));
+                .thenReturn(List.of(binding("octo/hello")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                eq(ORG), eq(List.of("octo/hello"))))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/hello")));
         when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
-                eq(ORG), eq(List.of("repo-1")), any(), any()))
+                eq(ORG), eq(List.of("mongo-repo-1")), any(), any()))
                 .thenReturn(List.of());
 
         StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
 
         StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
         assertThat(dora.estimated()).isTrue();
+    }
+
+    @Test
+    void should_fallBackToProxyCfr_estimatedTrue_when_boundFullNameNeverSyncedToGithubRepos() {
+        LocalDate from = LocalDate.now().minusDays(90);
+        LocalDate to = LocalDate.now();
+
+        Project project = activeProject();
+        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(doneWorkItem(from, to)));
+
+        // BUG 1 fix: an unresolvable fullName is skipped — the proxy CFR (estimated=true)
+        // applies, exactly as if the project had no synced metrics.
+        when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(List.of(binding("octo/never-synced")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                eq(ORG), eq(List.of("octo/never-synced"))))
+                .thenReturn(List.of());
+
+        StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
+
+        StrategicDashboardOutput.DoraMetrics dora = output.projects().get(0).dora();
+        assertThat(dora.estimated()).isTrue();
+        // proxy: bugCount(0) * 100.0 / doneItems.size()(1) = 0.0
+        assertThat(dora.changeFailureRatePercent()).isEqualTo(0.0);
     }
 
     @Test
@@ -132,10 +170,13 @@ class GetStrategicDashboardUseCaseTest {
                 .thenReturn(List.of(doneWorkItem(from, to)));
 
         when(githubRepoBindingRepository.findAllByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
-                .thenReturn(List.of(binding("repo-1"), binding("repo-2")));
+                .thenReturn(List.of(binding("octo/one"), binding("octo/two")));
+        when(githubRepoRepository.findAllByOrganizationIdAndFullNameInAndActiveTrue(
+                eq(ORG), eq(List.of("octo/one", "octo/two"))))
+                .thenReturn(List.of(repo("mongo-repo-1", "octo/one"), repo("mongo-repo-2", "octo/two")));
         when(repoMetricsRepository.findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(
-                eq(ORG), eq(List.of("repo-1", "repo-2")), any(), any()))
-                .thenReturn(List.of(repoMetrics("repo-1", 2.0), repoMetrics("repo-2", 8.0)));
+                eq(ORG), eq(List.of("mongo-repo-1", "mongo-repo-2")), any(), any()))
+                .thenReturn(List.of(repoMetrics("mongo-repo-1", 2.0), repoMetrics("mongo-repo-2", 8.0)));
 
         StrategicDashboardOutput output = useCase.execute(ORG, "auth-user", null, null, from, to);
 
@@ -164,6 +205,11 @@ class GetStrategicDashboardUseCaseTest {
     private GithubRepoBinding binding(String repoId) {
         return new GithubRepoBinding("binding-" + repoId, ORG, PROJECT, repoId, true, null, true,
                 Instant.now(), Instant.now(), 1L);
+    }
+
+    private GithubRepo repo(String id, String fullName) {
+        return new GithubRepo(id, ORG, "ext-" + id, "octo", "hello", fullName,
+                Instant.now(), true, Instant.now(), Instant.now(), 1L);
     }
 
     private RepoMetrics repoMetrics(String repoId, double cfr) {

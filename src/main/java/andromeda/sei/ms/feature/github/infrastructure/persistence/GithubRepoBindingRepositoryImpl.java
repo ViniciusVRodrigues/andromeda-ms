@@ -24,6 +24,13 @@ public class GithubRepoBindingRepositoryImpl implements GithubRepoBindingReposit
     }
 
     @Override
+    public Optional<GithubRepoBinding> findByOrganizationIdAndRepoIdAndActiveTrue(
+            String organizationId, String repoId) {
+        return mongoRepository.findByOrganizationIdAndRepoIdAndActiveTrue(organizationId, repoId)
+                .map(mapper::toDomain);
+    }
+
+    @Override
     public Optional<GithubRepoBinding> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId) {
         return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).map(mapper::toDomain);
     }
@@ -56,5 +63,16 @@ public class GithubRepoBindingRepositoryImpl implements GithubRepoBindingReposit
             doc.setCreatedAt(now);
         }
         return mapper.toDomain(mongoRepository.save(doc));
+    }
+
+    @Override
+    public void saveAll(List<GithubRepoBinding> bindings) {
+        Instant now = Instant.now();
+        List<GithubRepoBindingDocument> docs = bindings.stream().map(b -> {
+            GithubRepoBindingDocument doc = mapper.toDocument(b);
+            doc.setUpdatedAt(now);
+            return doc;
+        }).toList();
+        mongoRepository.saveAll(docs);
     }
 }

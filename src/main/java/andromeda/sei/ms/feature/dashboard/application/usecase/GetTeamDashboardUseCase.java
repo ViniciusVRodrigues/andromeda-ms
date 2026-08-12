@@ -4,10 +4,11 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.TeamDashboardOutput;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
-import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
@@ -40,6 +41,7 @@ public class GetTeamDashboardUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final UserRepository userRepository;
     private final GithubRepoBindingRepository githubRepoBindingRepository;
+    private final GithubRepoRepository githubRepoRepository;
     private final GithubPullRequestRepository githubPullRequestRepository;
 
     private static final long STALE_PR_THRESHOLD_HOURS = 24;
@@ -108,7 +110,7 @@ public class GetTeamDashboardUseCase {
         String sprintStartDate = sprintOpt.map(s -> toLocalDateStr(s.getStartDate())).orElse(null);
         String sprintEndDate = sprintOpt.map(s -> toLocalDateStr(s.getEndDate())).orElse(null);
 
-        List<TeamDashboardOutput.StalePrSummary> stalePrs = computeStalePrs(orgId, projectId);
+        List<TeamDashboardOutput.StalePrSummary> stalePrs = computeStalePrs(orgId, projectId, userNameById);
 
         return new TeamDashboardOutput(
                 resolvedSprintId, sprintName, sprintStartDate, sprintEndDate,
@@ -123,11 +125,26 @@ public class GetTeamDashboardUseCase {
      * an error. authorName falls back to the raw GitHub login when the author has no linked
      * User account.
      */
-    private List<TeamDashboardOutput.StalePrSummary> computeStalePrs(String orgId, String projectId) {
-        List<String> repoIds = githubRepoBindingRepository
+    private List<TeamDashboardOutput.StalePrSummary> computeStalePrs(String orgId, String projectId,
+                                                                       Map<String, String> userNameById) {
+        List<String> boundFullNames = githubRepoBindingRepository
                 .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
                 .stream()
                 .map(GithubRepoBinding::getRepoId)
+                .distinct()
+                .toList();
+
+        if (boundFullNames.isEmpty()) {
+            return List.of();
+        }
+
+        // BUG 1 fix: bindings carry the "owner/name" fullName, but github_pull_requests rows are
+        // keyed by the github_repos Mongo id — resolve before querying (unresolved fullNames are
+        // skipped; a never-synced repo has no PR rows anyway).
+        List<String> repoIds = githubRepoRepository
+                .findAllByOrganizationIdAndFullNameInAndActiveTrue(orgId, boundFullNames)
+                .stream()
+                .map(GithubRepo::getId)
                 .distinct()
                 .toList();
 
@@ -150,25 +167,30 @@ public class GetTeamDashboardUseCase {
             return List.of();
         }
 
-        Map<String, String> nameByGithubId = userRepository.findAllByOrganizationId(orgId).stream()
-                .filter(u -> u.getGithubId() != null)
-                .collect(Collectors.toMap(User::getGithubId,
-                        u -> u.getName() != null ? u.getName() : u.getEmail(), (a, b) -> a));
-
         return stale.stream()
                 .map(pr -> new TeamDashboardOutput.StalePrSummary(
                         pr.getId(),
                         pr.getTitle(),
-                        resolveAuthorName(pr, nameByGithubId),
+                        resolveAuthorName(pr, userNameById),
                         pr.getCreatedAt(),
                         Duration.between(pr.getCreatedAt(), now).toHours()))
                 .sorted(Comparator.comparingDouble(TeamDashboardOutput.StalePrSummary::hoursOpen).reversed())
                 .toList();
     }
 
-    private String resolveAuthorName(GithubPullRequest pr, Map<String, String> nameByGithubId) {
-        String byLinkedAccount = nameByGithubId.get(pr.getAuthorGithubLogin());
-        return byLinkedAccount != null ? byLinkedAccount : pr.getAuthorGithubLogin();
+    /**
+     * BUG 2 consequence fix: resolve the display name via the linked {@code authorUserId} first
+     * (the id sync now populates from the author's numeric GitHub id), falling back to the raw
+     * {@code authorGithubLogin} when the author has no linked User account.
+     */
+    private String resolveAuthorName(GithubPullRequest pr, Map<String, String> userNameById) {
+        if (pr.getAuthorUserId() != null) {
+            String byLinkedAccount = userNameById.get(pr.getAuthorUserId());
+            if (byLinkedAccount != null) {
+                return byLinkedAccount;
+            }
+        }
+        return pr.getAuthorGithubLogin();
     }
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {

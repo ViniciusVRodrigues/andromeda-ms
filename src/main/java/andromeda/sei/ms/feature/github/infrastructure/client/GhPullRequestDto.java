@@ -15,6 +15,10 @@ public record GhPullRequestDto(
         @JsonProperty("merged_at") String mergedAt,
         @JsonProperty("closed_at") String closedAt) {
 
+    /**
+     * {@code id} is GitHub's numeric user id; used to resolve {@code authorUserId} against
+     * {@code User.githubId}, which stores the numeric id (BUG 2 fix, design.md D2).
+     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record UserDto(@JsonProperty("login") String login) {}
+    public record UserDto(@JsonProperty("login") String login, @JsonProperty("id") Long id) {}
 }

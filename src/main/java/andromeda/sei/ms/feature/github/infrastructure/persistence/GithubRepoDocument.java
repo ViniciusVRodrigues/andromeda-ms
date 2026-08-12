@@ -15,7 +15,8 @@ import java.time.Instant;
 @Document(collection = "github_repos")
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId': 1, 'externalId': 1}", unique = true),
-        @CompoundIndex(def = "{'organizationId': 1, 'active': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'active': 1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'fullName': 1, 'active': 1}")
 })
 @Data
 @Builder

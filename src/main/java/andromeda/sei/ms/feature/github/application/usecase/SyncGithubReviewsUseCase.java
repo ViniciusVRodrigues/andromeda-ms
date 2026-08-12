@@ -62,8 +62,10 @@ public class SyncGithubReviewsUseCase {
 
     private void upsertReview(String orgId, String pullRequestId, GhReviewDto dto) {
         String reviewerLogin = dto.user() != null ? dto.user().login() : null;
-        String reviewerUserId = reviewerLogin != null
-                ? userRepository.findByOrganizationIdAndGithubId(orgId, reviewerLogin).map(u -> u.getId()).orElse(null)
+        Long reviewerGithubNumericId = dto.user() != null ? dto.user().id() : null;
+        String reviewerUserId = reviewerGithubNumericId != null
+                ? userRepository.findByOrganizationIdAndGithubId(orgId, String.valueOf(reviewerGithubNumericId))
+                        .map(u -> u.getId()).orElse(null)
                 : null;
         ReviewResult result = parseResult(dto.state());
         Instant submittedAt = parseInstant(dto.submittedAt());
