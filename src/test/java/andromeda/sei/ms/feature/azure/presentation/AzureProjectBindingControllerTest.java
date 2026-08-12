@@ -30,6 +30,7 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -69,7 +70,7 @@ class AzureProjectBindingControllerTest {
 
     @Test
     void listProjects_shouldReturn200WithProjects() throws Exception {
-        when(listAzureProjectsUseCase.execute()).thenReturn(List.of(
+        when(listAzureProjectsUseCase.execute(isNull())).thenReturn(List.of(
                 new AzureProjectOutput("azure-id-1", "My Project")));
 
         mockMvc.perform(get("/api/v1/integrations/azure/projects"))
@@ -79,8 +80,19 @@ class AzureProjectBindingControllerTest {
     }
 
     @Test
+    void listProjects_shouldPassForProjectIdParamToUseCase() throws Exception {
+        when(listAzureProjectsUseCase.execute(eq("proj-1"))).thenReturn(List.of(
+                new AzureProjectOutput("azure-id-1", "My Project")));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/projects")
+                        .param("forProjectId", "proj-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].azureProjectId").value("azure-id-1"));
+    }
+
+    @Test
     void listProjects_shouldReturn404WhenNoConnection() throws Exception {
-        when(listAzureProjectsUseCase.execute())
+        when(listAzureProjectsUseCase.execute(any()))
                 .thenThrow(new AzureConnectionNotFoundException("org-1"));
 
         mockMvc.perform(get("/api/v1/integrations/azure/projects"))

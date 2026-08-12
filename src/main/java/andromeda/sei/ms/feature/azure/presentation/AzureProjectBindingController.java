@@ -45,6 +45,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -67,13 +68,16 @@ public class AzureProjectBindingController {
     private final ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
     private final ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
 
-    @Operation(summary = "List available Azure DevOps projects")
+    @Operation(summary = "List available Azure DevOps projects",
+            description = "Optional forProjectId excludes ADO projects actively bound to other "
+                    + "Andromeda projects, keeping the one bound to forProjectId itself (design.md D4)")
     @ApiResponse(responseCode = "200", description = "Projects listed")
     @ApiResponse(responseCode = "409", description = "No Azure connection established")
     @GetMapping("/projects")
     @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
-    public ResponseEntity<List<AzureProjectResponse>> listProjects() {
-        List<AzureProjectResponse> projects = listAzureProjectsUseCase.execute()
+    public ResponseEntity<List<AzureProjectResponse>> listProjects(
+            @RequestParam(required = false) String forProjectId) {
+        List<AzureProjectResponse> projects = listAzureProjectsUseCase.execute(forProjectId)
                 .stream()
                 .map(p -> new AzureProjectResponse(p.azureProjectId(), p.azureProjectName()))
                 .toList();

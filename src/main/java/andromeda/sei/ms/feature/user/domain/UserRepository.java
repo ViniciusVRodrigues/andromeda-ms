@@ -15,6 +15,8 @@ public interface UserRepository {
 
     Optional<User> findByOrganizationIdAndAzureId(String organizationId, String azureId);
 
+    Optional<User> findByOrganizationIdAndGithubId(String organizationId, String githubId);
+
     Optional<User> findByInviteToken(String inviteToken);
 
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);

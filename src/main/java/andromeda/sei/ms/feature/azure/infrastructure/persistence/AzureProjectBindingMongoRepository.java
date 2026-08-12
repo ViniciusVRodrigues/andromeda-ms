@@ -10,6 +10,9 @@ public interface AzureProjectBindingMongoRepository extends MongoRepository<Azur
     Optional<AzureProjectBindingDocument> findByOrganizationIdAndProjectIdAndActiveTrue(
             String organizationId, String projectId);
 
+    Optional<AzureProjectBindingDocument> findByOrganizationIdAndAzureProjectIdAndActiveTrue(
+            String organizationId, String azureProjectId);
+
     Optional<AzureProjectBindingDocument> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
 
     List<AzureProjectBindingDocument> findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(String organizationId);

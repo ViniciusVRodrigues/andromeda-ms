@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
+import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
 import andromeda.sei.ms.feature.azure.domain.StatusMapping;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
@@ -49,6 +50,7 @@ public class SyncAzureWorkItemsUseCase {
     private final SprintRepository sprintRepository;
     private final AzureDevOpsClient azureDevOpsClient;
     private final UserRepository userRepository;
+    private final AzureProjectBindingRepository azureProjectBindingRepository;
 
     public void execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
         Instant startedAt = Instant.now();
@@ -83,6 +85,7 @@ public class SyncAzureWorkItemsUseCase {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
                 finishSuccess(syncLog, startedAt, 0, 0);
                 binding.setLastSyncAt(Instant.now());
+                azureProjectBindingRepository.save(binding);
                 return;
             }
 
@@ -99,6 +102,7 @@ public class SyncAzureWorkItemsUseCase {
             }
 
             binding.setLastSyncAt(Instant.now());
+            azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
             SyncStatus status = processed > 0 || failed == 0 ? SyncStatus.SUCCESS : SyncStatus.FAILED;

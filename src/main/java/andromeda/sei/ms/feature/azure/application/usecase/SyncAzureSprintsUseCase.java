@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
+import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoIterationDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
@@ -32,6 +33,7 @@ public class SyncAzureSprintsUseCase {
     private final AzureAuthStrategyResolver authStrategyResolver;
     private final SprintRepository sprintRepository;
     private final AzureDevOpsClient azureDevOpsClient;
+    private final AzureProjectBindingRepository azureProjectBindingRepository;
 
     public void execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
         Instant startedAt = Instant.now();
@@ -67,6 +69,9 @@ public class SyncAzureSprintsUseCase {
                     }
                 }
             }
+
+            binding.setLastSyncAt(Instant.now());
+            azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
             SyncStatus status = processed > 0 || failed == 0 ? SyncStatus.SUCCESS : SyncStatus.FAILED;

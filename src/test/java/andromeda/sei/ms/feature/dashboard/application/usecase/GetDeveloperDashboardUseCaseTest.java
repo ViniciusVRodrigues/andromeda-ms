@@ -9,6 +9,9 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
+import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
@@ -44,6 +47,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
     @Mock private OrganizationRepository organizationRepository;
+    @Mock private GithubPullRequestRepository githubPullRequestRepository;
 
     private GetDeveloperDashboardUseCase useCase;
 
@@ -59,11 +63,68 @@ class GetDeveloperDashboardUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetDeveloperDashboardUseCase(
-                sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
+                sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository,
+                githubPullRequestRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
         // Default: no validated allocations. Individual tests override as needed.
         lenient().when(allocationRepository.findValidatedByOrgUserAndWorkItemId(any(), any(), any()))
                 .thenReturn(List.of());
         lenient().when(organizationRepository.findById(any())).thenReturn(Optional.empty());
+        lenient().when(githubPullRequestRepository
+                        .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+    }
+
+    // ── Task 2.3/2.4: PR counts ──────────────────────────────────────────
+
+    @Test
+    void should_returnPrCounts_when_developerHasLinkedGithubAccountAndPrActivity() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        GithubPullRequest openPr1 = pullRequest(PullRequestStatus.OPEN);
+        GithubPullRequest openPr2 = pullRequest(PullRequestStatus.OPEN);
+        GithubPullRequest mergedPr = pullRequest(PullRequestStatus.MERGED);
+        GithubPullRequest closedPr = pullRequest(PullRequestStatus.CLOSED);
+        when(githubPullRequestRepository
+                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(eq(ORG), eq(USER), any(), any()))
+                .thenReturn(List.of(openPr1, openPr2, mergedPr, closedPr));
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.openPrs()).isEqualTo(2);
+        assertThat(output.mergedPrs()).isEqualTo(1);
+    }
+
+    @Test
+    void should_returnZeroPrCounts_notNull_when_developerHasNoLinkedGithubAccountOrNoPrs() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(githubPullRequestRepository
+                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(eq(ORG), eq(USER), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.openPrs()).isEqualTo(0);
+        assertThat(output.mergedPrs()).isEqualTo(0);
+        assertThat(output.openPrs()).isNotNull();
+        assertThat(output.mergedPrs()).isNotNull();
+    }
+
+    private GithubPullRequest pullRequest(PullRequestStatus status) {
+        return new GithubPullRequest(
+                "pr-" + java.util.UUID.randomUUID(), ORG, "owner/repo", "ext-1", 1,
+                "Some PR", status, "gh-login", USER,
+                Instant.now(), null, null, Instant.now(),
+                null, null, true, Instant.now(), 1L);
     }
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ Task 2.5: null metrics Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬

@@ -8,6 +8,7 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.WorkflowConfig;
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureProjectAlreadyBoundException;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
 import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshService;
@@ -32,6 +33,17 @@ public class BindAzureProjectUseCase {
     public AzureProjectBinding execute(String projectId, BindAzureProjectInput input) {
         String orgId = TenantContextHolder.get();
         Instant now = Instant.now();
+
+        // Exclusivity guard (design.md D3): one ADO project binds to at most ONE Andromeda
+        // project per org. The guard runs against the TARGET azureProjectId regardless of the
+        // same-project replace behavior below.
+        azureProjectBindingRepository
+                .findByOrganizationIdAndAzureProjectIdAndActiveTrue(orgId, input.azureProjectId())
+                .ifPresent(existing -> {
+                    if (!existing.getProjectId().equals(projectId)) {
+                        throw new AzureProjectAlreadyBoundException(input.azureProjectId());
+                    }
+                });
 
         AzureProjectBinding binding = azureProjectBindingRepository
                 .findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)

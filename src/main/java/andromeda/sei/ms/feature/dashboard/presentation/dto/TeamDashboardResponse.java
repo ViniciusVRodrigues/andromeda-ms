@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.dashboard.presentation.dto;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 
 public record TeamDashboardResponse(
@@ -13,8 +14,17 @@ public record TeamDashboardResponse(
         Double avgLeadTimeHours,
         BigDecimal teamAiCostUsd,
         List<VelocityPointResponse> velocityTrend,
-        List<MemberMetricsResponse> members
+        List<MemberMetricsResponse> members,
+        List<StalePrSummaryResponse> stalePrs
 ) {
+
+    public record StalePrSummaryResponse(
+            String prId,
+            String title,
+            String authorName,
+            Instant createdAt,
+            double hoursOpen
+    ) {}
     public record VelocityPointResponse(
             String sprintId,
             String sprintName,
