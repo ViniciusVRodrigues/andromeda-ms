@@ -6,6 +6,12 @@ spring:
   data:
     mongodb:
       uri: mongodb://admin:secret@localhost:27018/andromeda?authSource=admin
+      # Spring Data MongoDB desliga isto por padrão desde a 3.0, então todos os
+      # @CompoundIndex/@Indexed do projeto eram decorativos — nenhum índice existia
+      # de fato, incluindo os unique. Ligado aqui para que as declarações nos
+      # documentos passem a valer. Ver MongoIndexReport, que registra no startup o
+      # que foi criado por coleção.
+      auto-index-creation: true
   security:
     oauth2:
       client:
