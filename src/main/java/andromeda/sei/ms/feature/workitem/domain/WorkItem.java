@@ -26,6 +26,14 @@ public class WorkItem {
     private Double storyPoints;
     private List<String> labels;
     private String sprintId;
+    /**
+     * Nome da sprint no momento do sync, desnormalizado a partir de {@code Sprint.name}.
+     * {@code sprintId} continua sendo a verdade — este campo existe para que listar e
+     * filtrar o backlog não precise de um join por página. Fica defasado se a sprint for
+     * renomeada no Azure, até o próximo sync tocar o item; aceitável porque renomear
+     * sprint é raro e o sync roda a cada 30 min.
+     */
+    private String sprintName;
     private String assigneeExternalId;
     private String assigneeUserId;
     private String assigneeEmail;
@@ -147,6 +155,9 @@ public class WorkItem {
 
     public String getSprintId() { return sprintId; }
     public void setSprintId(String sprintId) { this.sprintId = sprintId; }
+
+    public String getSprintName() { return sprintName; }
+    public void setSprintName(String sprintName) { this.sprintName = sprintName; }
 
     public String getAssigneeExternalId() { return assigneeExternalId; }
     public void setAssigneeExternalId(String assigneeExternalId) { this.assigneeExternalId = assigneeExternalId; }

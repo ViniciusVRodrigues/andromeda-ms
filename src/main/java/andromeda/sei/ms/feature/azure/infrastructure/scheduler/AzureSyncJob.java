@@ -68,8 +68,12 @@ public class AzureSyncJob {
             String orgId = refreshed.getOrganizationId();
             String projectId = binding.getProjectId();
             try {
-                syncAzureSprintsUseCase.execute(refreshed, binding, SyncTrigger.SCHEDULED);
-                syncAzureWorkItemsUseCase.execute(refreshed, binding, SyncTrigger.SCHEDULED);
+                /* O sync de work items precisa partir do binding devolvido pelo de
+                 * sprints: ambos gravam lastSyncAt, e reutilizar a instância original
+                 * carregaria uma version já consumida (lock otimista). */
+                AzureProjectBinding afterSprints =
+                        syncAzureSprintsUseCase.execute(refreshed, binding, SyncTrigger.SCHEDULED);
+                syncAzureWorkItemsUseCase.execute(refreshed, afterSprints, SyncTrigger.SCHEDULED);
             } catch (WebClientResponseException e) {
                 log.error("Sync failed for org={} project={} httpStatus={} azureError={}",
                         orgId, projectId, e.getStatusCode().value(), e.getResponseBodyAsString(), e);

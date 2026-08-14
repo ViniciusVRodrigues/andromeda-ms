@@ -49,6 +49,7 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("storyPoints", doc.getStoryPoints())
                 .set("labels", doc.getLabels())
                 .set("sprintId", doc.getSprintId())
+                .set("sprintName", doc.getSprintName())
                 .set("assigneeExternalId", doc.getAssigneeExternalId())
                 .set("assigneeUserId", doc.getAssigneeUserId())
                 .set("assigneeEmail", doc.getAssigneeEmail())

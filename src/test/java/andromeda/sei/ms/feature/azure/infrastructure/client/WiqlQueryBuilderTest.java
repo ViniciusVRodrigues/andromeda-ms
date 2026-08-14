@@ -24,31 +24,35 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, null, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01T00:00:00Z' ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01' ORDER BY [System.Id] ASC");
     }
 
     /**
-     * Azure DevOps rejects WIQL DateTime literals carrying sub-second digits with
-     * HTTP 400, so the bound must be truncated to second precision.
+     * System.ChangedDate is queried with date precision, so Azure DevOps rejects any
+     * literal carrying a time component at all — the bound must be a bare date.
      */
     @Test
-    void shouldTruncateSubSecondPrecisionFromChangedDateFilter() {
+    void shouldRenderChangedDateBoundWithoutAnyTimeComponent() {
         Instant since = Instant.parse("2026-08-12T12:34:56.789123Z");
 
         String wiql = WiqlQueryBuilder.build(since, null, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-08-12T12:34:56Z' ORDER BY [System.Id] ASC");
-        assertThat(wiql).doesNotContain("789");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-08-12' ORDER BY [System.Id] ASC");
+        assertThat(wiql).doesNotContain(":");
     }
 
+    /**
+     * Truncation must round the bound down to the start of the UTC day; rounding up
+     * would silently skip work items changed between midnight and the last sync.
+     */
     @Test
-    void shouldFormatChangedDateBoundInUtcRegardlessOfSourceOffset() {
+    void shouldRoundChangedDateBoundDownToStartOfUtcDay() {
         Instant since = Instant.parse("2026-08-12T23:59:59.999Z");
 
         String wiql = WiqlQueryBuilder.build(since, null, null);
 
-        assertThat(wiql).contains("[System.ChangedDate] >= '2026-08-12T23:59:59Z'");
+        assertThat(wiql).contains("[System.ChangedDate] >= '2026-08-12'");
     }
 
     @Test
@@ -66,7 +70,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, 100, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01T00:00:00Z' AND [System.Id] > 100 ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01' AND [System.Id] > 100 ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -107,7 +111,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, 100, filter);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01T00:00:00Z'"
+                "SELECT [System.Id] FROM WorkItems WHERE [System.ChangedDate] >= '2026-01-01'"
                         + " AND [System.Id] > 100"
                         + " AND [System.WorkItemType] IN ('Bug')"
                         + " AND [System.AreaPath] UNDER 'MyProject\\TeamA'"

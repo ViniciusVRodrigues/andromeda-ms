@@ -35,7 +35,13 @@ public class SyncAzureSprintsUseCase {
     private final AzureDevOpsClient azureDevOpsClient;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
 
-    public void execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
+    /**
+     * @return o binding tal como persistido, com a {@code version} atualizada. Chamadores
+     *         que encadeiam syncs sobre o mesmo binding devem seguir com esta instância:
+     *         reutilizar a original (versão já consumida por este save) faz o save seguinte
+     *         falhar com OptimisticLockingFailureException.
+     */
+    public AzureProjectBinding execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
         Instant startedAt = Instant.now();
         IntegrationSyncLog syncLog = new IntegrationSyncLog(
                 null, connection.getOrganizationId(), Integration.AZURE_DEVOPS,
@@ -71,7 +77,7 @@ public class SyncAzureSprintsUseCase {
             }
 
             binding.setLastSyncAt(Instant.now());
-            azureProjectBindingRepository.save(binding);
+            AzureProjectBinding saved = azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
             SyncStatus status = processed > 0 || failed == 0 ? SyncStatus.SUCCESS : SyncStatus.FAILED;
@@ -81,6 +87,7 @@ public class SyncAzureSprintsUseCase {
             syncLog.setItemsProcessed(processed);
             syncLog.setItemsFailed(failed);
             syncLogRepository.save(syncLog);
+            return saved;
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
             syncLog.setStatus(SyncStatus.FAILED);

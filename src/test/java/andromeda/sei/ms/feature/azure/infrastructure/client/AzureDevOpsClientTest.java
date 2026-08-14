@@ -370,7 +370,7 @@ class AzureDevOpsClientTest {
      * not accept in a WIQL DateTime literal.
      */
     @Test
-    void queryWorkItemIdsPage_shouldSendSecondPrecisionDateAndTopBoundOverTheWire() throws Exception {
+    void queryWorkItemIdsPage_shouldSendDateOnlyBoundAndTopOverTheWire() throws Exception {
         AtomicReference<String> requestUri = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
 
@@ -402,7 +402,7 @@ class AzureDevOpsClientTest {
                     .startsWith("/proj-1/_apis/wit/wiql?api-version=7.1")
                     .contains("$top=" + AzureDevOpsClient.WIQL_PAGE_SIZE);
             assertThat(requestBody.get())
-                    .contains("[System.ChangedDate] >= '2026-08-12T12:34:56Z'")
+                    .contains("[System.ChangedDate] >= '2026-08-12'")
                     .contains("[System.Id] > 100")
                     .doesNotContain("789123");
         } finally {

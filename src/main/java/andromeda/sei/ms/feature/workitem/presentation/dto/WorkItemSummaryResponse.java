@@ -13,6 +13,18 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
  * @param rolledUpEffort       effort summed over all descendants, same semantics.
  * @param descendantCount      how many descendants contributed to the rollup, so the UI can label
  *                             it honestly ("soma de N itens") rather than implying an own value.
+ * @param sprintName           nome da sprint, desnormalizado no sync — evita um join por página
+ *                             só para rotular o item. {@code null} enquanto o item não pertencer a
+ *                             uma sprint (ou até o backfill/sync alcançá-lo).
+ * @param assigneeUserId       id do usuário Andrômeda responsável, quando o assignee do Azure foi
+ *                             correlacionado a um membro da organização; {@code null} caso
+ *                             contrário (assignee externo ou ainda não vinculado).
+ * @param assigneeName         nome de exibição do responsável, resolvido na leitura a partir de
+ *                             {@code assigneeUserId}. Não é desnormalizado de propósito: usuários
+ *                             de uma organização são poucos e cabem num único lookup, e o nome
+ *                             muda com mais frequência do que o de uma sprint.
+ * @param assigneeEmail        e-mail do assignee vindo do Azure. Serve de fallback de exibição
+ *                             quando o assignee não corresponde a nenhum membro da organização.
  */
 public record WorkItemSummaryResponse(
         String id,
@@ -23,6 +35,10 @@ public record WorkItemSummaryResponse(
         String rawStatus,
         WorkItem.ResolvedStatus resolvedStatus,
         String sprintId,
+        String sprintName,
+        String assigneeUserId,
+        String assigneeName,
+        String assigneeEmail,
         String parentExternalId,
         Double complexity,
         String complexitySource,
@@ -34,10 +50,19 @@ public record WorkItemSummaryResponse(
         int descendantCount
 ) {
     public static WorkItemSummaryResponse from(WorkItem item) {
-        return from(item, WorkItemHierarchyMetrics.EMPTY);
+        return from(item, WorkItemHierarchyMetrics.EMPTY, null);
     }
 
     public static WorkItemSummaryResponse from(WorkItem item, WorkItemHierarchyMetrics metrics) {
+        return from(item, metrics, null);
+    }
+
+    /**
+     * @param assigneeName nome já resolvido do responsável, ou {@code null} quando não há
+     *                     responsável correlacionado (ou quando o chamador não resolve nomes).
+     */
+    public static WorkItemSummaryResponse from(WorkItem item, WorkItemHierarchyMetrics metrics,
+                                                String assigneeName) {
         WorkItemHierarchyMetrics effective = metrics == null ? WorkItemHierarchyMetrics.EMPTY : metrics;
         return new WorkItemSummaryResponse(
                 item.getId(),
@@ -48,6 +73,10 @@ public record WorkItemSummaryResponse(
                 item.getRawStatus(),
                 item.getResolvedStatus(),
                 item.getSprintId(),
+                item.getSprintName(),
+                item.getAssigneeUserId(),
+                assigneeName,
+                item.getAssigneeEmail(),
                 item.getParentExternalId(),
                 item.getComplexity(),
                 item.getComplexitySource() != null ? item.getComplexitySource().name() : null,

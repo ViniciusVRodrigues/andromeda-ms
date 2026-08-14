@@ -52,7 +52,13 @@ public class SyncAzureWorkItemsUseCase {
     private final UserRepository userRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
 
-    public void execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
+    /**
+     * @return o binding tal como persistido, com a {@code version} atualizada. Chamadores
+     *         que encadeiam syncs sobre o mesmo binding devem seguir com esta instância:
+     *         reutilizar a original (versão já consumida por este save) faz o save seguinte
+     *         falhar com OptimisticLockingFailureException.
+     */
+    public AzureProjectBinding execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
         Instant startedAt = Instant.now();
         IntegrationSyncLog syncLog = new IntegrationSyncLog(
                 null, connection.getOrganizationId(), Integration.AZURE_DEVOPS,
@@ -85,8 +91,7 @@ public class SyncAzureWorkItemsUseCase {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
                 finishSuccess(syncLog, startedAt, 0, 0);
                 binding.setLastSyncAt(Instant.now());
-                azureProjectBindingRepository.save(binding);
-                return;
+                return azureProjectBindingRepository.save(binding);
             }
 
             List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
@@ -102,7 +107,7 @@ public class SyncAzureWorkItemsUseCase {
             }
 
             binding.setLastSyncAt(Instant.now());
-            azureProjectBindingRepository.save(binding);
+            AzureProjectBinding saved = azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
             SyncStatus status = processed > 0 || failed == 0 ? SyncStatus.SUCCESS : SyncStatus.FAILED;
@@ -115,6 +120,7 @@ public class SyncAzureWorkItemsUseCase {
             log.info("Work item sync completed: org={} project={} status={} processed={} failed={} durationMs={}",
                     connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
                     finishedAt.toEpochMilli() - startedAt.toEpochMilli());
+            return saved;
 
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
@@ -197,7 +203,7 @@ public class SyncAzureWorkItemsUseCase {
         WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawType, rawStatus, config);
 
         String iterationPath = getString(fields, "System.IterationPath");
-        String sprintId = resolveSprintId(orgId, iterationPath);
+        Sprint sprint = resolveSprint(orgId, iterationPath);
 
         String tagsRaw = getString(fields, "System.Tags");
         List<String> labels = tagsRaw != null
@@ -226,7 +232,8 @@ public class SyncAzureWorkItemsUseCase {
         // (see design Migration Plan step 2) -- dashboards still read storyPoints until cutover.
         workItem.setStoryPoints(workItem.getEffort());
         workItem.setLabels(labels);
-        workItem.setSprintId(sprintId);
+        workItem.setSprintId(sprint != null ? sprint.getId() : null);
+        workItem.setSprintName(sprint != null ? sprint.getName() : null);
         workItem.setAssigneeExternalId(getAssigneeId(fields));
         workItem.setAssigneeEmail(getAssigneeEmail(fields));
         workItem.setParentExternalId(extractParentExternalId(adoItem));
@@ -479,11 +486,15 @@ public class SyncAzureWorkItemsUseCase {
                 .orElse(WorkItem.ResolvedStatus.TODO);
     }
 
-    private String resolveSprintId(String orgId, String iterationPath) {
+    /**
+     * Resolve a sprint do item pelo iteration path, devolvendo id e nome juntos. O nome é
+     * desnormalizado em {@code WorkItem.sprintName} para que a listagem do backlog possa
+     * exibir e filtrar por sprint sem um join por página — e sai de graça aqui, já que
+     * esta busca sempre carregou o documento inteiro e descartava tudo menos o id.
+     */
+    private Sprint resolveSprint(String orgId, String iterationPath) {
         if (iterationPath == null) return null;
-        return sprintRepository.findByOrganizationIdAndPath(orgId, iterationPath)
-                .map(Sprint::getId)
-                .orElse(null);
+        return sprintRepository.findByOrganizationIdAndPath(orgId, iterationPath).orElse(null);
     }
 
     private String getString(Map<String, Object> fields, String key) {

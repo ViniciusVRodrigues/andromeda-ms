@@ -26,6 +26,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -86,17 +87,46 @@ class TriggerAzureSyncUseCaseTest {
     void scopedExecute_shouldSyncOnlyTheGivenBinding() {
         AzureConnection connection = connection();
         AzureProjectBinding target = binding("bind-1");
+        AzureProjectBinding afterSprints = binding("bind-1");
         when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
                 .thenReturn(Optional.of(connection));
         when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
                 .thenReturn(Optional.of(target));
+        when(syncAzureSprintsUseCase.execute(connection, target, SyncTrigger.MANUAL))
+                .thenReturn(afterSprints);
 
         useCase.execute("bind-1");
 
         verify(syncAzureSprintsUseCase, times(1)).execute(connection, target, SyncTrigger.MANUAL);
-        verify(syncAzureWorkItemsUseCase, times(1)).execute(connection, target, SyncTrigger.MANUAL);
+        verify(syncAzureWorkItemsUseCase, times(1)).execute(connection, afterSprints, SyncTrigger.MANUAL);
         verify(azureProjectBindingRepository, never())
                 .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(any());
+    }
+
+    /**
+     * Os dois syncs gravam lastSyncAt no mesmo binding. Passar a instância original
+     * para o segundo usaria uma version já consumida pelo primeiro save, e o Mongo
+     * rejeitaria a escrita com OptimisticLockingFailureException — derrubando um sync
+     * que na verdade tinha funcionado.
+     */
+    @Test
+    void execute_shouldFeedWorkItemSyncTheBindingReturnedBySprintSync() {
+        AzureConnection connection = connection();
+        AzureProjectBinding original = binding("bind-1");
+        AzureProjectBinding afterSprints = binding("bind-1");
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.of(connection));
+        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
+                .thenReturn(List.of(original));
+        when(syncAzureSprintsUseCase.execute(connection, original, SyncTrigger.MANUAL))
+                .thenReturn(afterSprints);
+
+        useCase.execute();
+
+        /* same() e não eq(): o ponto é ser a instância devolvida pelo save, e as duas
+         * são iguais por valor. */
+        verify(syncAzureWorkItemsUseCase).execute(eq(connection), same(afterSprints), eq(SyncTrigger.MANUAL));
+        verify(syncAzureWorkItemsUseCase, never()).execute(any(), same(original), any());
     }
 
     @Test
