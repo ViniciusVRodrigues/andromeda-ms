@@ -360,4 +360,53 @@ class AzureDevOpsClientTest {
                 .isInstanceOf(WebClientRequestException.class);
         assertThat(attempt.get()).isEqualTo(1);
     }
+
+    /**
+     * Wire-level check of the WIQL call: stands up a real loopback HTTP server and asserts
+     * the exact request line and JSON body Azure DevOps would receive. The ExchangeFunction
+     * stubs used above cannot see the serialized body, and the body is precisely what caused
+     * ADO to reject every work-item sync with HTTP 400 — the incremental bound was
+     * interpolated straight from an Instant and carried sub-second digits, which ADO does
+     * not accept in a WIQL DateTime literal.
+     */
+    @Test
+    void queryWorkItemIdsPage_shouldSendDateOnlyBoundAndTopOverTheWire() throws Exception {
+        AtomicReference<String> requestUri = new AtomicReference<>();
+        AtomicReference<String> requestBody = new AtomicReference<>();
+
+        com.sun.net.httpserver.HttpServer server =
+                com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            requestUri.set(exchange.getRequestURI().toString());
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8));
+            byte[] response = "{\"workItems\":[{\"id\":7}]}"
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", MediaType.APPLICATION_JSON_VALUE);
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            String orgUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            AzureDevOpsClient client = clientFor(WebClient.builder().build());
+
+            List<Integer> ids = client.queryWorkItemIdsPage(
+                    orgUrl, "proj-1", "Basic dGVzdA==",
+                    java.time.Instant.parse("2026-08-12T12:34:56.789123Z"), 100, null);
+
+            assertThat(ids).containsExactly(7);
+            assertThat(requestUri.get())
+                    .startsWith("/proj-1/_apis/wit/wiql?api-version=7.1")
+                    .contains("$top=" + AzureDevOpsClient.WIQL_PAGE_SIZE);
+            assertThat(requestBody.get())
+                    .contains("[System.ChangedDate] >= '2026-08-12'")
+                    .contains("[System.Id] > 100")
+                    .doesNotContain("789123");
+        } finally {
+            server.stop(0);
+        }
+    }
 }

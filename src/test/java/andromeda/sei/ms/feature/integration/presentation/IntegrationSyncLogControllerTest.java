@@ -49,7 +49,7 @@ class IntegrationSyncLogControllerTest {
     void shouldReturn200WithLogsForAzureDevOps() throws Exception {
         var log = new SyncLogOutput("log-1", Integration.AZURE_DEVOPS, SyncOperation.SYNC_SPRINTS,
                 SyncStatus.SUCCESS, SyncTrigger.SCHEDULED, null,
-                Instant.now(), Instant.now(), 100L, 5, 0, null, null);
+                Instant.now(), Instant.now(), 100L, 5, 0, null, null, null, null);
         when(getIntegrationSyncLogsUseCase.execute(eq(Integration.AZURE_DEVOPS), any()))
                 .thenReturn(List.of(log));
 

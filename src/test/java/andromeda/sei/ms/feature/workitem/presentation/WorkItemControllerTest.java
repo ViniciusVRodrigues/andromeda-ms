@@ -40,6 +40,9 @@ class WorkItemControllerTest {
     @Mock
     private ListWorkItemChildrenUseCase listWorkItemChildrenUseCase;
 
+    @Mock
+    private AssigneeNameResolver assigneeNameResolver;
+
     @InjectMocks
     private WorkItemController controller;
 
@@ -122,6 +125,38 @@ class WorkItemControllerTest {
                 .andExpect(jsonPath("$.content[0].externalId").value("ext-1"));
     }
 
+    /**
+     * Os filhos precisam resolver o nome do responsável igual às raízes. Sem isto a árvore
+     * exibia o nome do membro no nó raiz e o e-mail do Azure em todos os filhos, como se
+     * fossem pessoas diferentes.
+     */
+    @Test
+    void listChildren_shouldResolveAssigneeName() throws Exception {
+        WorkItem child = assignedWorkItem("user-1");
+        when(listWorkItemChildrenUseCase.execute("wi-1"))
+                .thenReturn(new WorkItemChildrenOutput(List.of(child), false));
+        when(assigneeNameResolver.resolveFor(List.of(child)))
+                .thenReturn(java.util.Map.of("user-1", "Fulano de Tal"));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/work-items/wi-1/children"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].assigneeName").value("Fulano de Tal"))
+                .andExpect(jsonPath("$.content[0].assigneeUserId").value("user-1"));
+    }
+
+    /** Sem membro correspondente, a UI cai no e-mail do Azure — então o nome vem nulo. */
+    @Test
+    void listChildren_shouldLeaveAssigneeNameNullWhenUnmatched() throws Exception {
+        WorkItem child = assignedWorkItem(null);
+        when(listWorkItemChildrenUseCase.execute("wi-1"))
+                .thenReturn(new WorkItemChildrenOutput(List.of(child), false));
+        when(assigneeNameResolver.resolveFor(List.of(child))).thenReturn(java.util.Map.of());
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/work-items/wi-1/children"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].assigneeName").doesNotExist());
+    }
+
     @Test
     void listChildren_shouldReturnEmptyListForLeaf() throws Exception {
         when(listWorkItemChildrenUseCase.execute("wi-1"))
@@ -139,6 +174,16 @@ class WorkItemControllerTest {
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/work-items/missing/children"))
                 .andExpect(status().isNotFound());
+    }
+
+    /** Work item com assignee do Azure, opcionalmente vinculado a um membro da org. */
+    private WorkItem assignedWorkItem(String assigneeUserId) {
+        return new WorkItem("wi-1", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                "ext-1", NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
+                "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                null, null, List.of(), null, "azure-123", assigneeUserId, "dev@empresa.com", null,
+                NOW, null, null, null, null, null, true, null, NOW,
+                null, null, null, null, null, null, null, null);
     }
 
     private WorkItem workItem() {

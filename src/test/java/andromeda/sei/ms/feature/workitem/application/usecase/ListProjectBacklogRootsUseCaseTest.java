@@ -27,11 +27,23 @@ class ListProjectBacklogRootsUseCaseTest {
     @Test
     void shouldDelegateToClassificationServiceWithRootClassification() {
         WorkItemPageResult expected = new WorkItemPageResult(List.of(), 0, 20, 0);
-        when(classificationService.execute("proj-1", Classification.ROOT, 0, 20)).thenReturn(expected);
+        when(classificationService.execute("proj-1", Classification.ROOT, 0, 20, BacklogFilter.NONE))
+                .thenReturn(expected);
 
         WorkItemPageResult result = useCase.execute("proj-1", 0, 20);
 
         assertThat(result).isSameAs(expected);
-        verify(classificationService).execute(eq("proj-1"), eq(Classification.ROOT), eq(0), eq(20));
+        verify(classificationService).execute(
+                eq("proj-1"), eq(Classification.ROOT), eq(0), eq(20), eq(BacklogFilter.NONE));
+    }
+
+    @Test
+    void shouldForwardFilterToClassificationService() {
+        BacklogFilter filter = BacklogFilter.of("sprint-1", null, "login");
+        WorkItemPageResult expected = new WorkItemPageResult(List.of(), 0, 20, 0);
+        when(classificationService.execute("proj-1", Classification.ROOT, 0, 20, filter))
+                .thenReturn(expected);
+
+        assertThat(useCase.execute("proj-1", 0, 20, filter)).isSameAs(expected);
     }
 }

@@ -50,6 +50,25 @@ public class ProjectBacklogClassificationService {
     private final WorkItemHierarchyMetricsCalculator metricsCalculator;
 
     public WorkItemPageResult execute(String projectId, Classification classification, int page, int size) {
+        return execute(projectId, classification, page, size, BacklogFilter.NONE);
+    }
+
+    /**
+     * Com {@code filter} vazio, serve a visão em árvore: apenas os itens da classificação pedida
+     * (ROOT ou ORPHAN), que a UI expande sob demanda.
+     *
+     * <p>Com qualquer critério informado, a classificação é <strong>ignorada</strong> e o
+     * resultado é uma lista plana de todos os itens que casam, independentemente de serem raiz,
+     * filho ou órfão. Isso é intencional: ao filtrar por sprint ou buscar por id, a intenção
+     * deixa de ser navegar a hierarquia e passa a ser localizar itens — e uma árvore podada
+     * levantaria a pergunta insolúvel de o que fazer com um pai que não casa mas tem filhos que
+     * casam. Achatar elimina a ambiguidade e torna o total honesto por construção.
+     *
+     * <p>O filtro é aplicado <em>antes</em> da paginação, então {@code totalElements} conta o
+     * conjunto filtrado inteiro — e não a página, nem o backlog todo.
+     */
+    public WorkItemPageResult execute(String projectId, Classification classification, int page, int size,
+                                       BacklogFilter filter) {
         String orgId = TenantContextHolder.get();
 
         var project = projectRepository.findById(projectId)
@@ -67,9 +86,13 @@ public class ProjectBacklogClassificationService {
                 .collect(java.util.stream.Collectors.toMap(WorkItem::getExternalId, Function.identity(), (a, b) -> a));
         Function<String, WorkItem> resolver = byExternalId::get;
 
-        List<WorkItem> matching = allItems.stream()
-                .filter(item -> classifier.classify(item, hierarchyLevels, resolver) == classification)
-                .toList();
+        List<WorkItem> matching = filter.isEmpty()
+                ? allItems.stream()
+                        .filter(item -> classifier.classify(item, hierarchyLevels, resolver) == classification)
+                        .toList()
+                : allItems.stream()
+                        .filter(filter::matches)
+                        .toList();
 
         long totalElements = matching.size();
         int fromIndex = Math.min(page * size, matching.size());

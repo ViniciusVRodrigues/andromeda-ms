@@ -60,8 +60,13 @@ public class TriggerAzureSyncUseCase {
 
         for (AzureProjectBinding binding : bindings) {
             try {
-                syncAzureSprintsUseCase.execute(refreshed, binding, SyncTrigger.MANUAL);
-                syncAzureWorkItemsUseCase.execute(refreshed, binding, SyncTrigger.MANUAL);
+                /* Ambos os syncs gravam lastSyncAt no mesmo binding. O segundo precisa
+                 * partir da instância devolvida pelo primeiro — seguir com a original
+                 * carregaria uma version já consumida e o save falharia por lock
+                 * otimista, derrubando um sync que na verdade deu certo. */
+                AzureProjectBinding afterSprints =
+                        syncAzureSprintsUseCase.execute(refreshed, binding, SyncTrigger.MANUAL);
+                syncAzureWorkItemsUseCase.execute(refreshed, afterSprints, SyncTrigger.MANUAL);
             } catch (Exception e) {
                 log.error("Manual sync failed for org={} project={}", orgId, binding.getProjectId(), e);
             }

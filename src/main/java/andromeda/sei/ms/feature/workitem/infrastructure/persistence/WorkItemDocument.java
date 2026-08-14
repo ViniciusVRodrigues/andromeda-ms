@@ -19,7 +19,14 @@ import java.util.List;
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId': 1, 'externalId': 1, 'source': 1}", unique = true),
         @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1}"),
-        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'parentExternalId': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'parentExternalId': 1}"),
+        /* Filtros do backlog por sprint/responsável. A listagem hoje carrega o projeto
+         * inteiro e filtra em memória (ver ProjectBacklogClassificationService), então
+         * este índice ainda não é exercido por ela; existe para as consultas que já
+         * filtram por sprintId/assigneeUserId e para quando a listagem migrar para
+         * filtro na query. */
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'sprintId': 1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'assigneeUserId': 1}")
 })
 @Data
 @Builder
@@ -44,6 +51,7 @@ public class WorkItemDocument {
     private Double storyPoints;
     private List<String> labels;
     private String sprintId;
+    private String sprintName;
     private String assigneeExternalId;
     private String assigneeUserId;
     private String assigneeEmail;

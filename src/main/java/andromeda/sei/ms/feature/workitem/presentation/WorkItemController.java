@@ -30,6 +30,7 @@ public class WorkItemController {
 
     private final UpdateWorkItemManualFieldsUseCase updateWorkItemManualFieldsUseCase;
     private final ListWorkItemChildrenUseCase listWorkItemChildrenUseCase;
+    private final AssigneeNameResolver assigneeNameResolver;
 
     @Operation(summary = "Manually set or clear complexity/effort on a work item")
     @ApiResponse(responseCode = "200", description = "Work item fields updated")
@@ -67,6 +68,7 @@ public class WorkItemController {
     @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
     public ResponseEntity<WorkItemChildrenResponse> listChildren(@PathVariable String id) {
         var output = listWorkItemChildrenUseCase.execute(id);
-        return ResponseEntity.ok(WorkItemChildrenResponse.from(output));
+        return ResponseEntity.ok(WorkItemChildrenResponse.from(
+                output, assigneeNameResolver.resolveFor(output.children())));
     }
 }

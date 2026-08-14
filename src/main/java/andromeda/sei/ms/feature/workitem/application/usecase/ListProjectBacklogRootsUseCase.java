@@ -16,6 +16,14 @@ public class ListProjectBacklogRootsUseCase {
     private final ProjectBacklogClassificationService classificationService;
 
     public WorkItemPageResult execute(String projectId, int page, int size) {
-        return classificationService.execute(projectId, Classification.ROOT, page, size);
+        return execute(projectId, page, size, BacklogFilter.NONE);
+    }
+
+    /**
+     * Com filtro ativo o resultado é a lista plana de todos os itens que casam (ver
+     * {@link ProjectBacklogClassificationService}), e não apenas as raízes.
+     */
+    public WorkItemPageResult execute(String projectId, int page, int size, BacklogFilter filter) {
+        return classificationService.execute(projectId, Classification.ROOT, page, size, filter);
     }
 }

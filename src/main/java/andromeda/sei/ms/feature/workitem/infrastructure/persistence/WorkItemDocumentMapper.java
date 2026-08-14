@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 public class WorkItemDocumentMapper {
 
     public WorkItem toDomain(WorkItemDocument doc) {
-        return new WorkItem(
+        WorkItem item = new WorkItem(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getProjectId(),
@@ -45,6 +45,10 @@ public class WorkItemDocumentMapper {
                 doc.getEffortOverriddenBy(),
                 doc.getEffortOverriddenAt()
         );
+        /* Fora do construtor de propósito: ele já tem 38 parâmetros posicionais e é
+         * chamado de vários pontos; um 39º só aumentaria a chance de troca silenciosa. */
+        item.setSprintName(doc.getSprintName());
+        return item;
     }
 
     public WorkItemDocument toDocument(WorkItem item) {
@@ -64,6 +68,7 @@ public class WorkItemDocumentMapper {
                 .storyPoints(item.getStoryPoints())
                 .labels(item.getLabels())
                 .sprintId(item.getSprintId())
+                .sprintName(item.getSprintName())
                 .assigneeExternalId(item.getAssigneeExternalId())
                 .assigneeUserId(item.getAssigneeUserId())
                 .assigneeEmail(item.getAssigneeEmail())

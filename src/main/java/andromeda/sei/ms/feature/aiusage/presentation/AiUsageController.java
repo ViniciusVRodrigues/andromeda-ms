@@ -92,9 +92,10 @@ public class AiUsageController {
                 s.totalInputTokens(), s.totalOutputTokens(), s.totalInteractions(), s.totalCostUsd()));
     }
 
-    @Operation(summary = "Get fluency score", description = "Returns the AI fluency score for the authenticated user or a team member")
-    @ApiResponse(responseCode = "200", description = "Fluency score returned")
-    @ApiResponse(responseCode = "404", description = "Fluency score not found")
+    @Operation(summary = "Get fluency score",
+            description = "Returns the AI fluency score for the authenticated user or a team member. "
+                    + "A user with no score yet yields 200 with an empty categories list, not 404.")
+    @ApiResponse(responseCode = "200", description = "Fluency score returned (empty when not computed yet)")
     @ApiResponse(responseCode = "403", description = "Not authorised to view another user's fluency score")
     @GetMapping("/fluency-score")
     @PreAuthorize("hasAuthority('AI_READ_OWN')")
@@ -115,14 +116,16 @@ public class AiUsageController {
         String effectiveUserId = (userId != null && hasDashboardTeam) ? userId : callerUserId;
         String orgId = TenantContextHolder.get();
 
-        var score = getFluencyScoreUseCase.execute(orgId, effectiveUserId);
-
-        List<CategoryScoreResponse> categories = score.getCategories().stream()
-                .map(c -> new CategoryScoreResponse(c.getCategory(), c.getIcon(), c.getStage(), c.getTips()))
-                .toList();
-
-        return ResponseEntity.ok(new FluencyScoreResponse(
-                score.getOverallStage(), score.getOverallLabel(), score.getComputedAt(), categories));
+        return ResponseEntity.ok(getFluencyScoreUseCase.execute(orgId, effectiveUserId)
+                .map(score -> new FluencyScoreResponse(
+                        score.getOverallStage(),
+                        score.getOverallLabel(),
+                        score.getComputedAt(),
+                        score.getCategories().stream()
+                                .map(c -> new CategoryScoreResponse(
+                                        c.getCategory(), c.getIcon(), c.getStage(), c.getTips()))
+                                .toList()))
+                .orElseGet(FluencyScoreResponse::empty));
     }
 
     @Operation(summary = "Get AI usage summary by month", description = "Returns monthly aggregate with model breakdown")
@@ -187,7 +190,10 @@ public class AiUsageController {
         String orgId = TenantContextHolder.get();
         List<TeamMemberResponse> members = userRepository.findAllByOrganizationId(orgId).stream()
                 .filter(User::isActive)
-                .map(u -> new TeamMemberResponse(u.getId(), u.getName()))
+                /* email acompanha o name para que a UI tenha um rótulo mesmo quando o
+                 * usuário ainda não preencheu o nome (convite aceito, cadastro incompleto) —
+                 * sem ele a opção aparecia em branco no seletor. */
+                .map(u -> new TeamMemberResponse(u.getId(), u.getName(), u.getEmail()))
                 .toList();
         return ResponseEntity.ok(members);
     }
@@ -202,7 +208,13 @@ public class AiUsageController {
         return ResponseEntity.ok(new RecalculateCostsResponse(updated));
     }
 
-    public record TeamMemberResponse(String userId, String name) {}
+    /**
+     * {@code id} e não {@code userId}: é o nome que todo o resto da API usa para a
+     * identidade de um recurso (ver /v1/users, /v1/roles), e é o que o front lê. A
+     * divergência anterior fazia o seletor "Visualizar como" enviar o nome do usuário
+     * como se fosse id, quebrando fluency, summary, pending e history de uma vez.
+     */
+    public record TeamMemberResponse(String id, String name, String email) {}
 
     public record RecalculateCostsResponse(int updatedRecords) {}
 }
