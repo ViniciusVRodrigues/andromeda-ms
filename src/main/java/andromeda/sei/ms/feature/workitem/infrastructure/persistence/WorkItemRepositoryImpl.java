@@ -195,4 +195,13 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                         organizationId, projectId, parentExternalId, pageable)
                 .stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public List<WorkItem> findAllByOrganizationIdAndExternalIdInAndSource(
+            String organizationId, List<String> externalIds, WorkItem.Source source) {
+        if (externalIds == null || externalIds.isEmpty()) return List.of();
+        return mongoRepository
+                .findAllByOrganizationIdAndExternalIdInAndSource(organizationId, externalIds, source)
+                .stream().map(mapper::toDomain).toList();
+    }
 }

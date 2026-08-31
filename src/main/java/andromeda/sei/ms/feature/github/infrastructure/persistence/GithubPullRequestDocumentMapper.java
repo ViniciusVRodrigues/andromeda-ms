@@ -8,12 +8,14 @@ public class GithubPullRequestDocumentMapper {
 
     public GithubPullRequest toDomain(GithubPullRequestDocument doc) {
         if (doc == null) return null;
-        return new GithubPullRequest(
+        GithubPullRequest pr = new GithubPullRequest(
                 doc.getId(), doc.getOrganizationId(), doc.getRepoId(), doc.getExternalId(), doc.getNumber(),
                 doc.getTitle(), doc.getStatus(), doc.getAuthorGithubLogin(), doc.getAuthorUserId(),
                 doc.getCreatedAt(), doc.getMergedAt(), doc.getClosedAt(), doc.getExternalUpdatedAt(),
                 doc.getCycleTimeHours(), doc.getTimeToFirstReviewHours(),
                 doc.isActive(), doc.getUpdatedAt(), doc.getVersion());
+        pr.setLinkedWorkItemExternalId(doc.getLinkedWorkItemExternalId());
+        return pr;
     }
 
     public GithubPullRequestDocument toDocument(GithubPullRequest pr) {
@@ -34,6 +36,7 @@ public class GithubPullRequestDocumentMapper {
                 .externalUpdatedAt(pr.getExternalUpdatedAt())
                 .cycleTimeHours(pr.getCycleTimeHours())
                 .timeToFirstReviewHours(pr.getTimeToFirstReviewHours())
+                .linkedWorkItemExternalId(pr.getLinkedWorkItemExternalId())
                 .active(pr.isActive())
                 .updatedAt(pr.getUpdatedAt())
                 .version(pr.getVersion())

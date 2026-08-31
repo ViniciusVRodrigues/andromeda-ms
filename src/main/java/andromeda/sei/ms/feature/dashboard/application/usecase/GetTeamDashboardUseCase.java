@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
 import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.github.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
@@ -44,7 +45,6 @@ public class GetTeamDashboardUseCase {
     private final GithubRepoRepository githubRepoRepository;
     private final GithubPullRequestRepository githubPullRequestRepository;
 
-    private static final long STALE_PR_THRESHOLD_HOURS = 24;
 
     public TeamDashboardOutput execute(String orgId, String authUserId, String projectId,
                                        String sprintId, LocalDate startDate, LocalDate endDate) {
@@ -158,9 +158,7 @@ public class GetTeamDashboardUseCase {
         Instant now = Instant.now();
 
         List<GithubPullRequest> stale = openPrs.stream()
-                .filter(pr -> pr.getTimeToFirstReviewHours() == null)
-                .filter(pr -> pr.getCreatedAt() != null
-                        && Duration.between(pr.getCreatedAt(), now).toHours() > STALE_PR_THRESHOLD_HOURS)
+                .filter(pr -> StalePullRequestPolicy.isStale(pr, now))
                 .toList();
 
         if (stale.isEmpty()) {

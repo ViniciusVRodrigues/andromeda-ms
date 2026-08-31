@@ -1,9 +1,12 @@
 package andromeda.sei.ms.feature.github.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
+import andromeda.sei.ms.feature.github.domain.GithubPullRequestPage;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -91,5 +94,46 @@ public class GithubPullRequestRepositoryImpl implements GithubPullRequestReposit
                 .set("timeToFirstReviewHours", timeToFirstReviewHours)
                 .set("updatedAt", Instant.now());
         mongoTemplate.updateFirst(query, update, GithubPullRequestDocument.class);
+    }
+
+    @Override
+    public GithubPullRequestPage findPageByRepo(String organizationId, String repoId,
+                                                 PullRequestStatus status, String authorUserId,
+                                                 int page, int size) {
+        Criteria criteria = Criteria.where("organizationId").is(organizationId)
+                .and("repoId").is(repoId)
+                .and("active").is(true);
+        if (status != null) criteria = criteria.and("status").is(status);
+        if (authorUserId != null && !authorUserId.isBlank()) {
+            criteria = criteria.and("authorGithubLogin").is(authorUserId);
+        }
+
+        // Counting before paging so the total reflects the same filter the page was cut from.
+        long total = mongoTemplate.count(Query.query(criteria), GithubPullRequestDocument.class);
+
+        Query query = Query.query(criteria)
+                .with(PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+        List<GithubPullRequest> content = mongoTemplate
+                .find(query, GithubPullRequestDocument.class)
+                .stream().map(mapper::toDomain).toList();
+
+        return new GithubPullRequestPage(content, page, size, total);
+    }
+
+    @Override
+    public List<String> findDistinctAuthorLoginsByRepo(String organizationId, String repoId) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("repoId").is(repoId)
+                .and("active").is(true));
+        return mongoTemplate.findDistinct(query, "authorGithubLogin",
+                        GithubPullRequestDocument.class, String.class)
+                .stream().sorted().toList();
+    }
+
+    @Override
+    public Optional<GithubPullRequest> findByIdAndOrganizationId(String id, String organizationId) {
+        Query query = Query.query(Criteria.where("_id").is(id).and("organizationId").is(organizationId));
+        return Optional.ofNullable(mongoTemplate.findOne(query, GithubPullRequestDocument.class))
+                .map(mapper::toDomain);
     }
 }

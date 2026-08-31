@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.github.application.dto.BindGithubRepoInput;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
 import andromeda.sei.ms.feature.github.domain.exception.GithubRepoAlreadyBoundException;
+import andromeda.sei.ms.feature.github.domain.exception.GithubRepoIdInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -109,5 +110,19 @@ class BindGithubRepoUseCaseTest {
 
     private GithubRepoBinding binding(String id, String projectId, String repoId) {
         return new GithubRepoBinding(id, ORG, projectId, repoId, true, null, true, NOW, NOW, 1L);
+    }
+
+    /**
+     * O repoId do binding E a chave owner/name pela qual o sync busca o repo, entao um valor
+     * malformado produz um binding que nunca sincroniza. Rejeitar no bind mantem a falha junto
+     * da entrada que a causou, em vez de estourar na primeira execucao do sync.
+     */
+    @Test
+    void shouldRejectBinding_when_repoIdIsNotOwnerSlashName() {
+        for (String malformed : new String[] { "andromeda-ms", "/andromeda-ms", "owner/", "a/b/c" }) {
+            assertThatThrownBy(() -> useCase.execute("proj-1", new BindGithubRepoInput(malformed, true)))
+                    .isInstanceOf(GithubRepoIdInvalidException.class);
+        }
+        verify(githubRepoBindingRepository, never()).save(any());
     }
 }

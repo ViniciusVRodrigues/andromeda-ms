@@ -59,7 +59,7 @@ class SyncGithubPullRequestsUseCaseTest {
     void shouldUpsertUsingOrganizationRepoExternalIdKey() {
         GhPullRequestDto dto = new GhPullRequestDto(123L, 7, "Title", "open",
                 new GhPullRequestDto.UserDto("octocat", 58421L),
-                "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", null, null);
+                "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", null, null, null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
 
         useCase.execute(connection, repo, null);
@@ -73,7 +73,7 @@ class SyncGithubPullRequestsUseCaseTest {
         // the GitHub API, while the login keeps being persisted for display/fallback.
         GhPullRequestDto dto = new GhPullRequestDto(10L, 10, "T", "open",
                 new GhPullRequestDto.UserDto("octocat", 58421L),
-                "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", null, null);
+                "2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z", null, null, null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
         when(githubAuthorResolver.resolve("org-1", 58421L)).thenReturn("user-42");
 
@@ -89,7 +89,7 @@ class SyncGithubPullRequestsUseCaseTest {
     void shouldDeriveStatusMerged_whenMergedAtPresent() {
         GhPullRequestDto dto = new GhPullRequestDto(1L, 1, "T", "closed",
                 new GhPullRequestDto.UserDto("octocat", 58421L),
-                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", "2024-01-02T00:00:00Z", "2024-01-02T00:00:00Z");
+                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", "2024-01-02T00:00:00Z", "2024-01-02T00:00:00Z", null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
 
         useCase.execute(connection, repo, null);
@@ -103,7 +103,7 @@ class SyncGithubPullRequestsUseCaseTest {
     void shouldDeriveStatusClosed_whenClosedWithoutMerge() {
         GhPullRequestDto dto = new GhPullRequestDto(2L, 2, "T", "closed",
                 new GhPullRequestDto.UserDto("octocat", 58421L),
-                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", null, "2024-01-02T00:00:00Z");
+                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", null, "2024-01-02T00:00:00Z", null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
 
         useCase.execute(connection, repo, null);
@@ -117,7 +117,7 @@ class SyncGithubPullRequestsUseCaseTest {
     void shouldDeriveStatusOpen_whenNeitherMergedNorClosed() {
         GhPullRequestDto dto = new GhPullRequestDto(3L, 3, "T", "open",
                 new GhPullRequestDto.UserDto("octocat", 58421L),
-                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", null, null);
+                "2024-01-01T00:00:00Z", "2024-01-03T00:00:00Z", null, null, null, null);
         when(githubApiClient.getPullRequests("octo", "hello", "Bearer plain-pat", null)).thenReturn(List.of(dto));
 
         useCase.execute(connection, repo, null);

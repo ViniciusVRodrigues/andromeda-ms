@@ -34,10 +34,21 @@ public class GithubConfigDocument {
     private int consecutiveFailures;
     private String lastErrorCode;
     private String lastErrorMessage;
+    private WorkItemLinkConfigDocument workItemLinkConfig;
     private boolean active = true;
     private Instant createdAt;
     private Instant updatedAt;
 
     @Version
     private Long version;
+
+    /** Embedded per the AzureProjectBindingDocument.WorkflowConfigDocument precedent. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class WorkItemLinkConfigDocument {
+        private boolean enabled;
+        private java.util.List<String> prefixes;
+    }
 }

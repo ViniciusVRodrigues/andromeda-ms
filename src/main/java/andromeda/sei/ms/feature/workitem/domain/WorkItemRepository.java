@@ -46,6 +46,10 @@ public interface WorkItemRepository {
      * values. Used by the classifier to resolve parent types for rank validation across a whole
      * page of candidates in one query.
      */
+ /** Batch lookup by external id, so a listing resolves all its references in one query. */
+    List<WorkItem> findAllByOrganizationIdAndExternalIdInAndSource(
+            String organizationId, List<String> externalIds, WorkItem.Source source);
+
     List<WorkItem> findByOrganizationIdAndProjectIdAndParentExternalIdIn(
             String organizationId, String projectId, List<String> parentExternalIds);
 

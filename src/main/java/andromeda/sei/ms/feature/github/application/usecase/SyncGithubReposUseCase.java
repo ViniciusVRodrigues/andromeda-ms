@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.github.application.usecase;
 import andromeda.sei.ms.feature.github.domain.GithubConnection;
 import andromeda.sei.ms.feature.github.domain.GithubRepo;
 import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
+import andromeda.sei.ms.feature.github.domain.GithubRepoFullName;
 import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhRepoDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
@@ -34,9 +35,13 @@ public class SyncGithubReposUseCase {
     private final EncryptionService encryptionService;
 
     public GithubRepo execute(GithubConnection connection, GithubRepoBinding binding) {
-        String[] ownerAndName = splitOwnerAndName(binding.getRepoId());
-        String owner = ownerAndName[0];
-        String name = ownerAndName[1];
+        GithubRepoFullName fullName = GithubRepoFullName.parseOrNull(binding.getRepoId());
+        if (fullName == null) {
+            throw new IllegalArgumentException(
+                    "GithubRepoBinding.repoId must be in 'owner/name' form: " + binding.getRepoId());
+        }
+        String owner = fullName.owner();
+        String name = fullName.name();
 
         String authHeader = "Bearer " + encryptionService.decrypt(connection.getPersonalAccessToken());
         String orgId = connection.getOrganizationId();
@@ -56,14 +61,6 @@ public class SyncGithubReposUseCase {
         repo.setExternalUpdatedAt(parseInstant(fetched.updatedAt()));
 
         return githubRepoRepository.save(repo);
-    }
-
-    private String[] splitOwnerAndName(String ownerSlashName) {
-        int slash = ownerSlashName.indexOf('/');
-        if (slash <= 0 || slash == ownerSlashName.length() - 1) {
-            throw new IllegalArgumentException("GithubRepoBinding.repoId must be in 'owner/name' form: " + ownerSlashName);
-        }
-        return new String[] { ownerSlashName.substring(0, slash), ownerSlashName.substring(slash + 1) };
     }
 
     private Instant parseInstant(String iso) {
