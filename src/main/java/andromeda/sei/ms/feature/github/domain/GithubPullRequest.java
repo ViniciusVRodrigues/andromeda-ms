@@ -19,6 +19,8 @@ public class GithubPullRequest {
     private Instant externalUpdatedAt;
     private Double cycleTimeHours;
     private Double timeToFirstReviewHours;
+    /** Azure work item externalId referenced by this PR; null when none was found. */
+    private String linkedWorkItemExternalId;
     private boolean active;
     private Instant updatedAt;
     private Long version;
@@ -101,4 +103,8 @@ public class GithubPullRequest {
 
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
+
+    public String getLinkedWorkItemExternalId() { return linkedWorkItemExternalId; }
+
+    public void setLinkedWorkItemExternalId(String linkedWorkItemExternalId) { this.linkedWorkItemExternalId = linkedWorkItemExternalId; }
 }

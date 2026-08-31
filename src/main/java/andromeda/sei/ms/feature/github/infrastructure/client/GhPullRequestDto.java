@@ -13,7 +13,17 @@ public record GhPullRequestDto(
         @JsonProperty("created_at") String createdAt,
         @JsonProperty("updated_at") String updatedAt,
         @JsonProperty("merged_at") String mergedAt,
-        @JsonProperty("closed_at") String closedAt) {
+        @JsonProperty("closed_at") String closedAt,
+        @JsonProperty("body") String body,
+        @JsonProperty("head") HeadDto head) {
+    /**
+     * {@code head.ref} is the source branch name. Both this and {@code body} already ship in
+     * the pull request payload, so reading them costs no additional request; they feed work
+     * item reference extraction.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record HeadDto(@JsonProperty("ref") String ref) {}
+
 
     /**
      * {@code id} is GitHub's numeric user id; used to resolve {@code authorUserId} against

@@ -305,6 +305,28 @@ public class GithubApiClient {
         return all;
     }
 
+
+    /**
+     * Commits of a single pull request. Synced commit rows carry no pull request reference,
+     * and the commits endpoint reports no branch, so this cannot be derived from stored data.
+     * Fetched on demand — one call when a user opens a pull request, rather than one per pull
+     * request on every sync run.
+     */
+    public List<GhCommitDto> getPullRequestCommits(String owner, String repo, int pullNumber,
+                                                    String authHeader) {
+        List<GhCommitDto> all = new ArrayList<>();
+        String url = BASE_URL + "/repos/" + owner + "/" + repo + "/pulls/" + pullNumber
+                + "/commits?per_page=100";
+
+        while (url != null) {
+            PagedResult<GhCommitDto> page = fetchPage(url, authHeader,
+                    new ParameterizedTypeReference<List<GhCommitDto>>() {});
+            all.addAll(page.items());
+            url = page.nextUrl();
+        }
+        return all;
+    }
+
     // ------------------------------------------------------------------
     // Issues (task 4.12) -- CFR corrective-issue lookup, caller unions bug+hotfix by id
     // ------------------------------------------------------------------

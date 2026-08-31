@@ -1,6 +1,7 @@
 package andromeda.sei.ms.shared.presentation.handler;
 
 import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderInvalidException;
+import andromeda.sei.ms.feature.github.domain.exception.PullRequestCommitsUnavailableException;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
@@ -48,6 +49,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ForbiddenOperationException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenOperationException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse.from(ex));
+    }
+
+/**
+     * A dependency of one section was unreachable while the rest of the response is valid.
+     * 503 rather than 500: the request was well formed and retrying later may succeed.
+     */
+    @ExceptionHandler(PullRequestCommitsUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleCommitsUnavailable(
+            PullRequestCommitsUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ErrorResponse.from(ex));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

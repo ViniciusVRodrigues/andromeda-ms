@@ -34,5 +34,8 @@ public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocumen
             String organizationId, String projectId, List<String> parentExternalIds);
 
     List<WorkItemDocument> findByOrganizationIdAndProjectIdAndParentExternalIdAndActiveTrueOrderByExternalIdAsc(
-            String organizationId, String projectId, String parentExternalId, Pageable pageable);
+            String organizationId, String projectId, String parentExternalId, Pageable pageable);
+
+    List<WorkItemDocument> findAllByOrganizationIdAndExternalIdInAndSource(
+            String organizationId, List<String> externalIds, WorkItem.Source source);
 }
