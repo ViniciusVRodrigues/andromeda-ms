@@ -28,8 +28,10 @@ public record TeamDashboardResponse(
     public record VelocityPointResponse(
             String sprintId,
             String sprintName,
+            double spPlanned,
             double storyPoints,
-            BigDecimal aiCostUsd
+            BigDecimal aiCostUsd,
+            Long totalTokens
     ) {}
 
     public record MemberMetricsResponse(

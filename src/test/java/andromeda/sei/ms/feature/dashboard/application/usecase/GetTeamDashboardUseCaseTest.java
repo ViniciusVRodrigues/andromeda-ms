@@ -232,4 +232,71 @@ class GetTeamDashboardUseCaseTest {
         assertThat(output.members().get(0).storyPointsDelivered()).isEqualTo(8.0);
         assertThat(output.teamVelocity()).isEqualTo(8.0);
     }
+
+    // ── dashboard-effort-ai-comparison: velocityTrend com planejado + tokens ──
+
+    @Test
+    void should_carrySpPlannedAndTotalTokens_inVelocityTrend() {
+        Sprint sprint = sprint(SPRINT_ID, "Sprint 25", Sprint.TimeFrame.CURRENT,
+                NOW.minusSeconds(864000), NOW.plusSeconds(86400));
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(sprint));
+        when(workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(ORG, PROJECT, SPRINT_ID))
+                .thenReturn(List.of(
+                        storyItem("wi-1", SPRINT_ID, "user-1", WorkItem.ResolvedStatus.DONE, 13.0),
+                        storyItem("wi-2", SPRINT_ID, "user-1", WorkItem.ResolvedStatus.DONE, 9.0),
+                        storyItem("wi-3", SPRINT_ID, "user-1", WorkItem.ResolvedStatus.IN_PROGRESS, 8.0)));
+        when(aiUsageRepository.findTotalCostByUserIdsAndDateRange(any(), any(), any(), any()))
+                .thenReturn(Map.of("user-1", new BigDecimal("0.72")));
+        when(aiUsageRepository.findTotalTokensByUserIdsAndDateRange(any(), any(), any(), any()))
+                .thenReturn(Map.of("user-1", 9000L));
+
+        TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
+
+        assertThat(output.velocityTrend()).hasSize(1);
+        TeamDashboardOutput.VelocityPoint point = output.velocityTrend().get(0);
+        // planned sums every story-tier item regardless of status; delivered stays DONE-only.
+        assertThat(point.spPlanned()).isEqualTo(30.0);
+        assertThat(point.storyPoints()).isEqualTo(22.0);
+        assertThat(point.totalTokens()).isEqualTo(9000L);
+        assertThat(point.aiCostUsd()).isEqualByComparingTo("0.72");
+    }
+
+    @Test
+    void should_nullTokensAndCost_inVelocityTrend_whenSprintHasNoDates() {
+        Sprint sprint = sprint(SPRINT_ID, "Sprint 26", Sprint.TimeFrame.PAST, null, null);
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(sprint));
+        when(workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(ORG, PROJECT, SPRINT_ID))
+                .thenReturn(List.of(
+                        storyItem("wi-1", SPRINT_ID, "user-1", WorkItem.ResolvedStatus.DONE, 5.0)));
+
+        TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, null, null, null);
+
+        TeamDashboardOutput.VelocityPoint point = output.velocityTrend().get(0);
+        assertThat(point.spPlanned()).isEqualTo(5.0);
+        assertThat(point.storyPoints()).isEqualTo(5.0);
+        assertThat(point.totalTokens()).isNull();
+        assertThat(point.aiCostUsd()).isNull();
+    }
+
+    private Sprint sprint(String id, String name, Sprint.TimeFrame frame,
+                          Instant startDate, Instant endDate) {
+        return new Sprint(id, ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                "ext-" + id, "team-1", "Team A", name, "/path",
+                startDate, endDate, frame, true, 1L, NOW, NOW);
+    }
+
+    private WorkItem storyItem(String id, String sprintId, String userId,
+                               WorkItem.ResolvedStatus status, double effort) {
+        return new WorkItem(id, ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                id, NOW, "Item " + id,
+                "Story", WorkItem.ResolvedType.STORY,
+                status.name(), status,
+                "Medium", effort, List.of(),
+                sprintId, "ext-" + userId, userId, null, null,
+                NOW, null, status == WorkItem.ResolvedStatus.DONE ? NOW : null,
+                null, null, null, true, 1L, NOW,
+                null, null, null, null, effort, null, null, null);
+    }
 }

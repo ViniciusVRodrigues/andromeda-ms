@@ -13,7 +13,8 @@ public class TeamDashboardMapper {
         List<TeamDashboardResponse.VelocityPointResponse> velocityTrend = output.velocityTrend() == null ? List.of() :
                 output.velocityTrend().stream()
                         .map(vp -> new TeamDashboardResponse.VelocityPointResponse(
-                                vp.sprintId(), vp.sprintName(), vp.storyPoints(), vp.aiCostUsd()))
+                                vp.sprintId(), vp.sprintName(), vp.spPlanned(), vp.storyPoints(),
+                                vp.aiCostUsd(), vp.totalTokens()))
                         .toList();
 
         List<TeamDashboardResponse.MemberMetricsResponse> members = output.members() == null ? List.of() :
