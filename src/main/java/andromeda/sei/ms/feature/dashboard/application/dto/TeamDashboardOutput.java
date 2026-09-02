@@ -33,8 +33,10 @@ public record TeamDashboardOutput(
     public record VelocityPoint(
             String sprintId,
             String sprintName,
+            double spPlanned,
             double storyPoints,
-            BigDecimal aiCostUsd
+            BigDecimal aiCostUsd,
+            Long totalTokens
     ) {}
 
     public record MemberMetrics(

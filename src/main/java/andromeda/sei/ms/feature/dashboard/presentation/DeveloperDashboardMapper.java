@@ -23,7 +23,9 @@ public class DeveloperDashboardMapper {
                                 wi.getComplexity(),
                                 wi.getComplexitySource() != null ? wi.getComplexitySource().name() : null,
                                 wi.getEffort(),
-                                wi.getEffortSource() != null ? wi.getEffortSource().name() : null
+                                wi.getEffortSource() != null ? wi.getEffortSource().name() : null,
+                                wi.getResolvedType(),
+                                wi.getExternalId()
                         ))
                         .toList();
 
@@ -66,6 +68,15 @@ public class DeveloperDashboardMapper {
             );
         }
 
+        List<DeveloperDashboardResponse.SprintHistoryResponse> sprintHistory =
+                output.sprintHistory() == null ? List.of() :
+                output.sprintHistory().stream()
+                        .map(p -> new DeveloperDashboardResponse.SprintHistoryResponse(
+                                p.sprintId(), p.name(), p.startDate(), p.endDate(),
+                                p.spPlanned(), p.spDelivered(), p.avgCycleTimeHours(),
+                                p.totalTokens(), p.totalCostUsd()))
+                        .toList();
+
         return new DeveloperDashboardResponse(
                 items,
                 output.avgCycleTimeHours(),
@@ -82,7 +93,8 @@ public class DeveloperDashboardMapper {
                 burndownSeries,
                 aiSprintSummary,
                 output.aiCostByWorkItemId(),
-                output.subscriptionCostPerUserUsd()
+                output.subscriptionCostPerUserUsd(),
+                sprintHistory
         );
     }
 }

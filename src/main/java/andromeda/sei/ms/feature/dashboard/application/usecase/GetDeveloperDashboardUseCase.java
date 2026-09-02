@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
+import andromeda.sei.ms.feature.dashboard.application.dto.SprintHistoryPoint;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
 import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
 import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
@@ -27,9 +28,11 @@ import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -48,6 +51,9 @@ public class GetDeveloperDashboardUseCase {
             effortBearingLevelResolver;
 
     private static final long PR_LOOKBACK_DAYS = 30;
+
+    /** Window of the comparison history: current sprint + up to 4 previous ones. */
+    private static final int SPRINT_HISTORY_LIMIT = 5;
 
     public DeveloperDashboardOutput execute(String orgId, String userId, String projectId, String sprintId,
                                             LocalDate startDate, LocalDate endDate, String model) {
@@ -136,6 +142,9 @@ public class GetDeveloperDashboardUseCase {
 
         int[] prCounts = computePrCounts(orgId, userId);
 
+        List<SprintHistoryPoint> sprintHistory =
+                computeSprintHistory(orgId, userId, projectId, sprintOpt.orElse(null));
+
         return new DeveloperDashboardOutput(
                 storyItems,
                 avgCycleTimeHours,
@@ -152,8 +161,80 @@ public class GetDeveloperDashboardUseCase {
                 burndownSeries,
                 aiSprintSummary,
                 aiCostByWorkItemId,
-                subscriptionCostPerUserUsd
+                subscriptionCostPerUserUsd,
+                sprintHistory
         );
+    }
+
+    /**
+     * Comparison history: up to {@link #SPRINT_HISTORY_LIMIT} sprints ending with the current
+     * one, in the same scope (project when given, otherwise the whole org). Each sprint's
+     * delivery numbers use the same effort-bearing-level resolution as the current-sprint
+     * metrics so the bars are honestly comparable. Sprints without dates are skipped; a
+     * sprint with no synced items is kept with zeroed SP (honest empty bar, not omission).
+     */
+    private List<SprintHistoryPoint> computeSprintHistory(String orgId, String userId,
+                                                           String projectId, Sprint current) {
+        if (current == null) {
+            return List.of();
+        }
+
+        List<Sprint> candidates = projectId != null
+                ? sprintRepository.findAllByOrganizationIdAndProjectId(orgId, projectId)
+                : sprintRepository.findAllByOrganizationId(orgId);
+
+        List<Sprint> ordered = candidates.stream()
+                .filter(s -> s.getId() != null && s.getStartDate() != null && s.getEndDate() != null)
+                .sorted(Comparator.comparing(Sprint::getStartDate))
+                .toList();
+
+        int currentIdx = -1;
+        for (int i = 0; i < ordered.size(); i++) {
+            if (ordered.get(i).getId().equals(current.getId())) {
+                currentIdx = i;
+                break;
+            }
+        }
+        // Window ends at the current sprint; when it is not in the scope list (e.g. resolved
+        // by sprintId across projects) fall back to the trailing window.
+        int end = currentIdx >= 0 ? currentIdx : ordered.size() - 1;
+        int from = Math.max(0, end - (SPRINT_HISTORY_LIMIT - 1));
+        List<Sprint> window = ordered.subList(from, end + 1);
+
+        List<SprintHistoryPoint> history = new ArrayList<>();
+        for (Sprint s : window) {
+            List<WorkItem> items = projectId != null
+                    ? workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(
+                            orgId, userId, s.getId(), projectId)
+                    : workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(
+                            orgId, userId, s.getId());
+            var level = effortBearingLevelResolver.resolve(null, items);
+            List<WorkItem> units = effortBearingLevelResolver.deliverableUnits(level, items);
+            List<WorkItem> done = units.stream()
+                    .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
+                    .toList();
+            Double planned = effortBearingLevelResolver.totalEffort(units, items);
+            Double delivered = effortBearingLevelResolver.totalEffort(done, items);
+            Double avgCycle = average(done.stream()
+                    .map(WorkItem::getCycleTimeHours)
+                    .filter(Objects::nonNull)
+                    .mapToDouble(Double::doubleValue)
+                    .toArray());
+            AiSprintSummary summary = computeAiSprintSummary(
+                    orgId, userId, toLocalDate(s.getStartDate()), toLocalDate(s.getEndDate()));
+
+            history.add(new SprintHistoryPoint(
+                    s.getId(),
+                    s.getName(),
+                    toLocalDate(s.getStartDate()),
+                    toLocalDate(s.getEndDate()),
+                    planned == null ? 0d : planned,
+                    delivered == null ? 0d : delivered,
+                    avgCycle,
+                    summary == null ? null : summary.totalTokens(),
+                    summary == null ? null : summary.totalCostUsd()));
+        }
+        return history;
     }
 
     private Map<String, BigDecimal> computeAiCostByWorkItem(String orgId, String userId,

@@ -177,7 +177,8 @@ public class AiUsageController {
         List<SprintItemResponse> response = getSprintItemsUseCase
                 .execute(orgId, user.getUserId())
                 .stream()
-                .map(i -> new SprintItemResponse(i.workItemId(), i.title(), i.sprintName()))
+                .map(i -> new SprintItemResponse(
+                        i.workItemId(), i.title(), i.sprintName(), i.type(), i.externalId(), i.storyPoints()))
                 .toList();
         return ResponseEntity.ok(response);
     }

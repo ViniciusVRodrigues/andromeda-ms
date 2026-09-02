@@ -8,6 +8,8 @@ public interface SprintRepository {
 
     Sprint save(Sprint sprint);
 
+    List<Sprint> findAllByOrganizationId(String organizationId);
+
     List<Sprint> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 
     Optional<Sprint> findByOrganizationIdAndExternalIdAndTeamId(

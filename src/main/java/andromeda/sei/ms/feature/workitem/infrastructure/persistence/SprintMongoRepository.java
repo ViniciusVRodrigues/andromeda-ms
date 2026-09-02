@@ -14,5 +14,7 @@ public interface SprintMongoRepository extends MongoRepository<SprintDocument, S
 
     Optional<SprintDocument> findByOrganizationIdAndPath(String organizationId, String path);
 
+    List<SprintDocument> findAllByOrganizationId(String organizationId);
+
     List<SprintDocument> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 }

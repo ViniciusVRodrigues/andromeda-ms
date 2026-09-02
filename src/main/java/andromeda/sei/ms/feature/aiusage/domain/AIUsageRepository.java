@@ -33,6 +33,9 @@ public interface AIUsageRepository {
     Map<String, BigDecimal> findTotalCostByUserIdsAndDateRange(
             String organizationId, List<String> userIds, LocalDate from, LocalDate to);
 
+    Map<String, Long> findTotalTokensByUserIdsAndDateRange(
+            String organizationId, List<String> userIds, LocalDate from, LocalDate to);
+
     List<AIUsage> findUnallocatedByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day);
 

@@ -190,7 +190,8 @@ public class AiUsageAllocationController {
         List<WorkItemCandidateResponse> response = getAllocationCandidates
                 .execute(orgId, user.getUserId(), day)
                 .stream()
-                .map(c -> new WorkItemCandidateResponse(c.workItemId(), c.title(), c.sprintName()))
+                .map(c -> new WorkItemCandidateResponse(
+                        c.workItemId(), c.title(), c.sprintName(), c.type(), c.externalId(), c.storyPoints()))
                 .toList();
         return ResponseEntity.ok(response);
     }

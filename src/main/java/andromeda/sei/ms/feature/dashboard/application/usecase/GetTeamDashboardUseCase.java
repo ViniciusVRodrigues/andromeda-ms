@@ -232,14 +232,22 @@ public class GetTeamDashboardUseCase {
         for (Sprint sprint : last6) {
             List<WorkItem> sprintItems = workItemRepository.findAllByOrganizationIdAndProjectIdAndSprintId(
                     orgId, projectId, sprint.getId());
-            double sp = sprintItems.stream()
+            List<WorkItem> storyTier = sprintItems.stream()
                     .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
+                    .toList();
+            // planned = effort of every story-tier item regardless of status (same semantics
+            // as the individual sprintHistory); delivered = DONE only.
+            double spPlanned = storyTier.stream()
+                    .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
+                    .sum();
+            double sp = storyTier.stream()
                     .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
                     .mapToDouble(wi -> wi.getEffort() != null ? wi.getEffort() : 0.0)
                     .sum();
             LocalDate sprintStart = toLocalDate(sprint.getStartDate());
             LocalDate sprintEnd = toLocalDate(sprint.getEndDate());
             BigDecimal sprintAiCost = null;
+            Long sprintTokens = null;
             if (sprintStart != null && sprintEnd != null) {
                 List<String> sprintUserIds = sprintItems.stream()
                         .map(WorkItem::getAssigneeUserId).filter(id -> id != null).distinct().toList();
@@ -247,8 +255,13 @@ public class GetTeamDashboardUseCase {
                         orgId, sprintUserIds, sprintStart, sprintEnd);
                 sprintAiCost = sprintCost.values().stream().filter(v -> v != null)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
+                Map<String, Long> tokensByUser = aiUsageRepository.findTotalTokensByUserIdsAndDateRange(
+                        orgId, sprintUserIds, sprintStart, sprintEnd);
+                sprintTokens = tokensByUser.values().stream().filter(v -> v != null)
+                        .reduce(0L, Long::sum);
             }
-            trend.add(new TeamDashboardOutput.VelocityPoint(sprint.getId(), sprint.getName(), sp, sprintAiCost));
+            trend.add(new TeamDashboardOutput.VelocityPoint(
+                    sprint.getId(), sprint.getName(), spPlanned, sp, sprintAiCost, sprintTokens));
         }
         return trend;
     }

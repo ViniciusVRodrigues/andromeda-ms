@@ -39,7 +39,13 @@ public class GetAllocationCandidatesUseCase {
                     // attribute their AI usage to.
                     var level = effortBearingLevelResolver.resolve(null, sprintItems);
                     return effortBearingLevelResolver.deliverableUnits(level, sprintItems).stream()
-                            .map(wi -> new WorkItemCandidateOutput(wi.getId(), wi.getTitle(), sprint.getName()));
+                            .map(wi -> new WorkItemCandidateOutput(
+                                    wi.getId(),
+                                    wi.getTitle(),
+                                    sprint.getName(),
+                                    wi.getResolvedType() != null ? wi.getResolvedType().name() : null,
+                                    wi.getExternalId(),
+                                    wi.getEffort() != null ? wi.getEffort() : wi.getStoryPoints()));
                 })
                 .toList();
     }

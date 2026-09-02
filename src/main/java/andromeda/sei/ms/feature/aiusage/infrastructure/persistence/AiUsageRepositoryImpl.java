@@ -230,6 +230,35 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     }
 
     @Override
+    public Map<String, Long> findTotalTokensByUserIdsAndDateRange(
+            String organizationId, List<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) {
+            return java.util.Map.of();
+        }
+        Criteria criteria = Criteria.where("organizationId").is(organizationId)
+                .and("userId").in(userIds)
+                .and("active").is(true)
+                .and("day").gte(from).lte(to);
+
+        MatchOperation match = Aggregation.match(criteria);
+        GroupOperation group = Aggregation.group("userId")
+                .sum("inputTokens").as("inputTotal")
+                .sum("outputTokens").as("outputTotal");
+        Aggregation agg = Aggregation.newAggregation(match, group);
+
+        AggregationResults<Map> results = mongoTemplate.aggregate(agg, AiUsageDocument.class, Map.class);
+
+        java.util.Map<String, Long> resultMap = new java.util.HashMap<>();
+        for (Map r : results.getMappedResults()) {
+            String uid = (String) r.get("_id");
+            if (uid != null) {
+                resultMap.put(uid, toLong(r.get("inputTotal")) + toLong(r.get("outputTotal")));
+            }
+        }
+        return resultMap;
+    }
+
+    @Override
     public List<AIUsage> findAllByOrganizationId(String organizationId) {
         return mongoRepository.findByOrganizationIdAndActiveTrue(organizationId)
                 .stream().map(mapper::toDomain).toList();

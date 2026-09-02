@@ -33,7 +33,13 @@ public class GetSprintItemsUseCase {
                             organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS);
             for (WorkItem item : items) {
                 String sprintName = sprintNameById.getOrDefault(item.getSprintId(), sprint.getName());
-                results.add(new SprintItemOutput(item.getId(), item.getTitle(), sprintName));
+                results.add(new SprintItemOutput(
+                        item.getId(),
+                        item.getTitle(),
+                        sprintName,
+                        item.getResolvedType() != null ? item.getResolvedType().name() : null,
+                        item.getExternalId(),
+                        item.getEffort() != null ? item.getEffort() : item.getStoryPoints()));
             }
         }
         return results;
