@@ -413,6 +413,83 @@ class GetDeveloperDashboardUseCaseTest {
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
+    // sprintHistory (dashboard-rework-and-pricing 1.4)
+
+    @Test
+    void should_compute_sprintHistory_window_ending_at_current_with_zeroed_empty_sprint_kept() {
+        Sprint current = sprint(SPRINT_START, SPRINT_END); // June 1–10, id SPRINT_ID
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(current));
+
+        Sprint may1 = sprintWithId("sprint-may1", "Sprint 21",
+                LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10));
+        Sprint may20 = sprintWithId("sprint-may20", "Sprint 22",
+                LocalDate.of(2026, 5, 20), LocalDate.of(2026, 5, 31));
+        when(sprintRepository.findAllByOrganizationId(ORG))
+                .thenReturn(List.of(may1, may20, current));
+
+        WorkItem doneMay1 = workItem("wi-may-1", WorkItem.ResolvedStatus.DONE, 10.0, 4.0,
+                LocalDate.of(2026, 5, 5).atStartOfDay(ZoneOffset.UTC).toInstant());
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-may1"))
+                .thenReturn(List.of(doneMay1));
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-may20"))
+                .thenReturn(List.of());
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of());
+
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.sprintHistory()).hasSize(3);
+        assertThat(output.sprintHistory()).extracting("sprintId")
+                .containsExactly("sprint-may1", "sprint-may20", SPRINT_ID);
+        // Sprint 21 entregou 10 SP; Sprint 22 sem itens aparece zerada (barra honesta), nao some.
+        assertThat(output.sprintHistory().get(0).spDelivered()).isEqualTo(10.0);
+        assertThat(output.sprintHistory().get(0).avgCycleTimeHours()).isEqualTo(4.0);
+        assertThat(output.sprintHistory().get(1).spPlanned()).isEqualTo(0.0);
+        assertThat(output.sprintHistory().get(1).spDelivered()).isEqualTo(0.0);
+        // sem uso de IA -> tokens/custo null (ausencia), nao zero inventado
+        assertThat(output.sprintHistory().get(0).totalTokens()).isNull();
+    }
+
+    @Test
+    void should_cap_sprintHistory_to_five_sprints_ending_at_current() {
+        Sprint current = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(current));
+
+        java.util.List<Sprint> many = new java.util.ArrayList<>();
+        for (int i = 1; i <= 7; i++) {
+            many.add(sprintWithId("s-" + i, "Sprint " + i,
+                    LocalDate.of(2026, 1, i * 3), LocalDate.of(2026, 1, i * 3 + 2)));
+        }
+        many.add(current);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(many);
+
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.sprintHistory()).hasSize(5);
+        assertThat(output.sprintHistory().get(4).sprintId()).isEqualTo(SPRINT_ID);
+        assertThat(output.sprintHistory().get(0).sprintId()).isEqualTo("s-4");
+    }
+
+    private Sprint sprintWithId(String id, String name, LocalDate start, LocalDate end) {
+        return new Sprint(id, ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                "ext-" + id, "team-1", "Team A", name, "/path/" + id,
+                start.atStartOfDay(ZoneOffset.UTC).toInstant(),
+                end.atStartOfDay(ZoneOffset.UTC).toInstant(),
+                Sprint.TimeFrame.PAST, true, 1L, Instant.now(), Instant.now());
+    }
+
     private Sprint sprint(LocalDate start, LocalDate end) {
         Instant startInstant = start.atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant endInstant = end.atStartOfDay(ZoneOffset.UTC).toInstant();

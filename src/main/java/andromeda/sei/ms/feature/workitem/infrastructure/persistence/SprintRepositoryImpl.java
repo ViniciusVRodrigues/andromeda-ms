@@ -79,6 +79,12 @@ public class SprintRepositoryImpl implements SprintRepository {
     }
 
     @Override
+    public List<Sprint> findAllByOrganizationId(String organizationId) {
+        return mongoRepository.findAllByOrganizationId(organizationId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public List<Sprint> findAllByOrganizationIdAndProjectId(String organizationId, String projectId) {
         return mongoRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId)
                 .stream().map(mapper::toDomain).toList();

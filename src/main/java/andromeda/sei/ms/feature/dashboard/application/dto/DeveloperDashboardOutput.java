@@ -23,5 +23,6 @@ public record DeveloperDashboardOutput(
         List<BurndownPoint> burndownSeries,
         AiSprintSummary aiSprintSummary,
         Map<String, BigDecimal> aiCostByWorkItemId,
-        BigDecimal subscriptionCostPerUserUsd
+        BigDecimal subscriptionCostPerUserUsd,
+        List<SprintHistoryPoint> sprintHistory
 ) {}

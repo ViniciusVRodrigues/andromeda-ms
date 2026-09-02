@@ -71,7 +71,7 @@ class DeveloperDashboardControllerTest {
     void should_return200WithDashboardData_when_authenticated() throws Exception {
         DeveloperDashboardOutput output = new DeveloperDashboardOutput(
                 List.of(), null, null, null, null, List.of(), BigDecimal.ZERO, null, null, null,
-                List.of(), 0, List.of(), null, null, null);
+                List.of(), 0, List.of(), null, null, null, List.of());
         DeveloperDashboardResponse response = mapper.toResponse(output);
 
         when(getDeveloperDashboardUseCase.execute(
@@ -88,7 +88,7 @@ class DeveloperDashboardControllerTest {
     void should_return200_when_queryParamsProvided() throws Exception {
         DeveloperDashboardOutput output = new DeveloperDashboardOutput(
                 List.of(), 4.5, 8.0, 5.0, 10.0, List.of(), new BigDecimal("12.50"), 250.0, null, null,
-                List.of(), 0, List.of(), null, null, null);
+                List.of(), 0, List.of(), null, null, null, List.of());
 
         when(getDeveloperDashboardUseCase.execute(any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(output);
