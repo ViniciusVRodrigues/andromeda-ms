@@ -50,14 +50,14 @@ public class GetDeveloperDashboardUseCase {
     private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
             effortBearingLevelResolver;
 
-    private static final long PR_LOOKBACK_DAYS = 30;
+
 
     /** Window of the comparison history: current sprint + up to 4 previous ones. */
     private static final int SPRINT_HISTORY_LIMIT = 5;
 
     public DeveloperDashboardOutput execute(String orgId, String userId, String projectId, String sprintId,
                                             LocalDate startDate, LocalDate endDate, String model) {
-        Optional<Sprint> sprintOpt = resolveCurrentSprint(orgId, projectId, sprintId);
+        Optional<Sprint> sprintOpt = resolveCurrentSprint(orgId, userId, projectId, sprintId);
 
         List<WorkItem> currentSprintItems = sprintOpt
                 .map(sprint -> projectId != null
@@ -140,7 +140,23 @@ public class GetDeveloperDashboardUseCase {
                 .map(org -> org.getSubscriptionCostPerUserUsd())
                 .orElse(null);
 
-        int[] prCounts = computePrCounts(orgId, userId);
+        LocalDate prFrom = sprintStart != null ? sprintStart : startDate != null ? startDate : LocalDate.now().minusDays(30);
+        LocalDate prTo = sprintEnd != null ? sprintEnd : endDate != null ? endDate : LocalDate.now();
+        List<GithubPullRequest> prs = githubPullRequestRepository
+                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(orgId, userId,
+                        prFrom.atStartOfDay(ZoneOffset.UTC).toInstant(), prTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1))
+                .stream().filter(GithubPullRequest::isActive).toList();
+        int[] prCounts = { (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count(),
+                (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).count() };
+        var context = new andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext(
+                sprintOpt.map(Sprint::getId).orElse(null), sprintOpt.map(Sprint::getName).orElse(null), prFrom, prTo,
+                average(prs.stream().map(GithubPullRequest::getTimeToFirstReviewHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
+                average(prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).map(GithubPullRequest::getCycleTimeHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
+                (int) prs.stream().filter(pr -> pr.getTimeToFirstReviewHours() != null).count(),
+                prs.stream().sorted(Comparator.comparing(GithubPullRequest::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                        .limit(20).map(pr -> new andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext.PullRequest(
+                                pr.getId(), pr.getNumber(), pr.getTitle(), pr.getStatus().name(), pr.getTimeToFirstReviewHours(),
+                                pr.getCycleTimeHours(), pr.getLinkedWorkItemExternalId())).toList());
 
         List<SprintHistoryPoint> sprintHistory =
                 computeSprintHistory(orgId, userId, projectId, sprintOpt.orElse(null));
@@ -162,7 +178,8 @@ public class GetDeveloperDashboardUseCase {
                 aiSprintSummary,
                 aiCostByWorkItemId,
                 subscriptionCostPerUserUsd,
-                sprintHistory
+                sprintHistory,
+                context
         );
     }
 
@@ -374,32 +391,18 @@ public class GetDeveloperDashboardUseCase {
     }
 
 
-    /**
-     * openPrs/mergedPrs over the last 30 days. Returns {openCount, mergedCount}; both are 0
-     * (not null) when the developer has no linked GitHub account or no PR activity — authorUserId
-     * on github_pull_requests is only populated for linked accounts, so an unlinked developer
-     * simply matches zero rows here (design.md D2).
-     */
-    private int[] computePrCounts(String orgId, String userId) {
-        Instant to = Instant.now();
-        Instant from = to.minus(PR_LOOKBACK_DAYS, ChronoUnit.DAYS);
-
-        List<GithubPullRequest> prs = githubPullRequestRepository
-                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(orgId, userId, from, to);
-
-        int open = (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count();
-        int merged = (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).count();
-        return new int[] { open, merged };
-    }
-
-    private Optional<Sprint> resolveCurrentSprint(String orgId, String projectId, String sprintId) {
+    private Optional<Sprint> resolveCurrentSprint(String orgId, String userId, String projectId, String sprintId) {
         if (sprintId != null) {
-            return sprintRepository.findById(sprintId);
+            return sprintRepository.findAllByOrganizationId(orgId).stream()
+                    .filter(s -> s.isActive() && sprintId.equals(s.getId()) && (projectId == null || projectId.equals(s.getProjectId())))
+                    .findFirst();
         }
-        if (projectId != null) {
-            return sprintRepository.findCurrentSprintByOrganizationIdAndProjectId(orgId, projectId);
-        }
-        return sprintRepository.findCurrentSprintsByOrganizationId(orgId).stream().findFirst();
+        List<Sprint> current = sprintRepository.findCurrentSprintsByOrganizationId(orgId).stream()
+                .filter(s -> s.isActive() && (projectId == null || projectId.equals(s.getProjectId())))
+                .sorted(Comparator.comparing(Sprint::getStartDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                .toList();
+        return current.stream().filter(s -> !workItemRepository
+                .findByOrganizationIdAndAssigneeUserIdAndSprintId(orgId, userId, s.getId()).isEmpty()).findFirst();
     }
 
     private Double average(double[] values) {

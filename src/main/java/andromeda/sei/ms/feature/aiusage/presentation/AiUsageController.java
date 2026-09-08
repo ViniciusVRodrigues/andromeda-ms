@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.aiusage.presentation;
 
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryByMonthUseCase;
+import andromeda.sei.ms.feature.aiusage.application.usecase.GetDailyAiUsageUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.RecalculateAiCostsUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetSprintItemsUseCase;
@@ -51,11 +52,29 @@ public class AiUsageController {
     private final UserRepository userRepository;
     private final RecalculateAiCostsUseCase recalculateAiCostsUseCase;
 
+    private final GetDailyAiUsageUseCase getDailyAiUsageUseCase;
+
+    @Operation(summary = "Consumo diário de IA no mês")
+    @ApiResponse(responseCode = "200", description = "Consumo diário retornado")
+    @GetMapping("/usage/daily")
+    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
+    public ResponseEntity<?> dailyUsage(@RequestParam(required = false) String month,
+                                       @RequestParam(required = false) String userId) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean canReadOthers = auth.getAuthorities().stream().map(GrantedAuthority::getAuthority)
+                .anyMatch(p -> p.equals("DASHBOARD_TEAM") || p.equals("AI_READ_ALL"));
+        if (userId != null && !userId.equals(auth.getName()) && !canReadOthers) {
+            throw new ForbiddenOperationException("AI_USAGE_SUMMARY_FORBIDDEN", "Sem permissão para consultar outro usuário");
+        }
+        return ResponseEntity.ok(getDailyAiUsageUseCase.execute(TenantContextHolder.get(),
+                userId == null ? auth.getName() : userId, month == null ? YearMonth.now() : YearMonth.parse(month)));
+    }
+
     @Operation(summary = "Get AI usage summary (date-range)", description = "Returns aggregate token/cost summary, optionally grouped by model. Pass ?userId only with DASHBOARD_TEAM permission to view another user's data.")
     @ApiResponse(responseCode = "200", description = "Summary returned")
     @ApiResponse(responseCode = "403", description = "Not authorised to view another user's summary")
     @GetMapping("/summary")
-    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
     public ResponseEntity<?> getSummary(
             @AuthenticationPrincipal AndromedaUserDetails userDetails,
             @RequestParam(required = false) String userId,
@@ -67,7 +86,7 @@ public class AiUsageController {
         String callerUserId = userDetails.getUserId();
         boolean hasDashboardTeam = userDetails.getAuthorities().stream()
                 .map(a -> a.getAuthority())
-                .anyMatch("DASHBOARD_TEAM"::equals);
+                .anyMatch(p -> p.equals("DASHBOARD_TEAM") || p.equals("AI_READ_ALL"));
         if (userId != null && !userId.equals(callerUserId) && !hasDashboardTeam) {
             throw new ForbiddenOperationException("AI_USAGE_SUMMARY_FORBIDDEN",
                     "You are not authorised to view another user's usage summary");
@@ -98,7 +117,7 @@ public class AiUsageController {
     @ApiResponse(responseCode = "200", description = "Fluency score returned (empty when not computed yet)")
     @ApiResponse(responseCode = "403", description = "Not authorised to view another user's fluency score")
     @GetMapping("/fluency-score")
-    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
     public ResponseEntity<FluencyScoreResponse> getFluencyScore(
             @RequestParam(required = false) String userId) {
 
@@ -106,7 +125,7 @@ public class AiUsageController {
         String callerUserId = auth.getName();
         boolean hasDashboardTeam = auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch("DASHBOARD_TEAM"::equals);
+                .anyMatch(p -> p.equals("DASHBOARD_TEAM") || p.equals("AI_READ_ALL"));
 
         if (userId != null && !userId.equals(callerUserId) && !hasDashboardTeam) {
             throw new ForbiddenOperationException("FLUENCY_SCORE_FORBIDDEN",
@@ -131,7 +150,7 @@ public class AiUsageController {
     @Operation(summary = "Get AI usage summary by month", description = "Returns monthly aggregate with model breakdown")
     @ApiResponse(responseCode = "200", description = "Monthly summary returned")
     @GetMapping("/usage/summary")
-    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
     public ResponseEntity<AiUsageSummaryByMonthResponse> getUsageSummaryByMonth(
             @RequestParam(required = false) String month,
             @RequestParam(required = false) String userId) {
@@ -140,7 +159,7 @@ public class AiUsageController {
         String callerUserId = auth.getName();
         boolean hasDashboardTeam = auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
-                .anyMatch("DASHBOARD_TEAM"::equals);
+                .anyMatch(p -> p.equals("DASHBOARD_TEAM") || p.equals("AI_READ_ALL"));
 
         if (userId != null && !userId.equals(callerUserId) && !hasDashboardTeam) {
             throw new ForbiddenOperationException("AI_USAGE_SUMMARY_FORBIDDEN",
@@ -170,7 +189,7 @@ public class AiUsageController {
     @Operation(summary = "Get sprint items for allocation", description = "Returns work items in current sprints assigned to the authenticated user")
     @ApiResponse(responseCode = "200", description = "Sprint items returned")
     @GetMapping("/sprint-items")
-    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
     public ResponseEntity<List<SprintItemResponse>> getSprintItems(
             @AuthenticationPrincipal AndromedaUserDetails user) {
         String orgId = TenantContextHolder.get();
@@ -186,7 +205,7 @@ public class AiUsageController {
     @Operation(summary = "Get team members", description = "Returns all active users in the organisation (requires DASHBOARD_TEAM)")
     @ApiResponse(responseCode = "200", description = "Team members returned")
     @GetMapping("/team-members")
-    @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
+    @PreAuthorize("hasAnyAuthority('DASHBOARD_TEAM', 'AI_READ_ALL')")
     public ResponseEntity<List<TeamMemberResponse>> getTeamMembers() {
         String orgId = TenantContextHolder.get();
         List<TeamMemberResponse> members = userRepository.findAllByOrganizationId(orgId).stream()

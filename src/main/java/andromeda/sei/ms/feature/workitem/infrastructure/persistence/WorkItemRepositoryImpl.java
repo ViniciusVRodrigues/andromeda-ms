@@ -24,6 +24,11 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     private final MongoTemplate mongoTemplate;
 
     @Override
+    public Optional<WorkItem> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId) {
+        return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).map(mapper::toDomain);
+    }
+
+    @Override
     public WorkItem save(WorkItem workItem) {
         WorkItemDocument doc = mapper.toDocument(workItem);
         Instant now = Instant.now();

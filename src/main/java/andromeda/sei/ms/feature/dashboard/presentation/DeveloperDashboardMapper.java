@@ -94,7 +94,8 @@ public class DeveloperDashboardMapper {
                 aiSprintSummary,
                 output.aiCostByWorkItemId(),
                 output.subscriptionCostPerUserUsd(),
-                sprintHistory
+                sprintHistory,
+                output.sprintContext()
         );
     }
 }

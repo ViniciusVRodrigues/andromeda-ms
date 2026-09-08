@@ -9,6 +9,8 @@ import java.util.Optional;
 
 public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocument, String> {
 
+    Optional<WorkItemDocument> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
+
     Optional<WorkItemDocument> findByOrganizationIdAndExternalIdAndSource(
             String organizationId, String externalId, WorkItem.Source source);
 
