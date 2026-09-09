@@ -96,7 +96,7 @@ public class AuthController {
 
     @Operation(summary = "Redefinir a senha com o token recebido por e-mail")
     @ApiResponse(responseCode = "204", description = "Senha redefinida")
-    @ApiResponse(responseCode = "400", description = "Token inválido, expirado ou já usado; ou senha fora das regras")
+    @ApiResponse(responseCode = "422", description = "Token inválido, expirado ou já usado; ou senha fora das regras")
     @PostMapping("/password-reset/confirm")
     public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody ConfirmPasswordResetRequest request,
                                                      HttpServletRequest http) {

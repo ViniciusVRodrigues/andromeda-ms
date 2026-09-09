@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.net.URLEncoder;
 import java.time.Duration;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.time.Instant;
 
 /**
@@ -29,6 +31,15 @@ public class RequestPasswordResetUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(RequestPasswordResetUseCase.class);
     private static final Duration TTL = Duration.ofMinutes(30);
+
+    /* Pool minimo e dedicado: o envio nao deve competir com as threads que
+     * atendem requisicoes nem atrasar a resposta. */
+    private static final Executor MAIL_EXECUTOR =
+            Executors.newFixedThreadPool(2, r -> {
+                Thread t = new Thread(r, "password-reset-mail");
+                t.setDaemon(true);
+                return t;
+            });
 
     private final PasswordResetRepository passwordResetRepository;
     private final UserRepository userRepository;
@@ -61,12 +72,17 @@ public class RequestPasswordResetUseCase {
         String link = frontendUrlResolver.resolve()
                 + "/redefinir-senha?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
 
-        /* A falha de envio nao pode alterar a resposta — se alterasse, o erro
-         * viraria justamente o sinal que estamos evitando dar. Fica no log. */
-        try {
-            emailService.sendPasswordReset(email, link);
-        } catch (RuntimeException ex) {
-            log.error("failed to deliver password reset e-mail", ex);
-        }
+        /* Envio FORA da requisicao. Sincrono, a chamada ao provedor levava ~1s
+         * para e-mail existente contra ~6ms para inexistente — a latencia
+         * denunciava a existencia da conta, que e justamente o que a resposta
+         * 202 uniforme tenta esconder. A falha tambem nao pode alterar a
+         * resposta, entao fica no log. */
+        MAIL_EXECUTOR.execute(() -> {
+            try {
+                emailService.sendPasswordReset(email, link);
+            } catch (RuntimeException ex) {
+                log.error("failed to deliver password reset e-mail", ex);
+            }
+        });
     }
 }

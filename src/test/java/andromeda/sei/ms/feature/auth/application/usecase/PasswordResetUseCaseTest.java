@@ -71,7 +71,10 @@ class PasswordResetUseCaseTest {
         request.execute("dev@example.test");
 
         assertThat(previous.getUsedAt()).as("o link anterior deixa de valer").isNotNull();
-        verify(emailService).sendPasswordReset(eq("dev@example.test"), contains("/redefinir-senha?token="));
+        /* O envio saiu da requisicao para nao vazar a existencia da conta pela
+         * latencia, entao a verificacao precisa aguardar a outra thread. */
+        verify(emailService, timeout(2000))
+                .sendPasswordReset(eq("dev@example.test"), contains("/redefinir-senha?token="));
     }
 
     @Test
@@ -84,6 +87,8 @@ class PasswordResetUseCaseTest {
         assertThatNoException()
                 .as("falhar o envio nao pode virar o sinal que estamos evitando dar")
                 .isThrownBy(() -> request.execute("dev@example.test"));
+
+        verify(emailService, timeout(2000)).sendPasswordReset(anyString(), anyString());
     }
 
     @Test
@@ -97,7 +102,7 @@ class PasswordResetUseCaseTest {
         ArgumentCaptor<PasswordReset> saved = ArgumentCaptor.forClass(PasswordReset.class);
         verify(resets).save(saved.capture());
         ArgumentCaptor<String> link = ArgumentCaptor.forClass(String.class);
-        verify(emailService).sendPasswordReset(anyString(), link.capture());
+        verify(emailService, timeout(2000)).sendPasswordReset(anyString(), link.capture());
 
         String token = link.getValue().substring(link.getValue().indexOf("token=") + 6);
         assertThat(saved.getValue().getTokenHash()).isNotEqualTo(token);
