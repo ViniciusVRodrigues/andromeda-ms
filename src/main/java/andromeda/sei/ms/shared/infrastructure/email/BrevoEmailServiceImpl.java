@@ -51,6 +51,15 @@ public class BrevoEmailServiceImpl implements EmailService {
         send(email, "Você foi convidado para o Andromeda", buildInviteHtml(name, inviteLink));
     }
 
+    @Override
+    public void sendPasswordReset(String email, String resetLink) {
+        if (!emailEnabled) {
+            log.debug("email disabled — skipping password reset send to {}", email);
+            return;
+        }
+        send(email, "Redefinição de senha Andromeda", buildPasswordResetHtml(resetLink));
+    }
+
     // ── Shared email shell ────────────────────────────────────────────────────
 
     private String emailShell(String heroLabel, String heroTitle, String bodyRows) {
@@ -199,6 +208,47 @@ public class BrevoEmailServiceImpl implements EmailService {
                 </tr>
                 """.formatted(greeting, inviteLink, inviteLink, inviteLink);
         return emailShell("Convite", "Você foi convidado.", rows);
+    }
+
+    // ── Password reset ────────────────────────────────────────────────────────
+
+    private String buildPasswordResetHtml(String resetLink) {
+        String rows = """
+                <tr>
+                  <td style="padding:36px 32px 32px;">
+                    <p style="margin:0 0 6px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:800;letter-spacing:0.22em;text-transform:uppercase;color:#5c6478;">Redefinição de senha</p>
+                    <h2 style="margin:0 0 16px;font-family:'DM Serif Display',Georgia,serif;font-size:24px;font-weight:400;color:#F4E3C9;line-height:1.3;">Defina uma nova senha.</h2>
+                    <p style="margin:0 0 32px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;font-weight:400;color:#9a8e7e;line-height:1.8;">
+                      Recebemos um pedido para redefinir a senha desta conta.<br><br>
+                      Clique no botão abaixo para escolher uma nova senha.
+                    </p>
+
+                    <!-- CTA button -->
+                    <table cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                      <tr>
+                        <td style="border-radius:999px;background:#C68B66;">
+                          <a href="%s"
+                             style="display:inline-block;padding:14px 32px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:#0e131c;text-decoration:none;">
+                            Redefinir minha senha &rarr;
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <p style="margin:0 0 20px;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;font-weight:400;color:#5c6478;line-height:1.8;">
+                      &#x2022; Válido por <span style="color:#F4E3C9;font-weight:800;">30 minutos</span><br>
+                      &#x2022; O link pode ser usado uma única vez<br>
+                      &#x2022; Se você não pediu isso, ignore este e-mail — sua senha continua a mesma
+                    </p>
+
+                    <p style="margin:0;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;font-weight:400;color:#3d4f63;line-height:1.7;">
+                      Se o botão não funcionar, copie e cole este endereço no seu navegador:<br>
+                      <a href="%s" style="color:#C68B66;text-decoration:none;word-break:break-all;">%s</a>
+                    </p>
+                  </td>
+                </tr>
+                """.formatted(resetLink, resetLink, resetLink);
+        return emailShell("Segurança", "Redefinir senha.", rows);
     }
 
     private void send(String toEmail, String subject, String htmlBody) {
