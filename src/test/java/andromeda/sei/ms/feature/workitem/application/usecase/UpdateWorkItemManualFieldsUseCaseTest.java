@@ -30,6 +30,9 @@ class UpdateWorkItemManualFieldsUseCaseTest {
     @Mock
     private WorkItemRepository workItemRepository;
 
+    @Mock
+    private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository bindingRepository;
+
     @InjectMocks
     private UpdateWorkItemManualFieldsUseCase useCase;
 
@@ -48,7 +51,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
     @Test
     void shouldSetComplexityAsManualOverride() {
         WorkItem existing = workItem("wi-1", "org-1");
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(existing));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
         when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
@@ -68,7 +71,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
     @Test
     void shouldSetEffortAsManualOverride() {
         WorkItem existing = workItem("wi-1", "org-1");
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(existing));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
         when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
@@ -89,7 +92,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
         existing.setComplexitySource(FieldValueSource.MANUAL_OVERRIDE);
         existing.setComplexityOverriddenBy("user-1");
         existing.setComplexityOverriddenAt(NOW);
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(existing));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
         when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
@@ -111,7 +114,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
         existing.setEffortSource(FieldValueSource.MANUAL_OVERRIDE);
         existing.setEffortOverriddenBy("user-2");
         existing.setEffortOverriddenAt(NOW);
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(existing));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
         when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
@@ -127,7 +130,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
 
     @Test
     void shouldThrowWhenWorkItemNotFound() {
-        when(workItemRepository.findById("missing")).thenReturn(Optional.empty());
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("missing", "org-1")).thenReturn(Optional.empty());
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
                 true, 5.0, false, false, null, false);
@@ -139,7 +142,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
     @Test
     void shouldThrowWhenWorkItemBelongsToDifferentOrganization() {
         WorkItem otherOrgItem = workItem("wi-1", "org-2");
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(otherOrgItem));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(otherOrgItem));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
                 true, 5.0, false, false, null, false);
@@ -152,7 +155,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
     void shouldThrowWhenWorkItemIsInactive() {
         WorkItem inactive = workItem("wi-1", "org-1");
         inactive.setActive(false);
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(inactive));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(inactive));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
                 true, 5.0, false, false, null, false);
@@ -166,7 +169,7 @@ class UpdateWorkItemManualFieldsUseCaseTest {
         WorkItem existing = workItem("wi-1", "org-1");
         existing.setComplexity(3.0);
         existing.setComplexitySource(FieldValueSource.AZURE_SYNC);
-        when(workItemRepository.findById("wi-1")).thenReturn(Optional.of(existing));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
         when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         UpdateWorkItemManualFieldsInput input = new UpdateWorkItemManualFieldsInput(
@@ -189,5 +192,17 @@ class UpdateWorkItemManualFieldsUseCaseTest {
                 null, null, List.of(), null, null, null, null, null,
                 NOW, null, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void shouldRejectNegativeOrNonFiniteEffort() {
+        var existing = workItem("wi-1", "org-1");
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", "org-1")).thenReturn(Optional.of(existing));
+        for (Double invalid : List.of(-1.0, Double.NaN, Double.POSITIVE_INFINITY)) {
+            assertThatThrownBy(() -> useCase.execute("wi-1", "user-1",
+                    new UpdateWorkItemManualFieldsInput(false, null, false, true, invalid, false)))
+                    .isInstanceOf(andromeda.sei.ms.shared.domain.exception.BusinessRuleException.class);
+        }
+        org.mockito.Mockito.verify(workItemRepository, org.mockito.Mockito.never()).save(any());
     }
 }

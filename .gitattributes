@@ -1,2 +1,13 @@
+# Normaliza as quebras de linha. Sem isto, core.autocrlf=true reescreve a arvore
+# para CRLF a cada checkout e todo commit sai cheio de avisos de conversao.
+* text=auto eol=lf
+
 gradlew text eol=lf
 *.sh text eol=lf
+*.bat text eol=crlf
+
+# Binarios: nunca converter.
+*.jar binary
+*.png binary
+*.jpg binary
+*.ico binary

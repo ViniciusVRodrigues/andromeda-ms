@@ -15,7 +15,11 @@ import andromeda.sei.ms.feature.user.presentation.dto.CreateUserResponse;
 import andromeda.sei.ms.feature.user.presentation.dto.InviteUserRequest;
 import andromeda.sei.ms.feature.user.presentation.dto.UpdateUserRequest;
 import andromeda.sei.ms.feature.user.presentation.dto.UserResponse;
+import andromeda.sei.ms.shared.infrastructure.ratelimit.RateLimiter;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -28,7 +32,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Map;
 
 import java.util.List;
 
@@ -39,6 +46,8 @@ public class UserController {
 
     private final CreateUserUseCase createUserUseCase;
     private final InviteUserUseCase inviteUserUseCase;
+    private final RateLimiter rateLimiter;
+    private final andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
     private final ListUsersUseCase listUsersUseCase;
     private final UpdateUserUseCase updateUserUseCase;
     private final DeactivateUserUseCase deactivateUserUseCase;
@@ -52,6 +61,25 @@ public class UserController {
         CreateUserInput input = new CreateUserInput(request.email(), request.roleId());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(mapper.toCreateResponse(createUserUseCase.execute(input, orgId)));
+    }
+
+    @Operation(summary = "Verificar se um e-mail já possui conta",
+            description = "Usado no cadastro de organização para avisar antes do envio final. "
+                    + "Responde apenas um booleano — nunca a organização ou o nome de quem detém o e-mail.")
+    @ApiResponse(responseCode = "200", description = "Disponibilidade retornada")
+    @GetMapping("/email-availability")
+    public ResponseEntity<Map<String, Boolean>> emailAvailability(@RequestParam String email,
+                                                                  HttpServletRequest http) {
+        rateLimiter.check("email-availability:" + clientIp(http), 60, java.time.Duration.ofMinutes(5));
+        String normalized = email == null ? "" : email.trim().toLowerCase();
+        boolean available = !normalized.isBlank() && !userRepository.existsByEmail(normalized);
+        return ResponseEntity.ok(Map.of("available", available));
+    }
+
+    private String clientIp(HttpServletRequest http) {
+        String forwarded = http.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
+        return http.getRemoteAddr();
     }
 
     @PostMapping("/invite")

@@ -79,7 +79,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_returnPrCounts_when_developerHasLinkedGithubAccountAndPrActivity() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of());
         when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
@@ -102,7 +102,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_returnZeroPrCounts_notNull_when_developerHasNoLinkedGithubAccountOrNoPrs() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of());
         when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
@@ -132,7 +132,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_return_null_avgCycleTime_when_all_done_items_have_null_cycleTime() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         WorkItem doneItem = workItem("wi-1", WorkItem.ResolvedStatus.DONE, null, null, null);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
@@ -160,7 +160,7 @@ class GetDeveloperDashboardUseCaseTest {
         // totalSp = 15, remaining after day 3 = 5, after day 6 = 0
 
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         Instant completedJune3 = LocalDate.of(2026, 6, 3).atStartOfDay(ZoneOffset.UTC).toInstant();
         Instant completedJune6 = LocalDate.of(2026, 6, 6).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -216,7 +216,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_compute_totalSpInSprint_from_all_stories_not_only_done() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         WorkItem done = workItem("wi-1", WorkItem.ResolvedStatus.DONE, 5.0, 2.0, Instant.now());
         WorkItem inProgress = workItem("wi-2", WorkItem.ResolvedStatus.IN_PROGRESS, 8.0, null, null);
@@ -240,7 +240,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_zero_fill_tokensByDay_across_full_sprint_span() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of());
@@ -277,7 +277,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_attribute_aiCost_from_allocation_records_not_whole_day() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         WorkItem story = workItem("story-1", WorkItem.ResolvedStatus.IN_PROGRESS, 3.0, null, null);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
@@ -316,7 +316,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_compute_aiSprintSummary_with_correct_unallocatedDaysCount() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of());
@@ -344,7 +344,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_return_null_aiSprintSummary_when_no_usage_exists_in_sprint() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of());
@@ -363,7 +363,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_return_inProgressItems_and_totalSprintItems() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         WorkItem inProgress = workItem("wi-1", WorkItem.ResolvedStatus.IN_PROGRESS, 3.0, null, null);
         WorkItem done = workItem("wi-2", WorkItem.ResolvedStatus.DONE, 5.0, 2.0, Instant.now());
@@ -386,7 +386,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_include_featureTypedWorkItem_in_storyPointsDelivered_not_drop_it() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(sprint));
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
         WorkItem feature = new WorkItem("wi-feat", ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
                 "wi-feat", Instant.now(), "Feature Title",
@@ -418,7 +418,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_compute_sprintHistory_window_ending_at_current_with_zeroed_empty_sprint_kept() {
         Sprint current = sprint(SPRINT_START, SPRINT_END); // June 1–10, id SPRINT_ID
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(current));
+
 
         Sprint may1 = sprintWithId("sprint-may1", "Sprint 21",
                 LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10));
@@ -458,7 +458,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Test
     void should_cap_sprintHistory_to_five_sprints_ending_at_current() {
         Sprint current = sprint(SPRINT_START, SPRINT_END);
-        when(sprintRepository.findById(SPRINT_ID)).thenReturn(Optional.of(current));
+
 
         java.util.List<Sprint> many = new java.util.ArrayList<>();
         for (int i = 1; i <= 7; i++) {
@@ -519,5 +519,33 @@ class GetDeveloperDashboardUseCaseTest {
                 inputTokens, outputTokens, 5, "vscode", allocationId,
                 new BigDecimal(costUsd), Instant.now(), true, null, Instant.now(), Instant.now()
         );
+    }
+
+    @Test
+    void shouldScopeReviewMetricsToSprintAndExcludeUnmeasuredReviews() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        var reviewed = pullRequest(PullRequestStatus.MERGED);
+        reviewed.setTimeToFirstReviewHours(4.0);
+        reviewed.setCycleTimeHours(8.0);
+        var pending = pullRequest(PullRequestStatus.OPEN);
+        when(githubPullRequestRepository.findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+                eq(ORG), eq(USER), any(), any())).thenReturn(List.of(reviewed, pending));
+        var result = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+        assertThat(result.sprintContext().avgTimeToFirstReviewHours()).isEqualTo(4.0);
+        assertThat(result.sprintContext().reviewedPrs()).isEqualTo(1);
+        assertThat(result.sprintContext().avgPrCycleTimeHours()).isEqualTo(8.0);
+        org.mockito.Mockito.verify(githubPullRequestRepository).findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+                ORG, USER, SPRINT_START.atStartOfDay(ZoneOffset.UTC).toInstant(),
+                SPRINT_END.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1));
+    }
+
+    @Test
+    void shouldNotResolveForeignSprintId() {
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of());
+        var result = useCase.execute(ORG, USER, null, "foreign", null, null, null);
+        assertThat(result.currentSprintItems()).isEmpty();
+        assertThat(result.sprintContext().sprintId()).isNull();
+        org.mockito.Mockito.verify(sprintRepository, org.mockito.Mockito.never()).findById(any());
     }
 }

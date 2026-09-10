@@ -9,6 +9,8 @@ public interface WorkItemRepository {
 
     Optional<WorkItem> findById(String id);
 
+    Optional<WorkItem> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
+
     Optional<WorkItem> findByOrganizationIdAndExternalIdAndSource(
             String organizationId, String externalId, WorkItem.Source source);
 

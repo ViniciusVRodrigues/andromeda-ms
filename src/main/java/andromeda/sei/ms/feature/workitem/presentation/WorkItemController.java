@@ -1,12 +1,15 @@
 package andromeda.sei.ms.feature.workitem.presentation;
 
 import andromeda.sei.ms.feature.workitem.application.dto.UpdateWorkItemManualFieldsInput;
+import andromeda.sei.ms.feature.workitem.application.dto.WorkItemDetailOutput;
+import andromeda.sei.ms.feature.workitem.application.usecase.GetWorkItemDetailUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.ListWorkItemChildrenUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.UpdateWorkItemManualFieldsUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.presentation.dto.UpdateWorkItemManualFieldsRequest;
 import andromeda.sei.ms.feature.workitem.presentation.dto.WorkItemChildrenResponse;
 import andromeda.sei.ms.feature.workitem.presentation.dto.WorkItemManualFieldsResponse;
+import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +34,18 @@ public class WorkItemController {
     private final UpdateWorkItemManualFieldsUseCase updateWorkItemManualFieldsUseCase;
     private final ListWorkItemChildrenUseCase listWorkItemChildrenUseCase;
     private final AssigneeNameResolver assigneeNameResolver;
+
+    private final GetWorkItemDetailUseCase getWorkItemDetailUseCase;
+
+    @Operation(summary = "Consultar detalhes e mapeamentos globais de um work item")
+    @ApiResponse(responseCode = "200", description = "Detalhes do work item")
+    @ApiResponse(responseCode = "404", description = "Work item não encontrado na organização")
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyAuthority('DASHBOARD_INDIVIDUAL', 'DASHBOARD_TEAM', 'DASHBOARD_STRATEGIC', 'AI_READ_OWN', 'AI_READ_ALL', 'AZURE_READ', 'WORK_ITEM_MANAGE')")
+    public ResponseEntity<WorkItemDetailOutput> detail(@PathVariable String id) {
+        return ResponseEntity.ok(getWorkItemDetailUseCase.execute(
+                TenantContextHolder.get(), id));
+    }
 
     @Operation(summary = "Manually set or clear complexity/effort on a work item")
     @ApiResponse(responseCode = "200", description = "Work item fields updated")

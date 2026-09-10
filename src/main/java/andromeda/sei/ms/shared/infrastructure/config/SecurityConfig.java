@@ -41,8 +41,12 @@ public class SecurityConfig {
             "/api/v1/auth/github/callback",
             "/api/v1/auth/email-verification",         // send OTP — pre-auth
             "/api/v1/auth/email-verification/confirm", // confirm OTP — pre-auth
+            "/api/v1/auth/password-reset",             // solicitar redefinição — pre-auth
+            "/api/v1/auth/password-reset/confirm",     // redefinir com token — pre-auth
             "/api/v1/permissions",      // lista de permissões disponíveis — sem auth (usada no signup)
             "/api/v1/organizations",    // onboarding — cria org + primeiro admin
+            "/api/v1/organizations/name-availability", // checagem durante o wizard — pre-auth
+            "/api/v1/users/email-availability",        // checagem durante o wizard — pre-auth
             "/actuator/health",
             "/v3/api-docs/**",
             "/swagger-ui/**",

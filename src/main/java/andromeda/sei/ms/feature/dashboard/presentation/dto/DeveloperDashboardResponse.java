@@ -24,7 +24,8 @@ public record DeveloperDashboardResponse(
         AiSprintSummaryResponse aiSprintSummary,
         Map<String, BigDecimal> aiCostByWorkItemId,
         BigDecimal subscriptionCostPerUserUsd,
-        List<SprintHistoryResponse> sprintHistory
+        List<SprintHistoryResponse> sprintHistory,
+        andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext sprintContext
 ) {
     /**
      * complexity/effort and their sources are exposed so the dashboard can render the same

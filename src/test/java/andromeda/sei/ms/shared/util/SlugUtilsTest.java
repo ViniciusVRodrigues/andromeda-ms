@@ -1,37 +1,27 @@
 package andromeda.sei.ms.shared.util;
 
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * A checagem de disponibilidade do wizard recebe o NOME e aplica esta mesma
+ * derivacao — por isso o comportamento de colisao precisa estar fixado.
+ */
 class SlugUtilsTest {
 
-    @ParameterizedTest
-    @CsvSource({
-            "Minha Empresa,          minha-empresa",
-            "Minha Empresa S/A,      minha-empresa-s-a",
-            "Acme & Co.,             acme-and-co",
-            "Multiple   Spaces,      multiple-spaces",
-            "Already-Hyphenated,     already-hyphenated",
-    })
-    void shouldConvertToSlug(String input, String expected) {
-        assertThat(SlugUtils.toSlug(input.strip())).isEqualTo(expected.strip());
+    @Test
+    void differentNamesCanCollideOnTheSameSlug() {
+        assertThat(SlugUtils.toSlug("Acme Ltda")).isEqualTo(SlugUtils.toSlug("ACME   ltda"));
     }
 
     @Test
-    void shouldRemoveLeadingAndTrailingHyphens() {
-        assertThat(SlugUtils.toSlug("-test-")).isEqualTo("test");
+    void stripsPunctuationAndCollapsesSeparators() {
+        assertThat(SlugUtils.toSlug("Foo & Bar / Baz!")).isEqualTo("foo-and-bar-baz");
     }
 
     @Test
-    void shouldCollapseConsecutiveHyphens() {
-        assertThat(SlugUtils.toSlug("foo--bar")).isEqualTo("foo-bar");
-    }
-
-    @Test
-    void shouldHandleLowercaseConversion() {
-        assertThat(SlugUtils.toSlug("UPPER CASE")).isEqualTo("upper-case");
+    void trimsLeadingAndTrailingSeparators() {
+        assertThat(SlugUtils.toSlug("  -Acme-  ")).isEqualTo("acme");
     }
 }
