@@ -15,6 +15,7 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
 
     private final IntegrationSyncLogMongoRepository mongoRepository;
     private final IntegrationSyncLogDocumentMapper mapper;
+    private final org.springframework.data.mongodb.core.MongoTemplate mongoTemplate;
 
     @Override
     public IntegrationSyncLog save(IntegrationSyncLog log) {
@@ -35,5 +36,13 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
         return mongoRepository
                 .findByOrganizationIdAndIntegrationOrderByStartedAtDesc(organizationId, integration, pageable)
                 .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public long deleteByOrganizationIdAndIntegration(String organizationId, Integration integration) {
+        var query = org.springframework.data.mongodb.core.query.Query.query(
+                org.springframework.data.mongodb.core.query.Criteria.where("organizationId").is(organizationId)
+                        .and("integration").is(integration));
+        return mongoTemplate.remove(query, "integration_sync_logs").getDeletedCount();
     }
 }

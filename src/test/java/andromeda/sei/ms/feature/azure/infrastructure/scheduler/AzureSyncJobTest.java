@@ -14,6 +14,7 @@ import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshS
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -176,6 +177,37 @@ class AzureSyncJobTest {
 
         verify(calculateWorkItemMetricsUseCase, never()).execute(any(), any());
         verify(calculateSprintMetricsUseCase, never()).execute(any(), any());
+    }
+
+
+    /**
+     * Paridade com TriggerAzureSyncUseCase: o job agendado repetia o mesmo encadeamento, então
+     * precisa da mesma garantia — o sprint sync carimba lastSyncAt, mas o watermark do sync de
+     * work items tem que chegar null para a execução ser FULL.
+     */
+    @Test
+    void shouldKeepWorkItemsWatermarkNullWhenSprintSyncStampsLastSyncAt() {
+        var connection = connectedConnection("org-1");
+        var original = binding("org-1", "proj-1");
+
+        var afterSprints = binding("org-1", "proj-1");
+        afterSprints.setLastSyncAt(Instant.now());
+
+        when(azureConnectionRepository.findAllByStatusAndActiveTrue(AzureConnectionStatus.CONNECTED))
+                .thenReturn(List.of(connection));
+        when(azureTokenRefreshService.refreshIfNeeded(connection)).thenReturn(connection);
+        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
+                .thenReturn(List.of(original));
+        when(syncAzureSprintsUseCase.execute(any(), any(), any())).thenReturn(afterSprints);
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        job.run();
+
+        ArgumentCaptor<AzureProjectBinding> captor = ArgumentCaptor.forClass(AzureProjectBinding.class);
+        verify(syncAzureWorkItemsUseCase).execute(any(), captor.capture(), any());
+
+        assertThat(captor.getValue().getLastSyncAt()).isNotNull();
+        assertThat(captor.getValue().getWorkItemsWatermark()).isNull();
     }
 
     private AzureProjectBinding binding(String orgId, String projectId) {

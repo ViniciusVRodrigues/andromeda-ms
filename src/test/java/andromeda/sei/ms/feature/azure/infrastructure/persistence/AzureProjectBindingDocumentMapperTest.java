@@ -59,4 +59,55 @@ class AzureProjectBindingDocumentMapperTest {
         assertThat(binding.getWorkflowConfig().getStatusMappings().get(0).getWorkItemType()).isNull();
         assertThat(binding.getWorkflowConfig().getStatusMappings().get(0).getRawStatus()).isEqualTo("Active");
     }
+
+    /**
+     * O watermark do sync de work items e um campo proprio, separado de {@code lastSyncAt}:
+     * aquele acumulava marcador de leitura e "quando sincronizou" da UI, e o sync de sprints
+     * — que roda antes — o carimbava, fazendo o sync de work items nascer incremental e
+     * importar so o que mudou no dia. Os dois precisam sobreviver ao round-trip sem se
+     * misturar.
+     */
+    @Test
+    void shouldRoundTripWorkItemsWatermarkSeparatelyFromLastSyncAt() {
+        Instant lastSync = NOW;
+        Instant watermark = NOW.minusSeconds(3600);
+
+        AzureProjectBinding binding = new AzureProjectBinding(
+                "bind-1", "org-1", "proj-1", "azure-1", "Azure Proj",
+                true, lastSync, null, true, NOW, NOW, 1L);
+        binding.setWorkItemsWatermark(watermark);
+
+        AzureProjectBindingDocument doc = mapper.toDocument(binding);
+        assertThat(doc.getLastSyncAt()).isEqualTo(lastSync);
+        assertThat(doc.getWorkItemsWatermark()).isEqualTo(watermark);
+
+        AzureProjectBinding back = mapper.toDomain(doc);
+        assertThat(back.getLastSyncAt()).isEqualTo(lastSync);
+        assertThat(back.getWorkItemsWatermark()).isEqualTo(watermark);
+    }
+
+    /**
+     * Documento gravado antes do campo existir: a chave simplesmente falta, o Spring Data
+     * devolve null e isso e exatamente o estado desejado — proximo sync roda FULL. E a razao
+     * de nao existir migration para este campo.
+     */
+    @Test
+    void toDomain_shouldLeaveWatermarkNullForDocumentWrittenBeforeTheFieldExisted() {
+        AzureProjectBindingDocument legacyDoc = AzureProjectBindingDocument.builder()
+                .id("bind-1")
+                .organizationId("org-1")
+                .projectId("proj-1")
+                .azureProjectId("azure-1")
+                .syncEnabled(true)
+                .lastSyncAt(NOW)
+                .active(true)
+                .createdAt(NOW)
+                .updatedAt(NOW)
+                .build();
+
+        AzureProjectBinding binding = mapper.toDomain(legacyDoc);
+
+        assertThat(binding.getLastSyncAt()).isEqualTo(NOW);
+        assertThat(binding.getWorkItemsWatermark()).isNull();
+    }
 }

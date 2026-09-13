@@ -108,7 +108,8 @@ class SyncAzureWorkItemsUseCaseTest {
     @Test
     void shouldAppendIncrementalTransitionWhenStatusChanges() {
         Instant lastSync = NOW.minusSeconds(3600);
-        binding.setLastSyncAt(lastSync);
+        /* O que dispara o modo incremental é o watermark, não lastSyncAt. */
+        binding.setWorkItemsWatermark(lastSync);
 
         when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(lastSync), isNull(), any()))
                 .thenReturn(List.of(100));
@@ -507,5 +508,70 @@ class SyncAzureWorkItemsUseCaseTest {
                 null, null, List.of(), null, null, null, null, null,
                 NOW, null, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
+    }
+
+    /**
+     * Regressão f5eb6c7 na unidade: binding novo cujo `lastSyncAt` já foi carimbado pelo sync
+     * de sprints (que roda antes) precisa mesmo assim consultar o WIQL SEM filtro de data.
+     * Antes do watermark próprio, esse cenário virava incremental com `since = agora` e
+     * importava só o que mudou no dia.
+     */
+    @Test
+    void shouldRunFullSyncWhenOnlyLastSyncAtIsSet() {
+        binding.setLastSyncAt(NOW);
+        binding.setWorkItemsWatermark(null);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of());
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        verify(azureDevOpsClient).queryWorkItemIdsPage(
+                anyString(), anyString(), anyString(), isNull(), isNull(), any());
+    }
+
+    /**
+     * O watermark gravado é o instante ANTERIOR à leitura. Gravar o instante final deixaria
+     * de fora, para sempre, qualquer item editado durante a execução do sync.
+     */
+    @Test
+    void shouldStampWatermarkWithInstantCapturedBeforeReading() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of());
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        Instant antes = Instant.now();
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+        Instant depois = Instant.now();
+
+        ArgumentCaptor<AzureProjectBinding> captor = ArgumentCaptor.forClass(AzureProjectBinding.class);
+        verify(azureProjectBindingRepository).save(captor.capture());
+        Instant watermark = captor.getValue().getWorkItemsWatermark();
+
+        assertThat(watermark).isNotNull();
+        assertThat(watermark).isBetween(antes, depois);
+        /* lastSyncAt continua existindo, como marcador de exibição. */
+        assertThat(captor.getValue().getLastSyncAt()).isNotNull();
+    }
+
+    /**
+     * Falha no meio do sync não pode avançar o watermark: a próxima execução tem que reler
+     * a mesma janela, senão o que ficou para trás some para sempre.
+     */
+    @Test
+    void shouldNotAdvanceWatermarkWhenSyncFails() {
+        Instant anterior = NOW.minusSeconds(7200);
+        binding.setWorkItemsWatermark(anterior);
+
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(anterior), isNull(), any()))
+                .thenThrow(new RuntimeException("Azure fora do ar"));
+
+        /* O caso de uso registra a falha no log e repropaga — quem orquestra é que decide. */
+        assertThatThrownBy(() -> useCase.execute(connection, binding, SyncTrigger.SCHEDULED))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("Azure fora do ar");
+
+        verify(azureProjectBindingRepository, never()).save(any());
+        assertThat(binding.getWorkItemsWatermark()).isEqualTo(anterior);
     }
 }

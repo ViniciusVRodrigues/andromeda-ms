@@ -80,17 +80,23 @@ public class SyncAzureWorkItemsUseCase {
                     ? binding.getWorkflowConfig()
                     : DefaultWorkflowConfigFactory.fallback();
 
-            boolean fullSync = binding.getLastSyncAt() == null;
+            /* Marcador PROPRIO do sync de work items. Usar lastSyncAt aqui era o bug:
+             * o sync de sprints roda antes e o carimba com now(), entao um binding
+             * novo nunca via null e nascia incremental com since = hoje — importando
+             * so o que mudou no dia. */
+            Instant watermark = binding.getWorkItemsWatermark();
+            boolean fullSync = watermark == null;
             log.info("Work item sync for org={} project={} mode={}", orgId, projectId,
                     fullSync ? "FULL" : "INCREMENTAL");
 
             List<Integer> ids = fetchAllWorkItemIds(orgUrl, azureProjectId, authHeader,
-                    binding.getLastSyncAt(), config);
+                    watermark, config);
 
             if (ids.isEmpty()) {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
                 finishSuccess(syncLog, startedAt, 0, 0);
                 binding.setLastSyncAt(Instant.now());
+                binding.setWorkItemsWatermark(startedAt);
                 return azureProjectBindingRepository.save(binding);
             }
 
@@ -98,7 +104,7 @@ public class SyncAzureWorkItemsUseCase {
 
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
-                    processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader, fullSync);
+                    processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader);
                     processed++;
                 } catch (Exception e) {
                     log.warn("Failed to process work item id={}: {}", adoItem.id(), e.getMessage());
@@ -107,6 +113,9 @@ public class SyncAzureWorkItemsUseCase {
             }
 
             binding.setLastSyncAt(Instant.now());
+            /* startedAt, nao now(): item editado DURANTE o sync tem ChangedDate menor
+             * que o instante final e cairia abaixo do watermark para sempre. */
+            binding.setWorkItemsWatermark(startedAt);
             AzureProjectBinding saved = azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
@@ -187,8 +196,7 @@ public class SyncAzureWorkItemsUseCase {
     }
 
     private void processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
-                                  WorkflowConfig config, String orgUrl, String authHeader,
-                                  boolean fullSync) {
+                                  WorkflowConfig config, String orgUrl, String authHeader) {
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String externalId = String.valueOf(adoItem.id());
 

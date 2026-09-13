@@ -15,7 +15,7 @@ import java.util.List;
 public class AzureProjectBindingDocumentMapper {
 
     public AzureProjectBinding toDomain(AzureProjectBindingDocument doc) {
-        return new AzureProjectBinding(
+        AzureProjectBinding binding = new AzureProjectBinding(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getProjectId(),
@@ -29,6 +29,11 @@ public class AzureProjectBindingDocumentMapper {
                 doc.getUpdatedAt(),
                 doc.getVersion()
         );
+        /* Fora do construtor de proposito: acrescentar um 13o parametro posicional
+         * obrigaria a tocar 26 call sites sem ganho nenhum. Documento antigo (sem o
+         * campo) devolve null, que e exatamente o default desejado — FULL sync. */
+        binding.setWorkItemsWatermark(doc.getWorkItemsWatermark());
+        return binding;
     }
 
     public AzureProjectBindingDocument toDocument(AzureProjectBinding binding) {
@@ -40,6 +45,7 @@ public class AzureProjectBindingDocumentMapper {
                 .azureProjectName(binding.getAzureProjectName())
                 .syncEnabled(binding.isSyncEnabled())
                 .lastSyncAt(binding.getLastSyncAt())
+                .workItemsWatermark(binding.getWorkItemsWatermark())
                 .workflowConfig(toWorkflowConfigDocument(binding.getWorkflowConfig()))
                 .active(binding.isActive())
                 .createdAt(binding.getCreatedAt())

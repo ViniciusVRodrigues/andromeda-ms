@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -23,6 +24,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -127,6 +129,45 @@ class TriggerAzureSyncUseCaseTest {
          * são iguais por valor. */
         verify(syncAzureWorkItemsUseCase).execute(eq(connection), same(afterSprints), eq(SyncTrigger.MANUAL));
         verify(syncAzureWorkItemsUseCase, never()).execute(any(), same(original), any());
+    }
+
+    /**
+     * Regressão f5eb6c7: encadear a instância devolvida pelo sprint sync consertou o lock
+     * otimista, mas passou a propagar o `lastSyncAt` recém-carimbado por ele. Como o sync de
+     * work items decidia FULL por `lastSyncAt == null`, binding novo nunca mais fazia FULL —
+     * o WIQL virava `ChangedDate >= hoje` e importava só o que mudou no dia (medido contra o
+     * projeto real: 15 de 344 itens).
+     *
+     * <p>O watermark é campo próprio justamente para que o sprint sync não o alcance.
+     */
+    @Test
+    void execute_shouldKeepWorkItemsWatermarkNullWhenSprintSyncStampsLastSyncAt() {
+        AzureConnection connection = connection();
+        AzureProjectBinding original = binding("bind-1");
+
+        /* O que o sprint sync devolve: lastSyncAt carimbado, watermark intacto. */
+        AzureProjectBinding afterSprints = binding("bind-1");
+        afterSprints.setLastSyncAt(NOW);
+
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(Optional.of(connection));
+        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
+                .thenReturn(List.of(original));
+        when(syncAzureSprintsUseCase.execute(connection, original, SyncTrigger.MANUAL))
+                .thenReturn(afterSprints);
+
+        useCase.execute();
+
+        ArgumentCaptor<AzureProjectBinding> captor = ArgumentCaptor.forClass(AzureProjectBinding.class);
+        verify(syncAzureWorkItemsUseCase).execute(eq(connection), captor.capture(), eq(SyncTrigger.MANUAL));
+
+        AzureProjectBinding recebido = captor.getValue();
+        assertThat(recebido.getLastSyncAt())
+                .as("o sprint sync carimba lastSyncAt, e isso é esperado")
+                .isNotNull();
+        assertThat(recebido.getWorkItemsWatermark())
+                .as("watermark tem que continuar null para o sync rodar FULL")
+                .isNull();
     }
 
     @Test

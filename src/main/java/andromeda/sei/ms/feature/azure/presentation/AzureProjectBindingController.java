@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.azure.application.dto.UpdateAzureBindingInput;
 import andromeda.sei.ms.feature.azure.application.dto.UpdateWorkflowConfigInput;
 import andromeda.sei.ms.feature.azure.application.usecase.BindAzureProjectUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.RepairAzureDataUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureProjectsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeStatesUseCase;
@@ -67,6 +68,8 @@ public class AzureProjectBindingController {
     private final ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
     private final ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
     private final ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
+    private final RepairAzureDataUseCase repairAzureDataUseCase;
+    private final andromeda.sei.ms.feature.integration.application.usecase.WipeIntegrationDataUseCase wipeIntegrationDataUseCase;
 
     @Operation(summary = "List available Azure DevOps projects",
             description = "Optional forProjectId excludes ADO projects actively bound to other "
@@ -117,6 +120,46 @@ public class AzureProjectBindingController {
         String orgId = TenantContextHolder.get();
         ResyncSummaryResponse summary = forceResyncProjectUseCase.execute(orgId, projectId);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(summary);
+    }
+
+    @Operation(summary = "Repara os dados do Azure DevOps refazendo um sync completo",
+            description = "Zera o watermark de leitura e dispara um sync FULL. Preserva os registros "
+                    + "existentes (upsert por externalId) e recupera o que faltava — inclusive itens "
+                    + "que um sync incremental jamais voltaria a buscar. Assíncrono: acompanhe pelo "
+                    + "histórico de sincronizações. Passe projectId para limitar a um binding.")
+    @ApiResponse(responseCode = "202", description = "Repair disparado")
+    @ApiResponse(responseCode = "403", description = "Sem permissão AZURE_CONFIGURE")
+    @ApiResponse(responseCode = "404", description = "Nenhum binding sincronizável encontrado")
+    @PostMapping("/repair")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<Void> repair(@RequestParam(required = false) String projectId) {
+        repairAzureDataUseCase.execute(TenantContextHolder.get(), projectId);
+        return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * Hard delete e irreversível. A organização vem sempre do contexto autenticado — nunca do
+     * cliente —, e o wipe não desconecta nem desvincula: só apaga os dados.
+     */
+    @Operation(summary = "Apaga permanentemente os dados sincronizados do Azure DevOps",
+            description = "Remoção definitiva e sem volta. Não desconecta a integração nem remove o "
+                    + "vínculo do projeto — só apaga os dados, e um novo sync os reconstrói. Passe "
+                    + "projectId para limitar a um binding; sem ele, limpa a integração inteira na "
+                    + "organização (incluindo os caches de projetos/usuários Azure). Assíncrono: "
+                    + "acompanhe pelo histórico de sincronizações.")
+    @ApiResponse(responseCode = "202", description = "Wipe disparado")
+    @ApiResponse(responseCode = "403", description = "Sem permissão AZURE_CONFIGURE")
+    @DeleteMapping("/data")
+    @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
+    public ResponseEntity<Void> wipeData(@RequestParam(required = false) String projectId) {
+        var scope = projectId == null
+                ? andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope.wholeIntegration()
+                : andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope.forProject(projectId);
+        wipeIntegrationDataUseCase.execute(
+                TenantContextHolder.get(),
+                andromeda.sei.ms.feature.integration.domain.Integration.AZURE_DEVOPS,
+                scope);
+        return ResponseEntity.accepted().build();
     }
 
     @Operation(summary = "Toggle sync for a bound project")
