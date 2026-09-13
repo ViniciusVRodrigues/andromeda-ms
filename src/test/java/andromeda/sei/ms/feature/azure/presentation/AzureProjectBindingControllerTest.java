@@ -54,6 +54,8 @@ class AzureProjectBindingControllerTest {
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeFieldsUseCase listAzureWorkItemTypeFieldsUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListAzureWorkItemTypeStatesUseCase listAzureWorkItemTypeStatesUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.ListSiblingAzureProjectBindingsUseCase listSiblingAzureProjectBindingsUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.RepairAzureDataUseCase repairAzureDataUseCase;
+    @Mock private andromeda.sei.ms.feature.integration.application.usecase.WipeIntegrationDataUseCase wipeIntegrationDataUseCase;
 
     @InjectMocks
     private AzureProjectBindingController controller;
@@ -249,5 +251,68 @@ class AzureProjectBindingControllerTest {
 
         mockMvc.perform(get("/api/v1/integrations/azure/bindings/bind-1/process/work-item-types/Bug/fields"))
                 .andExpect(status().isUnprocessableEntity());
+    }
+
+    /**
+     * O escopo do wipe vem do TenantContextHolder, nunca do cliente: um organizationId enviado
+     * na query string tem que ser simplesmente ignorado.
+     *
+     * <p>Nota: este setup e standaloneSetup, que nao carrega o Spring Security — entao ele NAO
+     * exercita o @PreAuthorize. A checagem de permissao (403) e responsabilidade da anotacao no
+     * controller e nao esta coberta aqui; o projeto nao tem hoje nenhum teste que suba o filtro
+     * de seguranca.
+     */
+    @Test
+    void wipeData_shouldUseTenantFromContextAndIgnoreClientSuppliedOrg() throws Exception {
+        andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.set("org-do-token");
+        try {
+            mockMvc.perform(delete("/api/v1/integrations/azure/data")
+                            .param("organizationId", "org-de-outro-tenant"))
+                    .andExpect(status().isAccepted());
+
+            org.mockito.ArgumentCaptor<String> orgCaptor =
+                    org.mockito.ArgumentCaptor.forClass(String.class);
+            org.mockito.Mockito.verify(wipeIntegrationDataUseCase).execute(
+                    orgCaptor.capture(),
+                    eq(andromeda.sei.ms.feature.integration.domain.Integration.AZURE_DEVOPS),
+                    any());
+
+            org.assertj.core.api.Assertions.assertThat(orgCaptor.getValue()).isEqualTo("org-do-token");
+        } finally {
+            andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.clear();
+        }
+    }
+
+    /** Sem projectId o escopo e a integracao inteira; com projectId, so aquele binding. */
+    @Test
+    void wipeData_shouldScopeToProjectWhenProvided() throws Exception {
+        andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.set("org-1");
+        try {
+            mockMvc.perform(delete("/api/v1/integrations/azure/data").param("projectId", "proj-1"))
+                    .andExpect(status().isAccepted());
+
+            org.mockito.ArgumentCaptor<andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope> captor =
+                    org.mockito.ArgumentCaptor.forClass(
+                            andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope.class);
+            org.mockito.Mockito.verify(wipeIntegrationDataUseCase).execute(any(), any(), captor.capture());
+
+            org.assertj.core.api.Assertions.assertThat(captor.getValue().projectId()).isEqualTo("proj-1");
+            org.assertj.core.api.Assertions.assertThat(captor.getValue().isWholeIntegration()).isFalse();
+        } finally {
+            andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.clear();
+        }
+    }
+
+    @Test
+    void repair_shouldReturn202AndDelegateWithTenant() throws Exception {
+        andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.set("org-1");
+        try {
+            mockMvc.perform(post("/api/v1/integrations/azure/repair"))
+                    .andExpect(status().isAccepted());
+
+            org.mockito.Mockito.verify(repairAzureDataUseCase).execute("org-1", null);
+        } finally {
+            andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.clear();
+        }
     }
 }
