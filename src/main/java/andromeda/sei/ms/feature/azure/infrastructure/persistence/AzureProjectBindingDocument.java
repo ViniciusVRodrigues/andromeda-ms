@@ -33,6 +33,8 @@ public class AzureProjectBindingDocument {
     private String azureProjectName;
     private boolean syncEnabled;
     private Instant lastSyncAt;
+    /** Marcador de leitura exclusivo do sync de work items; ver AzureProjectBinding. */
+    private Instant workItemsWatermark;
     private WorkflowConfigDocument workflowConfig;
     private boolean active = true;
     private Instant createdAt;

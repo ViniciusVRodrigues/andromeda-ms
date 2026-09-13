@@ -28,7 +28,7 @@ class IntegrationSyncLogRepositoryImplTest {
 
     @BeforeEach
     void setUp() {
-        repository = new IntegrationSyncLogRepositoryImpl(mongoRepository, new IntegrationSyncLogDocumentMapper());
+        repository = new IntegrationSyncLogRepositoryImpl(mongoRepository, new IntegrationSyncLogDocumentMapper(), null);
         mongoRepository.deleteAll();
     }
 

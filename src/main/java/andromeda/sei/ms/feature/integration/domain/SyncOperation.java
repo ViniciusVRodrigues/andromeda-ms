@@ -8,5 +8,7 @@ public enum SyncOperation {
     SYNC_REPOS,
     SYNC_COMMITS,
     SYNC_PULL_REQUESTS,
-    SYNC_REVIEWS
+    SYNC_REVIEWS,
+    /** Remocao permanente dos dados de uma integracao (wipe). */
+    WIPE_DATA
 }

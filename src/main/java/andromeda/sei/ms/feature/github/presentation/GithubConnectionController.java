@@ -50,6 +50,8 @@ public class GithubConnectionController {
     private final ListAvailableGithubReposUseCase listAvailableGithubReposUseCase;
     private final GetWorkItemLinkConfigUseCase getWorkItemLinkConfigUseCase;
     private final UpdateWorkItemLinkConfigUseCase updateWorkItemLinkConfigUseCase;
+    private final andromeda.sei.ms.feature.github.application.usecase.RepairGithubDataUseCase repairGithubDataUseCase;
+    private final andromeda.sei.ms.feature.integration.application.usecase.WipeIntegrationDataUseCase wipeIntegrationDataUseCase;
 
     @Operation(summary = "Configure GitHub integration via Personal Access Token")
     @ApiResponse(responseCode = "204", description = "PAT connection established")
@@ -92,6 +94,43 @@ public class GithubConnectionController {
     public ResponseEntity<Void> disconnect() {
         disconnectGithubUseCase.execute();
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Repara os dados do GitHub refazendo um sync completo",
+            description = "Zera o watermark de leitura e relê tudo, preservando os registros "
+                    + "existentes (upsert). Assíncrono: acompanhe pelo histórico de sincronizações. "
+                    + "Passe projectId para limitar a um projeto.")
+    @ApiResponse(responseCode = "202", description = "Repair disparado")
+    @ApiResponse(responseCode = "403", description = "Sem permissão GITHUB_CONFIGURE")
+    @PostMapping("/repair")
+    @PreAuthorize("hasAuthority('GITHUB_CONFIGURE')")
+    public ResponseEntity<Void> repair(@RequestParam(required = false) String projectId) {
+        repairGithubDataUseCase.execute(TenantContextHolder.get(), projectId);
+        return ResponseEntity.accepted().build();
+    }
+
+    /**
+     * Hard delete e irreversível. A organização vem do contexto autenticado, nunca do cliente, e
+     * o wipe não desconecta a integração — só apaga os dados.
+     */
+    @Operation(summary = "Apaga permanentemente os dados sincronizados do GitHub",
+            description = "Remoção definitiva de commits, pull requests, reviews, repositórios e "
+                    + "métricas. Não desconecta a integração nem remove vínculos — um novo sync "
+                    + "reconstrói os dados. Passe projectId para limitar a um projeto. Assíncrono: "
+                    + "acompanhe pelo histórico de sincronizações.")
+    @ApiResponse(responseCode = "202", description = "Wipe disparado")
+    @ApiResponse(responseCode = "403", description = "Sem permissão GITHUB_CONFIGURE")
+    @DeleteMapping("/data")
+    @PreAuthorize("hasAuthority('GITHUB_CONFIGURE')")
+    public ResponseEntity<Void> wipeData(@RequestParam(required = false) String projectId) {
+        var scope = projectId == null
+                ? andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope.wholeIntegration()
+                : andromeda.sei.ms.feature.integration.domain.IntegrationDataWiper.WipeScope.forProject(projectId);
+        wipeIntegrationDataUseCase.execute(
+                TenantContextHolder.get(),
+                andromeda.sei.ms.feature.integration.domain.Integration.GITHUB,
+                scope);
+        return ResponseEntity.accepted().build();
     }
 
     @Operation(summary = "Trigger manual GitHub sync",

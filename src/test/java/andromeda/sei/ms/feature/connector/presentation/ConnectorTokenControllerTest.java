@@ -46,6 +46,8 @@ class ConnectorTokenControllerTest {
     @Mock
     private RevokeConnectorTokenUseCase revokeConnectorTokenUseCase;
 
+    @Mock private andromeda.sei.ms.feature.integration.application.usecase.WipeIntegrationDataUseCase wipeIntegrationDataUseCase;
+
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -53,7 +55,8 @@ class ConnectorTokenControllerTest {
         ConnectorTokenController controller = new ConnectorTokenController(
                 generateConnectorTokenUseCase,
                 listConnectorTokensUseCase,
-                revokeConnectorTokenUseCase);
+                revokeConnectorTokenUseCase,
+                wipeIntegrationDataUseCase);
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
