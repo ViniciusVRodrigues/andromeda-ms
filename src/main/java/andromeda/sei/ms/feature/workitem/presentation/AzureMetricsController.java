@@ -35,7 +35,7 @@ public class AzureMetricsController {
     @ApiResponse(responseCode = "400", description = "projectId query parameter is missing")
     @ApiResponse(responseCode = "403", description = "Caller lacks AZURE_READ permission")
     @GetMapping("/sprints")
-    @PreAuthorize("hasAuthority('AZURE_READ')")
+    @PreAuthorize("@perm.onProject(#projectId, 'AZURE_READ')")
     public ResponseEntity<List<SprintMetricsResponse>> getSprintMetrics(
             @RequestParam(required = true) String projectId) {
 
@@ -51,6 +51,11 @@ public class AzureMetricsController {
                         o.velocity(),
                         o.avgCycleTime(),
                         o.avgLeadTime(),
+                        o.plannedEffort(),
+                        o.cycleTimeP50(),
+                        o.cycleTimeP90(),
+                        o.leadTimeP50(),
+                        o.leadTimeP90(),
                         o.completedItemCount(),
                         o.totalItemCount(),
                         o.itemsWithPoints(),

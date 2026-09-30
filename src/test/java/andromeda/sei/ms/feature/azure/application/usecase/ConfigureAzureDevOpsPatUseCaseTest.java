@@ -1,10 +1,12 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.application.dto.AzurePatConnectionInput;
+import andromeda.sei.ms.feature.azure.application.port.AzureDevOpsAccessProbe;
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
+import andromeda.sei.ms.feature.azure.domain.AzureProjectsAccess;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzurePatInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
@@ -24,6 +26,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,12 +43,17 @@ class ConfigureAzureDevOpsPatUseCaseTest {
     @Mock
     private SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
 
+    @Mock
+    private AzureDevOpsAccessProbe accessProbe;
+
     @InjectMocks
     private ConfigureAzureDevOpsPatUseCase useCase;
 
     @BeforeEach
     void setUp() {
         TenantContextHolder.set("org-1");
+        lenient().when(accessProbe.projects(any())).thenReturn(AzureProjectsAccess.GRANTED);
+        lenient().when(accessProbe.reposAccess(any())).thenReturn(Boolean.TRUE);
     }
 
     @AfterEach
@@ -191,5 +199,47 @@ class ConfigureAzureDevOpsPatUseCaseTest {
         ArgumentCaptor<AzureConnection> captor = ArgumentCaptor.forClass(AzureConnection.class);
         verify(azureConnectionRepository).save(captor.capture());
         assertThat(captor.getValue().getStatus()).isEqualTo(AzureConnectionStatus.CONNECTED);
+    }
+
+    @Test
+    void execute_shouldRejectAPatDeniedByAzureDevOps_andPersistNothing() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(Optional.empty());
+        when(encryptionService.encrypt("revokedPat")).thenReturn("encryptedRevoked");
+        when(accessProbe.projects(any())).thenReturn(AzureProjectsAccess.DENIED);
+
+        assertThatThrownBy(() -> useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "revokedPat")))
+                .isInstanceOf(AzurePatInvalidException.class)
+                .hasFieldOrPropertyWithValue("code", "AZURE_PAT_INVALID");
+
+        verify(azureConnectionRepository, never()).save(any());
+        verify(syncAzureOrgLevelDataUseCase, never()).execute(any());
+    }
+
+    @Test
+    void execute_shouldAcceptAPatWithoutCodeRead_andRecordReposAccessFalse() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(Optional.empty());
+        when(encryptionService.encrypt("boardsOnly")).thenReturn("encryptedBoardsOnly");
+        when(accessProbe.reposAccess(any())).thenReturn(Boolean.FALSE);
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "boardsOnly"));
+
+        ArgumentCaptor<AzureConnection> captor = ArgumentCaptor.forClass(AzureConnection.class);
+        verify(azureConnectionRepository).save(captor.capture());
+        assertThat(captor.getValue().getReposAccess()).isFalse();
+        assertThat(captor.getValue().getStatus()).isEqualTo(AzureConnectionStatus.CONNECTED);
+    }
+
+    @Test
+    void execute_shouldRecordReposAccessTrueForAFullPat() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(Optional.empty());
+        when(encryptionService.encrypt("fullPat")).thenReturn("encryptedFull");
+        when(azureConnectionRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(new AzurePatConnectionInput("https://dev.azure.com/myorg", "fullPat"));
+
+        ArgumentCaptor<AzureConnection> captor = ArgumentCaptor.forClass(AzureConnection.class);
+        verify(azureConnectionRepository).save(captor.capture());
+        assertThat(captor.getValue().getReposAccess()).isTrue();
     }
 }

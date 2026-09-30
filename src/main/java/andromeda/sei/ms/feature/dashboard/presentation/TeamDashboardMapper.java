@@ -22,19 +22,22 @@ public class TeamDashboardMapper {
                         .map(m -> new TeamDashboardResponse.MemberMetricsResponse(
                                 m.userId(), m.name(), m.avatarInitials(),
                                 m.storyPointsDelivered(), m.cycleTimeHours(), m.leadTimeHours(),
-                                m.aiCostUsd(), m.avgTokensPerSp(), m.workItemCount()))
+                                m.aiCostUsd(), m.avgTokensPerSp(), m.workItemCount(),
+                                m.cycleTime(), m.leadTime(), m.unallocatedAiCostUsd()))
                         .toList();
 
         List<TeamDashboardResponse.StalePrSummaryResponse> stalePrs = output.stalePrs() == null ? List.of() :
                 output.stalePrs().stream()
                         .map(pr -> new TeamDashboardResponse.StalePrSummaryResponse(
-                                pr.prId(), pr.title(), pr.authorName(), pr.createdAt(), pr.hoursOpen()))
+                                pr.prId(), pr.title(), pr.authorName(), pr.createdAt(), pr.hoursOpen(),
+                                pr.authorLogin(), pr.provider(), pr.authorLogin()))
                         .toList();
 
         return new TeamDashboardResponse(
                 output.sprintId(), output.sprintName(), output.sprintStartDate(), output.sprintEndDate(),
                 output.teamVelocity(), output.avgCycleTimeHours(), output.avgLeadTimeHours(),
-                output.teamAiCostUsd(), velocityTrend, members, stalePrs
+                output.teamAiCostUsd(), velocityTrend, members, stalePrs, null,
+                output.cycleTime(), output.leadTime(), output.review(), output.unallocatedAiCostUsd()
         );
     }
 }

@@ -4,10 +4,14 @@ import andromeda.sei.ms.feature.workitem.domain.EffortBearingLevel;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Decides which work items count as the effort-bearing deliverable unit for an organization, and
@@ -26,6 +30,14 @@ import java.util.Map;
  *   <li>Story has none → fall back to the sum of its Tasks (model 2).</li>
  *   <li>No Story tier at all → the Tasks are themselves the deliverable units (model 3).</li>
  * </ul>
+ *
+ * <h2>Single velocity definition (metrics-correctness)</h2>
+ * {@link #summarize} is the one definition every surface uses — developer, team and strategic
+ * dashboards and {@code sprint_metrics}: velocity is the effective effort of the deliverable units
+ * in {@code DONE}; planned effort is the effective effort of all deliverable units of the scope.
+ *
+ * <p>The children index is built once per scope ({@link #scope}); before, every
+ * {@code effectiveEffort} call rebuilt it, making a total over n units O(n²).
  */
 @Component
 public class EffortBearingLevelResolver {
@@ -69,6 +81,29 @@ public class EffortBearingLevelResolver {
         return storyTier(items);
     }
 
+    /** Resolves the level from {@code items} and returns their deliverable units. */
+    public List<WorkItem> deliverableUnits(List<WorkItem> items) {
+        return deliverableUnits(resolve(null, items), items);
+    }
+
+    /**
+     * The single velocity definition over a scope (a sprint, a project window, a member's items):
+     * level inferred from {@code scopeItems}, effective effort resolved against them.
+     */
+    public EffortSummary summarize(List<WorkItem> scopeItems) {
+        List<WorkItem> units = deliverableUnits(scopeItems);
+        List<WorkItem> done = units.stream()
+                .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
+                .toList();
+        EffortScope scope = scope(scopeItems);
+        return new EffortSummary(units, done, scope.totalEffort(done), scope.totalEffort(units), scope);
+    }
+
+    /** Children index built once for {@code allItems}; reuse it for every unit of the scope. */
+    public EffortScope scope(List<WorkItem> allItems) {
+        return new EffortScope(childrenIndex(allItems));
+    }
+
     /**
      * The effort to attribute to {@code item}, given the whole item set for context.
      *
@@ -76,37 +111,17 @@ public class EffortBearingLevelResolver {
      *         {@code null} when neither exists (so "no data" stays distinct from a real zero)
      */
     public Double effectiveEffort(WorkItem item, List<WorkItem> allItems) {
-        if (item.getEffort() != null) return item.getEffort();
-        return sumDescendantEffort(item, childrenIndex(allItems));
+        return scope(allItems).effectiveEffort(item);
     }
 
     /** Same rule as {@link #effectiveEffort}, applied to complexity. */
     public Double effectiveComplexity(WorkItem item, List<WorkItem> allItems) {
-        if (item.getComplexity() != null) return item.getComplexity();
-        Map<String, List<WorkItem>> index = childrenIndex(allItems);
-        double sum = 0;
-        int count = 0;
-        for (WorkItem descendant : descendantsOf(item, index)) {
-            if (descendant.getComplexity() != null) {
-                sum += descendant.getComplexity();
-                count++;
-            }
-        }
-        return count == 0 ? null : sum;
+        return scope(allItems).effectiveComplexity(item);
     }
 
     /** Total effective effort across a set of deliverable units, skipping units with no data. */
     public Double totalEffort(List<WorkItem> units, List<WorkItem> allItems) {
-        double sum = 0;
-        int count = 0;
-        for (WorkItem unit : units) {
-            Double effort = effectiveEffort(unit, allItems);
-            if (effort != null) {
-                sum += effort;
-                count++;
-            }
-        }
-        return count == 0 ? null : sum;
+        return scope(allItems).totalEffort(units);
     }
 
     public boolean isStoryTier(WorkItem.ResolvedType resolvedType) {
@@ -124,40 +139,94 @@ public class EffortBearingLevelResolver {
         return items.stream().filter(wi -> isStoryTier(wi.getResolvedType())).toList();
     }
 
-    private Double sumDescendantEffort(WorkItem item, Map<String, List<WorkItem>> index) {
-        double sum = 0;
-        int count = 0;
-        for (WorkItem descendant : descendantsOf(item, index)) {
-            if (descendant.getEffort() != null) {
-                sum += descendant.getEffort();
-                count++;
-            }
-        }
-        return count == 0 ? null : sum;
-    }
-
-    private List<WorkItem> descendantsOf(WorkItem item, Map<String, List<WorkItem>> index) {
-        List<WorkItem> out = new ArrayList<>();
-        if (item.getExternalId() == null) return out;
-        java.util.Set<String> visited = new java.util.HashSet<>();
-        visited.add(item.getExternalId());
-        java.util.Deque<WorkItem> stack = new java.util.ArrayDeque<>(
-                index.getOrDefault(item.getExternalId(), List.of()));
-        while (!stack.isEmpty()) {
-            WorkItem current = stack.pop();
-            if (current.getExternalId() != null && !visited.add(current.getExternalId())) continue;
-            out.add(current);
-            stack.addAll(index.getOrDefault(current.getExternalId(), List.of()));
-        }
-        return out;
-    }
-
-    private Map<String, List<WorkItem>> childrenIndex(List<WorkItem> items) {
+    private static Map<String, List<WorkItem>> childrenIndex(List<WorkItem> items) {
         Map<String, List<WorkItem>> index = new HashMap<>();
         for (WorkItem item : items) {
             if (item.getParentExternalId() == null) continue;
             index.computeIfAbsent(item.getParentExternalId(), k -> new ArrayList<>()).add(item);
         }
         return index;
+    }
+
+    /**
+     * Velocity of a scope.
+     *
+     * @param units     deliverable units of the scope
+     * @param doneUnits units in {@code DONE}
+     * @param delivered effective effort of {@code doneUnits}; {@code null} when none carries effort
+     * @param planned   effective effort of {@code units}; {@code null} when none carries effort
+     * @param scope     the children index of the scope, for per-unit effort
+     */
+    public record EffortSummary(List<WorkItem> units, List<WorkItem> doneUnits,
+                                Double delivered, Double planned, EffortScope scope) {
+
+        public double deliveredOrZero() {
+            return delivered == null ? 0d : delivered;
+        }
+
+        public double plannedOrZero() {
+            return planned == null ? 0d : planned;
+        }
+    }
+
+    /** Effective effort/complexity against one pre-built children index. */
+    public static final class EffortScope {
+
+        private final Map<String, List<WorkItem>> childrenIndex;
+
+        private EffortScope(Map<String, List<WorkItem>> childrenIndex) {
+            this.childrenIndex = childrenIndex;
+        }
+
+        public Double effectiveEffort(WorkItem item) {
+            if (item.getEffort() != null) return item.getEffort();
+            return sumDescendants(item, true);
+        }
+
+        public Double effectiveComplexity(WorkItem item) {
+            if (item.getComplexity() != null) return item.getComplexity();
+            return sumDescendants(item, false);
+        }
+
+        public Double totalEffort(List<WorkItem> units) {
+            double sum = 0;
+            int count = 0;
+            for (WorkItem unit : units) {
+                Double effort = effectiveEffort(unit);
+                if (effort != null) {
+                    sum += effort;
+                    count++;
+                }
+            }
+            return count == 0 ? null : sum;
+        }
+
+        private Double sumDescendants(WorkItem item, boolean effort) {
+            double sum = 0;
+            int count = 0;
+            for (WorkItem descendant : descendantsOf(item)) {
+                Double value = effort ? descendant.getEffort() : descendant.getComplexity();
+                if (value != null) {
+                    sum += value;
+                    count++;
+                }
+            }
+            return count == 0 ? null : sum;
+        }
+
+        private List<WorkItem> descendantsOf(WorkItem item) {
+            List<WorkItem> out = new ArrayList<>();
+            if (item.getExternalId() == null) return out;
+            Set<String> visited = new HashSet<>();
+            visited.add(item.getExternalId());
+            Deque<WorkItem> stack = new ArrayDeque<>(childrenIndex.getOrDefault(item.getExternalId(), List.of()));
+            while (!stack.isEmpty()) {
+                WorkItem current = stack.pop();
+                if (current.getExternalId() != null && !visited.add(current.getExternalId())) continue;
+                out.add(current);
+                stack.addAll(childrenIndex.getOrDefault(current.getExternalId(), List.of()));
+            }
+            return out;
+        }
     }
 }

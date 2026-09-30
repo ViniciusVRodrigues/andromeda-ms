@@ -8,6 +8,7 @@ import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class DeveloperDashboardControllerTest {
 
     @Mock GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
+    @Mock DataFreshnessResolver dataFreshnessResolver;
 
     MockMvc mockMvc;
     ObjectMapper objectMapper;
@@ -43,8 +45,7 @@ class DeveloperDashboardControllerTest {
     @BeforeEach
     void setUp() {
         mapper = new DeveloperDashboardMapper();
-        DeveloperDashboardController controller = new DeveloperDashboardController(
-                getDeveloperDashboardUseCase, mapper);
+        DeveloperDashboardController controller = new DeveloperDashboardController(getDeveloperDashboardUseCase, mapper, dataFreshnessResolver);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())

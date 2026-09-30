@@ -39,7 +39,9 @@ public class AuthPresentationMapper {
                 output.organizationId(),
                 output.orgName(),
                 output.orgSlug(),
-                output.permissions()
+                output.permissions(),
+                output.orgPermissions(),
+                output.projectPermissions()
         );
     }
 }

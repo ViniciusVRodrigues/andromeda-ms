@@ -22,6 +22,12 @@ public class AzureConnection {
     private Long version;
     private AzureAuthMethod authMethod;
     private String personalAccessToken;
+    /**
+     * Whether the credential can read Git repositories (Code (Read) scope): {@code null} while
+     * unknown (never checked, or the check failed for another reason). Boards never depends on it
+     * (azure-repos-provider D6).
+     */
+    private Boolean reposAccess;
 
     public AzureConnection(String id, String organizationId, String azureOrgUrl,
                             String accessToken, String refreshToken, Instant tokenExpiresAt,
@@ -103,4 +109,7 @@ public class AzureConnection {
 
     public String getPersonalAccessToken() { return personalAccessToken; }
     public void setPersonalAccessToken(String personalAccessToken) { this.personalAccessToken = personalAccessToken; }
+
+    public Boolean getReposAccess() { return reposAccess; }
+    public void setReposAccess(Boolean reposAccess) { this.reposAccess = reposAccess; }
 }

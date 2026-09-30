@@ -36,8 +36,6 @@ public interface AiUsageAllocationRepository {
 
     void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId);
 
-    List<AiUsageAllocation> findByWorkItemId(String workItemId);
-
     Optional<AiUsageAllocation> findById(String id, String organizationId);
 
     Page<AiUsageAllocation> findValidatedByOrgUserAndOptionalMonth(
@@ -45,4 +43,12 @@ public interface AiUsageAllocationRepository {
 
     List<AiUsageAllocation> findValidatedByOrgUserAndWorkItemId(
             String organizationId, String userId, String workItemId);
+
+    /** Active {@code VALIDATED} allocations of the organization whose day is within {@code [from, to]}. */
+    List<AiUsageAllocation> findValidatedByOrganizationIdAndDayBetween(
+            String organizationId, LocalDate from, LocalDate to);
+
+    /** Active {@code VALIDATED} allocations of the organization splitting to any of the work items. */
+    List<AiUsageAllocation> findValidatedByOrganizationIdAndWorkItemIdIn(
+            String organizationId, java.util.Collection<String> workItemIds);
 }

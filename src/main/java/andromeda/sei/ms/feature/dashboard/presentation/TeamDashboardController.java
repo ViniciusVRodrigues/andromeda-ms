@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.dashboard.presentation;
 import andromeda.sei.ms.feature.dashboard.application.usecase.GetTeamDashboardUseCase;
 import andromeda.sei.ms.feature.dashboard.presentation.dto.TeamDashboardResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +23,12 @@ public class TeamDashboardController {
 
     private final GetTeamDashboardUseCase getTeamDashboardUseCase;
     private final TeamDashboardMapper mapper;
+    private final DataFreshnessResolver dataFreshnessResolver;
 
     @GetMapping("/team")
-    @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
+    // No projectId: the use case answers 422 TEAM_DASHBOARD_PROJECT_REQUIRED.
+    @PreAuthorize("#projectId == null ? @perm.onAnyProject('DASHBOARD_TEAM') "
+            + ": @perm.onProject(#projectId, 'DASHBOARD_TEAM')")
     public ResponseEntity<TeamDashboardResponse> getTeamDashboard(
             @RequestParam(required = false) String projectId,
             @RequestParam(required = false) String sprintId,
@@ -35,6 +39,7 @@ public class TeamDashboardController {
         String userId = SecurityContextHolder.getContext().getAuthentication().getName();
 
         var output = getTeamDashboardUseCase.execute(orgId, userId, projectId, sprintId, startDate, endDate);
-        return ResponseEntity.ok(mapper.toResponse(output));
+        return ResponseEntity.ok(mapper.toResponse(output)
+                .withDataFreshness(dataFreshnessResolver.resolve(orgId, projectId)));
     }
 }

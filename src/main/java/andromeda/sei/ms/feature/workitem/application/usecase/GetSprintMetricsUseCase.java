@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.workitem.application.usecase;
 
 import andromeda.sei.ms.feature.workitem.application.dto.SprintMetricsOutput;
+import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintMetrics;
 import andromeda.sei.ms.feature.workitem.domain.SprintMetricsRepository;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -32,8 +34,13 @@ public class GetSprintMetricsUseCase {
 
         Map<String, Sprint> sprintById = sprints.stream()
                 .collect(Collectors.toMap(Sprint::getId, s -> s));
+        // Documents computed before shared iterations were deduplicated may exist for non-canonical
+        // twins (all zeros): hide them so each iteration is listed once.
+        Set<String> canonicalIds = SharedIterations.distinct(sprints).stream()
+                .map(Sprint::getId).collect(Collectors.toSet());
 
         return metrics.stream()
+                .filter(m -> !sprintById.containsKey(m.getSprintId()) || canonicalIds.contains(m.getSprintId()))
                 .map(m -> {
                     Sprint sprint = sprintById.get(m.getSprintId());
                     return new SprintMetricsOutput(
@@ -45,6 +52,11 @@ public class GetSprintMetricsUseCase {
                             m.getVelocity(),
                             m.getAvgCycleTime(),
                             m.getAvgLeadTime(),
+                            m.getPlannedEffort(),
+                            m.getCycleTimeP50(),
+                            m.getCycleTimeP90(),
+                            m.getLeadTimeP50(),
+                            m.getLeadTimeP90(),
                             m.getCompletedItemCount(),
                             m.getTotalItemCount(),
                             m.getItemsWithPoints(),

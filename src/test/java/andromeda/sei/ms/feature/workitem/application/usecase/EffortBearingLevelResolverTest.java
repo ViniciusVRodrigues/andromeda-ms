@@ -118,6 +118,34 @@ class EffortBearingLevelResolverTest {
     }
 
     @Test
+    void should_summarizeVelocityAndPlanned_when_tasksCarryTheEffort() {
+        WorkItem story = andromeda.sei.ms.feature.workitem.domain.WorkItemFixture.item("s",
+                WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, null, null);
+        WorkItem done1 = andromeda.sei.ms.feature.workitem.domain.WorkItemFixture.item("t1",
+                WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 3.0, story.getExternalId());
+        WorkItem done2 = andromeda.sei.ms.feature.workitem.domain.WorkItemFixture.item("t2",
+                WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 5.0, story.getExternalId());
+
+        var summary = resolver.summarize(List.of(story, done1, done2));
+
+        assertThat(summary.delivered()).isEqualTo(8.0);
+        assertThat(summary.planned()).isEqualTo(8.0);
+        assertThat(summary.doneUnits()).hasSize(2);
+    }
+
+    @Test
+    void should_reuseOneIndex_when_scopeComputesManyUnits() {
+        WorkItem story = andromeda.sei.ms.feature.workitem.domain.WorkItemFixture.item("s",
+                WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, null, null);
+        WorkItem task = andromeda.sei.ms.feature.workitem.domain.WorkItemFixture.item("t",
+                WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 2.0, story.getExternalId());
+        var scope = resolver.scope(List.of(story, task));
+
+        assertThat(scope.effectiveEffort(story)).isEqualTo(2.0);
+        assertThat(scope.totalEffort(List.of(story, story))).isEqualTo(4.0);
+    }
+
+    @Test
     void shouldReportNullTotalWhenNothingCarriesEffort() {
         WorkItem story = story("1", null, null, null);
 

@@ -1,0 +1,7 @@
+{
+  "count": 2,
+  "value": [
+    { "id": "1234", "url": "https://dev.azure.com/fabrikam/_apis/wit/workItems/1234" },
+    { "id": "1240", "url": "https://dev.azure.com/fabrikam/_apis/wit/workItems/1240" }
+  ]
+}

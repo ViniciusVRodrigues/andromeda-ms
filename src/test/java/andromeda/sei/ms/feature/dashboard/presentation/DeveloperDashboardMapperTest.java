@@ -44,7 +44,7 @@ class DeveloperDashboardMapperTest {
     void should_map_sprintHistory_points() {
         SprintHistoryPoint point = new SprintHistoryPoint(
                 "s-1", "Sprint 21", LocalDate.of(2026, 5, 1), LocalDate.of(2026, 5, 10),
-                21.0, 18.0, 4.5, 12000L, new BigDecimal("0.42"));
+                21.0, 18.0, 4.5, 12000L, new BigDecimal("0.42"), 3.5);
 
         DeveloperDashboardResponse response = mapper.toResponse(outputWithItems(List.of(), List.of(point)));
 
@@ -56,6 +56,9 @@ class DeveloperDashboardMapperTest {
         assertThat(mapped.spDelivered()).isEqualTo(18.0);
         assertThat(mapped.totalTokens()).isEqualTo(12000L);
         assertThat(mapped.totalCostUsd()).isEqualByComparingTo("0.42");
+        assertThat(mapped.cycleTimeP50()).isEqualTo(3.5);
+        assertThat(response.cycleTime().n()).isZero();
+        assertThat(response.leadTime().p50()).isNull();
     }
 
     @Test

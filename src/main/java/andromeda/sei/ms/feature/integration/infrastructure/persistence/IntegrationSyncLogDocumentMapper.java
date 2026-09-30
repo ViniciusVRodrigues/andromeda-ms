@@ -25,6 +25,8 @@ public class IntegrationSyncLogDocumentMapper {
         );
         log.setHttpStatus(doc.getHttpStatus());
         log.setErrorDetail(doc.getErrorDetail());
+        log.setParentSyncId(doc.getParentSyncId());
+        log.setBindingId(doc.getBindingId());
         return log;
     }
 
@@ -44,7 +46,9 @@ public class IntegrationSyncLogDocumentMapper {
                 .errorCode(log.getErrorCode())
                 .errorMessage(log.getErrorMessage())
                 .httpStatus(log.getHttpStatus())
-                .errorDetail(log.getErrorDetail());
+                .errorDetail(log.getErrorDetail())
+                .parentSyncId(log.getParentSyncId())
+                .bindingId(log.getBindingId());
 
         if (log.getId() != null) {
             builder.id(log.getId());

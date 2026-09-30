@@ -34,6 +34,11 @@ public class SprintMetricsDocument {
     private Double velocity;
     private Double avgCycleTime;
     private Double avgLeadTime;
+    private Double plannedEffort;
+    private Double cycleTimeP50;
+    private Double cycleTimeP90;
+    private Double leadTimeP50;
+    private Double leadTimeP90;
     private Integer completedItemCount;
     private Integer totalItemCount;
     private Integer itemsWithPoints;

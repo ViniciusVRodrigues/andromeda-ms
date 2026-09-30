@@ -1,13 +1,18 @@
 package andromeda.sei.ms.feature.user.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.user.domain.User;
+import andromeda.sei.ms.shared.domain.security.PermissionEffect;
+import andromeda.sei.ms.shared.domain.security.PermissionOverride;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Component
 public class UserDocumentMapper {
 
     public User toDomain(UserDocument doc) {
-        return new User(
+        User user = new User(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getEmail(),
@@ -25,6 +30,8 @@ public class UserDocumentMapper {
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
+        user.setPermissionOverrides(toDomainOverrides(doc.getPermissionOverrides()));
+        return user;
     }
 
     public UserDocument toDocument(User user) {
@@ -42,7 +49,8 @@ public class UserDocumentMapper {
                 .confirmed(user.isConfirmed())
                 .active(user.isActive())
                 .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt());
+                .updatedAt(user.getUpdatedAt())
+                .permissionOverrides(toDocumentOverrides(user.getPermissionOverrides()));
 
         if (user.getId() != null) {
             builder.id(user.getId());
@@ -50,5 +58,22 @@ public class UserDocumentMapper {
         }
 
         return builder.build();
+    }
+
+    private static List<PermissionOverride> toDomainOverrides(List<PermissionOverrideDocument> docs) {
+        if (docs == null) return new ArrayList<>();
+        return docs.stream()
+                .filter(d -> d.getCode() != null && d.getEffect() != null)
+                .map(d -> new PermissionOverride(d.getCode(), PermissionEffect.valueOf(d.getEffect()),
+                        d.getProjectId(), d.getUpdatedBy(), d.getUpdatedAt()))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+    }
+
+    private static List<PermissionOverrideDocument> toDocumentOverrides(List<PermissionOverride> overrides) {
+        if (overrides == null) return new ArrayList<>();
+        return overrides.stream()
+                .map(o -> new PermissionOverrideDocument(o.code(), o.effect().name(), o.projectId(),
+                        o.updatedBy(), o.updatedAt()))
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 }

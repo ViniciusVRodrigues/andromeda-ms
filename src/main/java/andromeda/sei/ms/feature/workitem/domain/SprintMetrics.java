@@ -12,6 +12,11 @@ public class SprintMetrics {
     private Double velocity;
     private Double avgCycleTime;
     private Double avgLeadTime;
+    private Double plannedEffort;
+    private Double cycleTimeP50;
+    private Double cycleTimeP90;
+    private Double leadTimeP50;
+    private Double leadTimeP90;
     private Integer completedItemCount;
     private Integer totalItemCount;
     private Integer itemsWithPoints;
@@ -66,6 +71,21 @@ public class SprintMetrics {
 
     public Double getAvgLeadTime() { return avgLeadTime; }
     public void setAvgLeadTime(Double avgLeadTime) { this.avgLeadTime = avgLeadTime; }
+
+    public Double getPlannedEffort() { return plannedEffort; }
+    public void setPlannedEffort(Double plannedEffort) { this.plannedEffort = plannedEffort; }
+
+    public Double getCycleTimeP50() { return cycleTimeP50; }
+    public void setCycleTimeP50(Double cycleTimeP50) { this.cycleTimeP50 = cycleTimeP50; }
+
+    public Double getCycleTimeP90() { return cycleTimeP90; }
+    public void setCycleTimeP90(Double cycleTimeP90) { this.cycleTimeP90 = cycleTimeP90; }
+
+    public Double getLeadTimeP50() { return leadTimeP50; }
+    public void setLeadTimeP50(Double leadTimeP50) { this.leadTimeP50 = leadTimeP50; }
+
+    public Double getLeadTimeP90() { return leadTimeP90; }
+    public void setLeadTimeP90(Double leadTimeP90) { this.leadTimeP90 = leadTimeP90; }
 
     public Integer getCompletedItemCount() { return completedItemCount; }
     public void setCompletedItemCount(Integer completedItemCount) { this.completedItemCount = completedItemCount; }

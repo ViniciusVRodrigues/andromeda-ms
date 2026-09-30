@@ -1,14 +1,16 @@
 package andromeda.sei.ms.shared.presentation.handler;
 
 import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderInvalidException;
-import andromeda.sei.ms.feature.github.domain.exception.PullRequestCommitsUnavailableException;
+import andromeda.sei.ms.feature.vcs.domain.exception.PullRequestCommitsUnavailableException;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
 import andromeda.sei.ms.shared.domain.exception.ResourceNotFoundException;
+import andromeda.sei.ms.shared.domain.exception.TooManyRequestsException;
 import andromeda.sei.ms.shared.domain.exception.UnauthorizedException;
 import andromeda.sei.ms.shared.presentation.dto.ErrorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -41,6 +43,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.from(ex));
     }
 
+    /**
+     * Cooldown ou fila de sync cheia: o cliente deve esperar {@code Retry-After} segundos. O
+     * header e o contrato que o frontend usa para mostrar a contagem regressiva.
+     */
+    @ExceptionHandler(TooManyRequestsException.class)
+    public ResponseEntity<ErrorResponse> handleTooManyRequests(TooManyRequestsException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ErrorResponse.from(ex));
+    }
+
     @ExceptionHandler(ProviderInvalidException.class)
     public ResponseEntity<ErrorResponse> handleProviderInvalid(ProviderInvalidException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
@@ -52,13 +65,13 @@ public class GlobalExceptionHandler {
     }
 
 /**
-     * A dependency of one section was unreachable while the rest of the response is valid.
-     * 503 rather than 500: the request was well formed and retrying later may succeed.
+     * The VCS provider failed while serving one section (a pull request's commits) whose rest is
+     * valid. 502 (vcs-repository-read-api): the upstream provider, not this service, failed.
      */
     @ExceptionHandler(PullRequestCommitsUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleCommitsUnavailable(
             PullRequestCommitsUnavailableException ex) {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ErrorResponse.from(ex));
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.from(ex));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

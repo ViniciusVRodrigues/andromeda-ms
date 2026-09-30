@@ -17,6 +17,12 @@ public interface UserRepository {
 
     Optional<User> findByOrganizationIdAndGithubId(String organizationId, String githubId);
 
+    /** Active users of the organization whose login email matches, ignoring case. */
+    List<User> findAllByOrganizationIdAndEmailIgnoringCase(String organizationId, String email);
+
+    /** Active users of the organization whose linked Azure DevOps email matches, ignoring case. */
+    List<User> findAllByOrganizationIdAndAzureEmailIgnoringCase(String organizationId, String azureEmail);
+
     Optional<User> findByInviteToken(String inviteToken);
 
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);

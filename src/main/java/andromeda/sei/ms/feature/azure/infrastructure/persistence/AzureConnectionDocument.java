@@ -43,6 +43,7 @@ public class AzureConnectionDocument {
     private Instant updatedAt;
     private AzureAuthMethod authMethod;
     private String personalAccessToken;
+    private Boolean reposAccess;
 
     @Version
     private Long version;

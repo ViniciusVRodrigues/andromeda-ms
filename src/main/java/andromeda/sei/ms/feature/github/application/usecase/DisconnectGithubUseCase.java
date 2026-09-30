@@ -3,9 +3,10 @@ package andromeda.sei.ms.feature.github.application.usecase;
 import andromeda.sei.ms.feature.github.domain.GithubConnection;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionRepository;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionStatus;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
 import andromeda.sei.ms.feature.github.domain.exception.GithubConnectionNotFoundException;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -23,7 +24,7 @@ import java.util.List;
 public class DisconnectGithubUseCase {
 
     private final GithubConnectionRepository githubConnectionRepository;
-    private final GithubRepoBindingRepository githubRepoBindingRepository;
+    private final VcsRepoBindingRepository vcsRepoBindingRepository;
 
     public void execute() {
         String orgId = TenantContextHolder.get();
@@ -35,9 +36,9 @@ public class DisconnectGithubUseCase {
         connection.setStatus(GithubConnectionStatus.DISCONNECTED);
         githubConnectionRepository.save(connection);
 
-        List<GithubRepoBinding> bindings = githubRepoBindingRepository
-                .findAllByOrganizationIdAndActiveTrue(orgId);
+        List<VcsRepoBinding> bindings = vcsRepoBindingRepository
+                .findAllActiveByOrganizationIdAndProvider(orgId, VcsProvider.GITHUB);
         bindings.forEach(b -> b.setSyncEnabled(false));
-        githubRepoBindingRepository.saveAll(bindings);
+        vcsRepoBindingRepository.saveAll(bindings);
     }
 }

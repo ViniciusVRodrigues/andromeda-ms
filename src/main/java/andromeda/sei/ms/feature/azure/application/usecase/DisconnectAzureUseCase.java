@@ -7,6 +7,9 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +21,7 @@ public class DisconnectAzureUseCase {
 
     private final AzureConnectionRepository azureConnectionRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
+    private final VcsRepoBindingRepository vcsRepoBindingRepository;
 
     public void execute() {
         String orgId = TenantContextHolder.get();
@@ -33,5 +37,11 @@ public class DisconnectAzureUseCase {
                 .findAllByOrganizationIdAndActiveTrue(orgId);
         bindings.forEach(b -> b.setSyncEnabled(false));
         azureProjectBindingRepository.saveAll(bindings);
+
+        /* Azure Repos shares the connection: its bindings stop syncing too (like GitHub's on disconnect). */
+        List<VcsRepoBinding> repoBindings = vcsRepoBindingRepository
+                .findAllActiveByOrganizationIdAndProvider(orgId, VcsProvider.AZURE_REPOS);
+        repoBindings.forEach(b -> b.setSyncEnabled(false));
+        vcsRepoBindingRepository.saveAll(repoBindings);
     }
 }

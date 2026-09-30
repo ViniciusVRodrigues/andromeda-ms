@@ -10,6 +10,7 @@ import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
+import andromeda.sei.ms.shared.domain.security.PermissionCatalog;
 import andromeda.sei.ms.feature.user.application.port.PasswordHasher;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
@@ -17,6 +18,7 @@ import andromeda.sei.ms.shared.application.port.EmailService;
 import andromeda.sei.ms.shared.application.port.FrontendUrlResolver;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.util.SlugUtils;
+import andromeda.sei.ms.shared.domain.security.PermissionAliasResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,7 +85,7 @@ public class OnboardOrganizationUseCase {
                     roleData.label() != null ? roleData.label() : roleData.name(),
                     false,
                     null,
-                    roleData.permissionCodes(),
+                    withProjectAccessAllForManagers(PermissionAliasResolver.canonicalize(roleData.permissionCodes())),
                     true,
                     null,
                     now,
@@ -195,5 +197,23 @@ public class OnboardOrganizationUseCase {
                 inviteCount,
                 adminRole.getPermissionCodes()
         );
+    }
+
+    /**
+     * Same rule as {@code V__project_access_all} (project-scoped-permissions D8): a role that manages
+     * people sees every project, whether the organization was created before or after the migration.
+     */
+    /**
+     * A role holding {@code USER_MANAGE} also gets {@code PROJECT_ACCESS_ALL} and {@code PROJECT_MANAGE}:
+     * the same rule {@code ProjectAccessAllMigration} and {@code ProjectManageMigration} apply to
+     * existing roles, so a new organization behaves like a migrated one.
+     */
+    private static List<String> withProjectAccessAllForManagers(List<String> codes) {
+        List<String> result = new ArrayList<>(codes);
+        if (!result.contains(PermissionCatalog.USER_MANAGE)) return result;
+        for (String implied : List.of(PermissionCatalog.PROJECT_ACCESS_ALL, PermissionCatalog.PROJECT_MANAGE)) {
+            if (!result.contains(implied)) result.add(implied);
+        }
+        return result;
     }
 }

@@ -3,11 +3,19 @@ package andromeda.sei.ms.feature.integration.infrastructure.persistence;
 import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
+import andromeda.sei.ms.feature.integration.domain.SyncOperation;
+import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -44,5 +52,39 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
                 org.springframework.data.mongodb.core.query.Criteria.where("organizationId").is(organizationId)
                         .and("integration").is(integration));
         return mongoTemplate.remove(query, "integration_sync_logs").getDeletedCount();
+    }
+
+    @Override
+    public Optional<IntegrationSyncLog> findByIdAndOrganizationId(String id, String organizationId) {
+        return mongoRepository.findByIdAndOrganizationId(id, organizationId).map(mapper::toDomain);
+    }
+
+    @Override
+    public List<IntegrationSyncLog> findAllByOrganizationIdAndParentSyncId(String organizationId, String parentSyncId) {
+        return mongoRepository.findByOrganizationIdAndParentSyncIdOrderByStartedAtAsc(organizationId, parentSyncId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public boolean existsRunningByOrganizationIdAndProjectIdAndOperationIn(
+            String organizationId, String projectId, Collection<SyncOperation> operations) {
+        return mongoRepository.existsByOrganizationIdAndProjectIdAndStatusAndOperationIn(
+                organizationId, projectId, SyncStatus.RUNNING, operations);
+    }
+
+    /**
+     * Manutencao global de startup (sem tenant por construcao): so encerra logs que ficaram presos
+     * em {@code RUNNING}; nao le nem expoe dados de nenhuma organizacao.
+     */
+    @Override
+    public long failRunningStartedBefore(Instant startedBefore, String errorCode, String errorMessage) {
+        Query query = Query.query(Criteria.where("status").is(SyncStatus.RUNNING)
+                .and("startedAt").lt(startedBefore));
+        Update update = new Update()
+                .set("status", SyncStatus.FAILED)
+                .set("finishedAt", Instant.now())
+                .set("errorCode", errorCode)
+                .set("errorMessage", errorMessage);
+        return mongoTemplate.updateMulti(query, update, IntegrationSyncLogDocument.class).getModifiedCount();
     }
 }

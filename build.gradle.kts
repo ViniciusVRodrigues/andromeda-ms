@@ -23,6 +23,7 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-security")
 	implementation("org.springframework.boot:spring-boot-starter-security-oauth2-client")
 	implementation("org.springframework.boot:spring-boot-starter-validation")
+	implementation("com.github.ben-manes.caffeine:caffeine")  // cache de permissões efetivas (project-scoped-permissions D5)
 	implementation("org.springframework.boot:spring-boot-starter-webflux")
 	implementation("org.springframework.boot:spring-boot-starter-webmvc")
 	implementation("com.sendinblue:sib-api-v3-sdk:7.0.0")

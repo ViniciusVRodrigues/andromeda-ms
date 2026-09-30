@@ -2,267 +2,210 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
-import andromeda.sei.ms.feature.github.domain.GithubRepo;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
-import andromeda.sei.ms.feature.github.domain.GithubRepoRepository;
-import andromeda.sei.ms.feature.github.domain.RepoMetrics;
-import andromeda.sei.ms.feature.github.domain.RepoMetricsRepository;
+import andromeda.sei.ms.feature.metrics.application.DeliveryMetricsService;
+import andromeda.sei.ms.feature.metrics.domain.CompletedWorkItem;
+import andromeda.sei.ms.feature.metrics.domain.DeliveryMethod;
+import andromeda.sei.ms.feature.metrics.domain.DeliveryMetrics;
+import andromeda.sei.ms.feature.metrics.domain.MergedChange;
+import andromeda.sei.ms.feature.metrics.domain.PerformanceClass;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
+import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.shared.domain.exception.ResourceNotFoundException;
+import andromeda.sei.ms.shared.domain.metrics.Percentiles;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.OptionalDouble;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Strategic dashboard (strategic-dashboard, metrics-correctness).
+ *
+ * <ul>
+ *   <li>Velocity follows the single definition (resolver + effective effort) — the legacy
+ *       {@code storyPoints} field is no longer read. Durations are p50/p90.</li>
+ *   <li>Delivery metrics come from {@link DeliveryMetricsService}: per project, and at organization
+ *       level over the union of the projects' merged pull requests and completed items.</li>
+ * </ul>
+ */
 @Service
 @RequiredArgsConstructor
 public class GetStrategicDashboardUseCase {
 
     private static final long DEFAULT_RANGE_DAYS = 90;
+    private static final String LEVEL_ORG = "ORG";
+    private static final String LEVEL_PROJECT = "PROJECT";
+    private static final String LEVEL_MEMBER = "MEMBER";
 
     private final ProjectRepository projectRepository;
     private final WorkItemRepository workItemRepository;
-    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
-            effortBearingLevelResolver;
+    private final EffortBearingLevelResolver effortBearingLevelResolver;
     private final UserRepository userRepository;
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
-    private final GithubRepoBindingRepository githubRepoBindingRepository;
-    private final GithubRepoRepository githubRepoRepository;
-    private final RepoMetricsRepository repoMetricsRepository;
+    private final DeliveryMetricsService deliveryMetricsService;
 
+    /**
+     * @param visibleProjectIds projects where the caller effectively holds {@code DASHBOARD_STRATEGIC}
+     *                          (project-scoped-permissions 7.2): level 1 aggregates only these; levels
+     *                          2 and 3 were already checked on their project by {@code @perm}
+     */
     public StrategicDashboardOutput execute(String orgId, String authUserId,
                                              String projectId, String memberId,
-                                             LocalDate startDate, LocalDate endDate) {
+                                             LocalDate startDate, LocalDate endDate,
+                                             Set<String> visibleProjectIds) {
         LocalDate from = startDate != null ? startDate : LocalDate.now().minusDays(DEFAULT_RANGE_DAYS);
         LocalDate to = endDate != null ? endDate : LocalDate.now();
 
         if (projectId != null && memberId != null) {
-            return levelThree(orgId, memberId, projectId, from, to);
-        } else if (projectId != null) {
-            return levelTwo(orgId, projectId, from, to);
-        } else {
-            return levelOne(orgId, from, to);
+            DeveloperDashboardOutput devOutput = getDeveloperDashboardUseCase.execute(
+                    orgId, memberId, projectId, null, from, to, null);
+            return new StrategicDashboardOutput(LEVEL_MEMBER, null, null, devOutput, null);
         }
+        Window window = new Window(from.atStartOfDay(ZoneOffset.UTC).toInstant(),
+                to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
+        return projectId != null ? levelTwo(orgId, projectId, window) : levelOne(orgId, window, visibleProjectIds);
     }
 
-    private StrategicDashboardOutput levelOne(String orgId, LocalDate from, LocalDate to) {
-        List<Project> projects = projectRepository.findAllActiveByOrganizationId(orgId);
-        Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
-
-        List<StrategicDashboardOutput.ProjectSummary> summaries = projects.stream()
-                .map(project -> buildProjectSummary(orgId, project, fromInstant, toInstant, from, to))
+    private StrategicDashboardOutput levelOne(String orgId, Window window, Set<String> visibleProjectIds) {
+        List<ProjectData> data = projectRepository.findAllActiveByOrganizationId(orgId).stream()
+                .filter(project -> visibleProjectIds.contains(project.getId()))
+                .map(project -> load(orgId, project, window))
                 .toList();
 
-        return new StrategicDashboardOutput("ORG", summaries, null, null);
+        List<StrategicDashboardOutput.ProjectSummary> summaries = data.stream()
+                .map(d -> buildProjectSummary(orgId, d, window))
+                .toList();
+
+        List<MergedChange> allChanges = DeliveryMetricsService.union(
+                data.stream().map(ProjectData::changes).toList(), MergedChange::id);
+        List<CompletedWorkItem> allItems = DeliveryMetricsService.union(
+                data.stream().map(ProjectData::completedItems).toList(), CompletedWorkItem::id);
+        DeliveryMetrics orgDelivery = deliveryMetricsService.calculate(orgId, allChanges, allItems,
+                window.from(), window.to());
+
+        return new StrategicDashboardOutput(LEVEL_ORG, summaries, null, null, orgDelivery);
     }
 
-    private StrategicDashboardOutput.ProjectSummary buildProjectSummary(String orgId, Project project,
-                                                                          Instant fromInstant, Instant toInstant,
-                                                                          LocalDate from, LocalDate to) {
-        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId())
-                .stream()
-                .filter(wi -> wi.getCompletedAt() != null
-                        && !wi.getCompletedAt().isBefore(fromInstant)
-                        && !wi.getCompletedAt().isAfter(toInstant))
-                .toList();
-
-        List<WorkItem> done = items.stream()
-                .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                .toList();
-
-        List<WorkItem> doneStories = done.stream()
-                .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
-                .toList();
-
-        double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
-        Double avgCycle = averageNonNull(doneStories.stream().map(WorkItem::getCycleTimeHours).toList());
-        Double avgLead = averageNonNull(doneStories.stream().map(WorkItem::getLeadTimeHours).toList());
-
-        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to, orgId, project.getId());
-
+    private StrategicDashboardOutput.ProjectSummary buildProjectSummary(String orgId, ProjectData data, Window window) {
+        List<WorkItem> doneUnits = data.doneUnitsInWindow();
+        Double delivered = data.effort().scope().totalEffort(doneUnits);
+        DeliveryMetrics delivery = deliveryMetricsService.calculate(orgId, data.changes(), data.completedItems(),
+                window.from(), window.to());
         return new StrategicDashboardOutput.ProjectSummary(
-                project.getId(), project.getName(), items.size(), sp, avgCycle, avgLead, dora);
+                data.project().getId(), data.project().getName(), data.completedInWindow().size(),
+                delivered == null ? 0d : delivered,
+                average(doneUnits, WorkItem::getCycleTimeHours), average(doneUnits, WorkItem::getLeadTimeHours),
+                toDora(delivery),
+                Percentiles.of(doneUnits.stream().map(WorkItem::getCycleTimeHours).toList()),
+                Percentiles.of(doneUnits.stream().map(WorkItem::getLeadTimeHours).toList()),
+                delivery);
     }
 
-    private StrategicDashboardOutput levelTwo(String orgId, String projectId, LocalDate from, LocalDate to) {
+    private StrategicDashboardOutput levelTwo(String orgId, String projectId, Window window) {
         Project project = projectRepository.findById(projectId)
                 .filter(p -> orgId.equals(p.getOrganizationId()))
                 .orElseThrow(() -> new ResourceNotFoundException("PROJECT_NOT_FOUND", "Project not found: " + projectId));
+        ProjectData data = load(orgId, project, window);
 
-        Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-        Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
+        List<User> users = userRepository.findAllByOrganizationId(orgId);
+        Map<String, User> userById = users.stream().filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(User::getId, Function.identity(), (first, second) -> first));
 
-        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId)
-                .stream()
-                .filter(wi -> wi.getCompletedAt() != null
-                        && !wi.getCompletedAt().isBefore(fromInstant)
-                        && !wi.getCompletedAt().isAfter(toInstant))
-                .toList();
-
-        Map<String, String> userNameById = userRepository.findAllByOrganizationId(orgId).stream()
-                .collect(Collectors.toMap(User::getId, u -> u.getName() != null ? u.getName() : u.getEmail()));
-
-        Map<String, Boolean> linkedToAzureById = userRepository.findAllByOrganizationId(orgId).stream()
-                .collect(Collectors.toMap(User::getId, u -> u.getAzureId() != null));
-
-        Map<String, List<WorkItem>> byAssignee = items.stream()
+        Map<String, List<WorkItem>> completedByAssignee = data.completedInWindow().stream()
                 .filter(wi -> wi.getAssigneeUserId() != null)
                 .collect(Collectors.groupingBy(WorkItem::getAssigneeUserId));
-
-        List<StrategicDashboardOutput.MemberSummary> members = byAssignee.entrySet().stream()
-                .map(entry -> {
-                    String uid = entry.getKey();
-                    List<WorkItem> memberItems = entry.getValue();
-                    List<WorkItem> doneStories = memberItems.stream()
-                            .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                            .filter(wi -> effortBearingLevelResolver.isStoryTier(wi.getResolvedType()))
-                            .toList();
-                    double sp = doneStories.stream().mapToDouble(wi -> wi.getStoryPoints() != null ? wi.getStoryPoints() : 0.0).sum();
-                    Double cycleTime = averageNonNull(doneStories.stream().map(WorkItem::getCycleTimeHours).toList());
-                    Double leadTime = averageNonNull(doneStories.stream().map(WorkItem::getLeadTimeHours).toList());
-                    return new StrategicDashboardOutput.MemberSummary(
-                            uid, userNameById.getOrDefault(uid, uid),
-                            linkedToAzureById.getOrDefault(uid, false),
-                            sp, cycleTime, leadTime, memberItems.size());
-                })
+        List<StrategicDashboardOutput.MemberSummary> members = completedByAssignee.entrySet().stream()
+                .map(e -> buildMemberSummary(e.getKey(), e.getValue(), data, userById.get(e.getKey())))
                 .toList();
 
-        List<WorkItem> done = items.stream()
-                .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus())).toList();
-        StrategicDashboardOutput.DoraMetrics dora = computeDora(done, from, to, orgId, projectId);
-
+        DeliveryMetrics delivery = deliveryMetricsService.calculate(orgId, data.changes(), data.completedItems(),
+                window.from(), window.to());
         StrategicDashboardOutput.ProjectDetail detail = new StrategicDashboardOutput.ProjectDetail(
-                project.getId(), project.getName(), members, dora);
-
-        return new StrategicDashboardOutput("PROJECT", null, detail, null);
+                project.getId(), project.getName(), members, toDora(delivery), delivery);
+        return new StrategicDashboardOutput(LEVEL_PROJECT, null, detail, null, delivery);
     }
 
-    private StrategicDashboardOutput levelThree(String orgId, String memberId, String projectId,
-                                                 LocalDate from, LocalDate to) {
-        DeveloperDashboardOutput devOutput = getDeveloperDashboardUseCase.execute(
-                orgId, memberId, projectId, null, from, to, null);
-        return new StrategicDashboardOutput("MEMBER", null, null, devOutput);
+    private StrategicDashboardOutput.MemberSummary buildMemberSummary(String userId, List<WorkItem> completed,
+                                                                       ProjectData data, User user) {
+        List<WorkItem> doneUnits = data.doneUnitsInWindow().stream()
+                .filter(wi -> userId.equals(wi.getAssigneeUserId()))
+                .toList();
+        Double delivered = data.effort().scope().totalEffort(doneUnits);
+        return new StrategicDashboardOutput.MemberSummary(
+                userId, displayName(user, userId), user != null && user.getAzureId() != null,
+                delivered == null ? 0d : delivered,
+                average(doneUnits, WorkItem::getCycleTimeHours), average(doneUnits, WorkItem::getLeadTimeHours),
+                completed.size(),
+                Percentiles.of(doneUnits.stream().map(WorkItem::getCycleTimeHours).toList()),
+                Percentiles.of(doneUnits.stream().map(WorkItem::getLeadTimeHours).toList()));
     }
 
-    private StrategicDashboardOutput.DoraMetrics computeDora(List<WorkItem> doneItems, LocalDate from, LocalDate to,
-                                                               String orgId, String projectId) {
-        if (doneItems.isEmpty()) {
-            return new StrategicDashboardOutput.DoraMetrics(null, "LOW", null, "LOW", null, "ELITE", null, true);
-        }
+    /**
+     * Everything the dashboard needs of one project, loaded once: all active items (the effort
+     * level and the children index need the whole hierarchy, not only what completed in the
+     * window), merged pull requests of its bound repositories and completed items of the window.
+     */
+    private ProjectData load(String orgId, Project project, Window window) {
+        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId())
+                .stream().filter(WorkItem::isActive).toList();
+        EffortBearingLevelResolver.EffortSummary effort = effortBearingLevelResolver.summarize(items);
+        List<WorkItem> completedInWindow = items.stream().filter(wi -> window.contains(wi.getCompletedAt())).toList();
+        List<WorkItem> doneUnitsInWindow = effort.doneUnits().stream()
+                .filter(wi -> window.contains(wi.getCompletedAt()))
+                .toList();
+        List<MergedChange> changes = deliveryMetricsService.mergedChangesOfProject(
+                orgId, project.getId(), window.from(), window.to());
+        return new ProjectData(project, effort, completedInWindow, doneUnitsInWindow, changes,
+                DeliveryMetricsService.completedItems(completedInWindow));
+    }
 
-        double weeks = Math.max(1.0, ChronoUnit.DAYS.between(from, to) / 7.0);
-
-        Double avgLeadTime = averageNonNull(doneItems.stream().map(WorkItem::getLeadTimeHours).toList());
-        String leadTimeClass = classifyLeadTime(avgLeadTime);
-
-        double deployFreq = doneItems.size() / weeks;
-        String deployFreqClass = classifyDeployFreq(deployFreq);
-
-        ChangeFailureRate cfr = resolveChangeFailureRate(orgId, projectId, doneItems, from, to);
-        String changeFailureClass = classifyChangeFailure(cfr.percent());
-
+    /** Deprecated {@code dora} block, derived from the new calculator for one release. */
+    static StrategicDashboardOutput.DoraMetrics toDora(DeliveryMetrics delivery) {
         return new StrategicDashboardOutput.DoraMetrics(
-                avgLeadTime, leadTimeClass,
-                deployFreq, deployFreqClass,
-                cfr.percent(), changeFailureClass,
-                null, cfr.estimated());
+                delivery.changeLeadTime().p50(), name(delivery.changeLeadTimeClass()),
+                delivery.deploymentsPerWeek(), name(delivery.deploymentFrequencyClass()),
+                delivery.changeFailRatePercent(), name(delivery.changeFailRateClass()),
+                null, delivery.method() != DeliveryMethod.VCS_PROXY);
     }
 
-    /**
-     * Real CFR from repo_metrics when available for the project's bound repo(s), averaged across
-     * repos when there are several (design.md D1/D4) — otherwise gracefully falls back to the
-     * existing bug-count-over-done-items proxy, with estimated=true preserved exactly as before.
-     */
-    private ChangeFailureRate resolveChangeFailureRate(String orgId, String projectId,
-                                                         List<WorkItem> doneItems, LocalDate from, LocalDate to) {
-        if (projectId != null) {
-            List<String> boundFullNames = githubRepoBindingRepository
-                    .findAllByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
-                    .stream()
-                    .map(GithubRepoBinding::getRepoId)
-                    .distinct()
-                    .toList();
+    private static String name(PerformanceClass performanceClass) {
+        return performanceClass == null ? null : performanceClass.name();
+    }
 
-            if (!boundFullNames.isEmpty()) {
-                // BUG 1 fix: bindings carry the "owner/name" fullName, but repo_metrics rows are
-                // keyed by the github_repos Mongo id — resolve before querying (unresolved
-                // fullNames are skipped; a never-synced repo has no metrics rows anyway).
-                List<String> repoIds = githubRepoRepository
-                        .findAllByOrganizationIdAndFullNameInAndActiveTrue(orgId, boundFullNames)
-                        .stream()
-                        .map(GithubRepo::getId)
-                        .distinct()
-                        .toList();
+    private static String displayName(User user, String fallback) {
+        if (user == null) return fallback;
+        if (user.getName() != null && !user.getName().isBlank()) return user.getName();
+        if (user.getEmail() != null && !user.getEmail().isBlank()) return user.getEmail();
+        return fallback;
+    }
 
-                if (!repoIds.isEmpty()) {
-                    Instant fromInstant = from.atStartOfDay(ZoneOffset.UTC).toInstant();
-                    Instant toInstant = to.atTime(23, 59, 59).atZone(ZoneOffset.UTC).toInstant();
+    /** Deprecated average, kept for one release next to the percentiles. */
+    private static Double average(List<WorkItem> items, Function<WorkItem, Double> metric) {
+        OptionalDouble avg = items.stream().map(metric).filter(Objects::nonNull).mapToDouble(Double::doubleValue).average();
+        return avg.isPresent() ? avg.getAsDouble() : null;
+    }
 
-                    List<RepoMetrics> metrics = repoMetricsRepository
-                            .findAllByOrganizationIdAndRepoIdInAndPeriodOverlapping(orgId, repoIds, fromInstant, toInstant);
+    private record ProjectData(Project project, EffortBearingLevelResolver.EffortSummary effort,
+                               List<WorkItem> completedInWindow, List<WorkItem> doneUnitsInWindow,
+                               List<MergedChange> changes, List<CompletedWorkItem> completedItems) {}
 
-                    Double avgCfr = averageNonNull(metrics.stream().map(RepoMetrics::getCfr).toList());
-                    if (avgCfr != null) {
-                        return new ChangeFailureRate(avgCfr, false);
-                    }
-                }
-            }
+    /** Half-open {@code [from, to)}: the requested dates, inclusive, as instants. */
+    private record Window(Instant from, Instant to) {
+        boolean contains(Instant at) {
+            return at != null && !at.isBefore(from) && at.isBefore(to);
         }
-
-        long bugCount = doneItems.stream()
-                .filter(wi -> wi.getResolvedType() == WorkItem.ResolvedType.BUG)
-                .count();
-        double changeFailureRate = doneItems.isEmpty() ? 0.0 : (bugCount * 100.0) / doneItems.size();
-        return new ChangeFailureRate(changeFailureRate, true);
-    }
-
-    private record ChangeFailureRate(double percent, boolean estimated) {}
-
-    private String classifyLeadTime(Double hours) {
-        if (hours == null) return "LOW";
-        if (hours < 1.0) return "ELITE";
-        if (hours < 24.0) return "HIGH";
-        if (hours < 168.0) return "MEDIUM";
-        return "LOW";
-    }
-
-    private String classifyDeployFreq(double perWeek) {
-        if (perWeek > 7.0) return "ELITE";
-        if (perWeek > 1.0) return "HIGH";
-        if (perWeek > 0.25) return "MEDIUM";
-        return "LOW";
-    }
-
-    private String classifyChangeFailure(double percent) {
-        if (percent <= 5.0) return "ELITE";
-        if (percent <= 10.0) return "HIGH";
-        if (percent <= 15.0) return "MEDIUM";
-        return "LOW";
-    }
-
-    /**
-     * STORY and FEATURE are both treated as developer-assignable, story-point-bearing
-     * deliverable work for this dashboard's velocity/cycle-time metrics — see
-     * GetTeamDashboardUseCase.isStoryTierWork for the same reasoning. DORA's changeFailureRate
-     * intentionally continues to check BUG only and is unaffected by this grouping.
-     */
-
-    private Double averageNonNull(List<Double> values) {
-        List<Double> nonNull = values.stream().filter(v -> v != null).toList();
-        if (nonNull.isEmpty()) return null;
-        return nonNull.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
     }
 }

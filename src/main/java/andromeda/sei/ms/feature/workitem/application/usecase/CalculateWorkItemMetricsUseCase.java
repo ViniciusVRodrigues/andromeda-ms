@@ -42,8 +42,9 @@ public class CalculateWorkItemMetricsUseCase {
         return Math.round(raw * ROUNDING_SCALE) / ROUNDING_SCALE;
     }
 
+    /** Null when either end is missing: one item without createdAt must not fail the whole project. */
     private Double computeLeadTime(WorkItem item) {
-        if (item.getCompletedAt() == null) {
+        if (item.getCompletedAt() == null || item.getCreatedAt() == null) {
             return null;
         }
         double raw = (item.getCompletedAt().toEpochMilli() - item.getCreatedAt().toEpochMilli()) / MILLIS_PER_HOUR;

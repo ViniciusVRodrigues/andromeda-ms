@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
+import andromeda.sei.ms.feature.vcs.VcsLegacyFixtures;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
@@ -9,9 +10,9 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
-import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
-import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
-import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
+import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
@@ -47,7 +48,7 @@ class GetDeveloperDashboardUseCaseTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
     @Mock private OrganizationRepository organizationRepository;
-    @Mock private GithubPullRequestRepository githubPullRequestRepository;
+    @Mock private VcsReadPort vcsReadPort;
 
     private GetDeveloperDashboardUseCase useCase;
 
@@ -64,13 +65,12 @@ class GetDeveloperDashboardUseCaseTest {
     void setUp() {
         useCase = new GetDeveloperDashboardUseCase(
                 sprintRepository, workItemRepository, aiUsageRepository, allocationRepository, organizationRepository,
-                githubPullRequestRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
+                vcsReadPort, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
         // Default: no validated allocations. Individual tests override as needed.
         lenient().when(allocationRepository.findValidatedByOrgUserAndWorkItemId(any(), any(), any()))
                 .thenReturn(List.of());
         lenient().when(organizationRepository.findById(any())).thenReturn(Optional.empty());
-        lenient().when(githubPullRequestRepository
-                        .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(any(), any(), any(), any()))
+        lenient().when(vcsReadPort.pullRequestsByAuthor(any(), any(), any(), any()))
                 .thenReturn(List.of());
     }
 
@@ -85,12 +85,11 @@ class GetDeveloperDashboardUseCaseTest {
         when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
                 .thenReturn(List.of());
 
-        GithubPullRequest openPr1 = pullRequest(PullRequestStatus.OPEN);
-        GithubPullRequest openPr2 = pullRequest(PullRequestStatus.OPEN);
-        GithubPullRequest mergedPr = pullRequest(PullRequestStatus.MERGED);
-        GithubPullRequest closedPr = pullRequest(PullRequestStatus.CLOSED);
-        when(githubPullRequestRepository
-                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(eq(ORG), eq(USER), any(), any()))
+        VcsPullRequest openPr1 = pullRequest(PullRequestStatus.OPEN);
+        VcsPullRequest openPr2 = pullRequest(PullRequestStatus.OPEN);
+        VcsPullRequest mergedPr = pullRequest(PullRequestStatus.MERGED);
+        VcsPullRequest closedPr = pullRequest(PullRequestStatus.CLOSED);
+        when(vcsReadPort.pullRequestsByAuthor(eq(ORG), eq(USER), any(), any()))
                 .thenReturn(List.of(openPr1, openPr2, mergedPr, closedPr));
 
         DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
@@ -107,8 +106,7 @@ class GetDeveloperDashboardUseCaseTest {
                 .thenReturn(List.of());
         when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
                 .thenReturn(List.of());
-        when(githubPullRequestRepository
-                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(eq(ORG), eq(USER), any(), any()))
+        when(vcsReadPort.pullRequestsByAuthor(eq(ORG), eq(USER), any(), any()))
                 .thenReturn(List.of());
 
         DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
@@ -119,8 +117,96 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.mergedPrs()).isNotNull();
     }
 
-    private GithubPullRequest pullRequest(PullRequestStatus status) {
-        return new GithubPullRequest(
+    // ── metrics-correctness 10.x: project-scoped PRs, review metrics, percentiles ──
+
+    @Test
+    void should_countOnlyProjectRepositoryPrs_when_projectIdInformed() {
+        givenSprintWithoutItems();
+        VcsPullRequest inProject = pullRequest(PullRequestStatus.MERGED);
+        inProject.setRepositoryId("repo-a");
+        VcsPullRequest otherProject = pullRequest(PullRequestStatus.MERGED);
+        otherProject.setRepositoryId("repo-b");
+        when(vcsReadPort.pullRequestsByAuthor(eq(ORG), eq(USER), any(), any()))
+                .thenReturn(List.of(inProject, otherProject));
+        when(vcsReadPort.repositoriesOfProject(ORG, PROJECT)).thenReturn(List.of(VcsLegacyFixtures.repository(
+                "repo-a", ORG, "1", "octo", "a", "octo/a", Instant.now(), true, Instant.now(), Instant.now(), 0L)));
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, PROJECT, SPRINT_ID, null, null, null);
+
+        assertThat(output.mergedPrs()).isEqualTo(1);
+        assertThat(output.sprintContext().pullRequests()).hasSize(1);
+    }
+
+    @Test
+    void should_reportReviewMetricsAndPrCycleTime_when_sprintHasPullRequests() {
+        givenSprintWithoutItems();
+        VcsPullRequest fast = pullRequest(PullRequestStatus.MERGED);
+        fast.setCreatedAt(Instant.parse("2026-06-02T00:00:00Z"));
+        fast.setTimeToFirstReviewHours(2.0);
+        fast.setTimeToFirstApprovalHours(20.0);
+        fast.setCycleTimeHours(30.0);
+        VcsPullRequest slow = pullRequest(PullRequestStatus.MERGED);
+        slow.setCreatedAt(Instant.parse("2026-06-02T00:00:00Z"));
+        slow.setTimeToFirstReviewHours(30.0);
+        slow.setCycleTimeHours(60.0);
+        VcsPullRequest draft = pullRequest(PullRequestStatus.OPEN);
+        draft.setDraft(true);
+        draft.setTimeToFirstReviewHours(1.0);
+        when(vcsReadPort.pullRequestsByAuthor(eq(ORG), eq(USER), any(), any()))
+                .thenReturn(List.of(fast, slow, draft));
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        var review = output.sprintContext().review();
+        assertThat(review.timeToFirstReview().n()).isEqualTo(2);
+        assertThat(review.timeToFirstReview().p50()).isEqualTo(2.0);
+        assertThat(review.timeToFirstApproval().p50()).isEqualTo(20.0);
+        assertThat(review.reviewedWithinSlaPercent()).isEqualTo(50.0);
+        assertThat(review.eligiblePrs()).isEqualTo(2);
+        assertThat(output.sprintContext().prCycleTime().p50()).isEqualTo(30.0);
+        assertThat(output.sprintContext().prCycleTime().p90()).isEqualTo(60.0);
+    }
+
+    @Test
+    void should_reportCycleAndLeadPercentiles_when_itemsAreDone() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        List<WorkItem> items = new java.util.ArrayList<>();
+        double[] cycles = {2, 3, 3, 4, 100};
+        for (int i = 0; i < cycles.length; i++) {
+            WorkItem item = workItem("wi-" + i, WorkItem.ResolvedStatus.DONE, 1.0, null,
+                    SPRINT_START.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
+            item.setCycleTimeHours(cycles[i]);
+            item.setLeadTimeHours(cycles[i] * 2);
+            items.add(item);
+        }
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID)).thenReturn(items);
+        lenient().when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.cycleTime()).isEqualTo(new andromeda.sei.ms.shared.domain.metrics.DurationStat(3.0, 100.0, 5));
+        assertThat(output.leadTime().p50()).isEqualTo(6.0);
+        assertThat(output.avgCycleTimeHours()).isEqualTo(22.4);
+        assertThat(output.sprintHistory()).hasSize(1);
+        assertThat(output.sprintHistory().get(0).cycleTimeP50()).isEqualTo(3.0);
+    }
+
+    private void givenSprintWithoutItems() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        lenient().when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of(sprint));
+        lenient().when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(any(), any(), any()))
+                .thenReturn(List.of());
+        lenient().when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        lenient().when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+    }
+
+    private VcsPullRequest pullRequest(PullRequestStatus status) {
+        return VcsLegacyFixtures.pullRequest(
                 "pr-" + java.util.UUID.randomUUID(), ORG, "owner/repo", "ext-1", 1,
                 "Some PR", status, "gh-login", USER,
                 Instant.now(), null, null, Instant.now(),
@@ -455,6 +541,30 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.sprintHistory().get(0).totalTokens()).isNull();
     }
 
+    /** metrics-correctness 1.3 — an iteration shared by two teams is one sprint document per team. */
+    @Test
+    void should_readCanonicalTwin_andListSharedIterationOnce_when_anotherTeamsTwinIsRequested() {
+        Sprint canonical = sprint(SPRINT_START, SPRINT_END);
+        Sprint twin = new Sprint("sprint-team-b", ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
+                canonical.getExternalId(), "team-b", "Team B", canonical.getName(), canonical.getPath(),
+                canonical.getStartDate(), canonical.getEndDate(), Sprint.TimeFrame.CURRENT, true, 1L,
+                canonical.getCreatedAt().plusSeconds(60), canonical.getCreatedAt());
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(twin, canonical));
+        WorkItem done = workItem("wi-1", WorkItem.ResolvedStatus.DONE, 5.0, 2.0, Instant.now());
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of(done));
+        when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, "sprint-team-b", null, null, null);
+
+        assertThat(output.storyPointsDelivered()).isEqualTo(5.0);
+        assertThat(output.sprintHistory()).extracting("sprintId").containsExactly(SPRINT_ID);
+        assertThat(output.sprintHistory().get(0).spDelivered()).isEqualTo(5.0);
+    }
+
     @Test
     void should_cap_sprintHistory_to_five_sprints_ending_at_current() {
         Sprint current = sprint(SPRINT_START, SPRINT_END);
@@ -529,15 +639,15 @@ class GetDeveloperDashboardUseCaseTest {
         reviewed.setTimeToFirstReviewHours(4.0);
         reviewed.setCycleTimeHours(8.0);
         var pending = pullRequest(PullRequestStatus.OPEN);
-        when(githubPullRequestRepository.findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+        when(vcsReadPort.pullRequestsByAuthor(
                 eq(ORG), eq(USER), any(), any())).thenReturn(List.of(reviewed, pending));
         var result = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
         assertThat(result.sprintContext().avgTimeToFirstReviewHours()).isEqualTo(4.0);
         assertThat(result.sprintContext().reviewedPrs()).isEqualTo(1);
         assertThat(result.sprintContext().avgPrCycleTimeHours()).isEqualTo(8.0);
-        org.mockito.Mockito.verify(githubPullRequestRepository).findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
+        org.mockito.Mockito.verify(vcsReadPort).pullRequestsByAuthor(
                 ORG, USER, SPRINT_START.atStartOfDay(ZoneOffset.UTC).toInstant(),
-                SPRINT_END.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1));
+                SPRINT_END.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
     }
 
     @Test

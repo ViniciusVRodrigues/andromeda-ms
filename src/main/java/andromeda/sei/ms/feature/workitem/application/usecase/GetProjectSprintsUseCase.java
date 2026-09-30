@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.workitem.application.usecase;
 
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
+import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.shared.domain.exception.ResourceNotFoundException;
@@ -22,7 +23,9 @@ public class GetProjectSprintsUseCase {
                 .filter(p -> orgId.equals(p.getOrganizationId()))
                 .orElseThrow(() -> new ResourceNotFoundException("PROJECT_NOT_FOUND", "Project not found: " + projectId));
 
-        List<Sprint> sprints = sprintRepository.findAllByOrganizationIdAndProjectId(orgId, projectId);
+        // One entry per iteration: a shared iteration is one sprint per team, listed through its
+        // canonical twin (the one the work items are linked to).
+        List<Sprint> sprints = SharedIterations.distinct(sprintRepository.findAllByOrganizationIdAndProjectId(orgId, projectId));
 
         return sprints.stream()
                 .sorted(Comparator

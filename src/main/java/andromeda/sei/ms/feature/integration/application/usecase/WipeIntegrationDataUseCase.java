@@ -15,7 +15,9 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,14 +38,17 @@ import java.util.Map;
 @Service
 public class WipeIntegrationDataUseCase {
 
-    private final Map<Integration, IntegrationDataWiper> wipers = new EnumMap<>(Integration.class);
+    /** Several wipers may share an integration: Azure DevOps wipes Boards and Azure Repos data. */
+    private final Map<Integration, List<IntegrationDataWiper>> wipers = new EnumMap<>(Integration.class);
     private final IntegrationSyncLogRepository syncLogRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
 
     public WipeIntegrationDataUseCase(List<IntegrationDataWiper> wiperList,
                                        IntegrationSyncLogRepository syncLogRepository,
                                        AzureProjectBindingRepository azureProjectBindingRepository) {
-        for (IntegrationDataWiper w : wiperList) this.wipers.put(w.integration(), w);
+        for (IntegrationDataWiper w : wiperList) {
+            this.wipers.computeIfAbsent(w.integration(), i -> new ArrayList<>()).add(w);
+        }
         this.syncLogRepository = syncLogRepository;
         this.azureProjectBindingRepository = azureProjectBindingRepository;
     }
@@ -58,14 +63,17 @@ public class WipeIntegrationDataUseCase {
     @Async
     public void execute(String organizationId, Integration integration, WipeScope scope) {
         Instant startedAt = Instant.now();
-        IntegrationDataWiper wiper = wipers.get(integration);
-        if (wiper == null) {
+        List<IntegrationDataWiper> integrationWipers = wipers.getOrDefault(integration, List.of());
+        if (integrationWipers.isEmpty()) {
             log.error("Sem wiper registrado para {}", integration);
             return;
         }
 
         try {
-            Map<String, Long> removidos = wiper.wipe(organizationId, scope);
+            Map<String, Long> removidos = new LinkedHashMap<>();
+            for (IntegrationDataWiper wiper : integrationWipers) {
+                wiper.wipe(organizationId, scope).forEach((colecao, n) -> removidos.merge(colecao, n, Long::sum));
+            }
 
             /* O historico da propria integracao tambem e dado dela. Apagado por ultimo, logo antes
              * de escrever o registro do wipe. */

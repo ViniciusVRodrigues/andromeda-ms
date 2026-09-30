@@ -1,11 +1,17 @@
 package andromeda.sei.ms.feature.role.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.role.domain.Role;
+import andromeda.sei.ms.shared.domain.security.PermissionAliasResolver;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.List;
 
+/**
+ * Choke point of the rollback-safe {@code GITHUB_*} -> {@code REPOS_*} rename (see
+ * {@link PermissionAliasResolver}): the domain {@link Role} only ever holds current codes
+ * ({@code toDomain} strips the legacy mirrors), while the stored document keeps each renamed code
+ * paired with its legacy mirror ({@code toDocument}) so a rolled-back deploy still grants access.
+ */
 @Component
 public class RoleDocumentMapper {
 
@@ -17,7 +23,7 @@ public class RoleDocumentMapper {
                 doc.getLabel(),
                 doc.isDefault(),
                 doc.getClonedFromRoleId(),
-                doc.getPermissionCodes() != null ? new ArrayList<>(doc.getPermissionCodes()) : new ArrayList<>(),
+                new ArrayList<>(PermissionAliasResolver.canonicalize(doc.getPermissionCodes())),
                 doc.isActive(),
                 doc.getVersion(),
                 doc.getCreatedAt(),
@@ -32,7 +38,7 @@ public class RoleDocumentMapper {
                 .label(role.getLabel())
                 .isDefault(role.isDefault())
                 .clonedFromRoleId(role.getClonedFromRoleId())
-                .permissionCodes(role.getPermissionCodes() != null ? new ArrayList<>(role.getPermissionCodes()) : List.of())
+                .permissionCodes(new ArrayList<>(PermissionAliasResolver.withLegacyMirrors(role.getPermissionCodes())))
                 .active(role.isActive())
                 .createdAt(role.getCreatedAt())
                 .updatedAt(role.getUpdatedAt());

@@ -34,6 +34,12 @@ public class GithubConfigDocument {
     private int consecutiveFailures;
     private String lastErrorCode;
     private String lastErrorMessage;
+    /**
+     * Legacy (vcs-core-refactor): the work item link configuration now lives in
+     * {@code organizations.vcsSettings}. Kept, read-only, for one release so a rollback still
+     * finds it; {@link GithubConfigRepositoryImpl#save} carries it over untouched.
+     */
+    @Deprecated
     private WorkItemLinkConfigDocument workItemLinkConfig;
     private boolean active = true;
     private Instant createdAt;

@@ -88,12 +88,6 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     }
 
     @Override
-    public List<AiUsageAllocation> findByWorkItemId(String workItemId) {
-        return mongoRepository.findBySplitsWorkItemId(workItemId)
-                .stream().map(mapper::toDomain).toList();
-    }
-
-    @Override
     public void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId) {
         if (aiUsageIds == null || aiUsageIds.isEmpty()) {
             return;
@@ -122,6 +116,27 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         Query query = Query.query(criteria);
         return mongoTemplate.find(query, AiUsageAllocationDocument.class)
                 .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<AiUsageAllocation> findValidatedByOrganizationIdAndDayBetween(
+            String organizationId, LocalDate from, LocalDate to) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("status").is(AiUsageAllocation.Status.VALIDATED)
+                .and("active").is(true)
+                .and("day").gte(from).lte(to));
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<AiUsageAllocation> findValidatedByOrganizationIdAndWorkItemIdIn(
+            String organizationId, java.util.Collection<String> workItemIds) {
+        if (workItemIds == null || workItemIds.isEmpty()) return List.of();
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("status").is(AiUsageAllocation.Status.VALIDATED)
+                .and("active").is(true)
+                .and("splits.workItemId").in(workItemIds));
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream().map(mapper::toDomain).toList();
     }
 
     @Override

@@ -19,6 +19,7 @@ public class AzureClientConfig {
         return WebClient.builder()
                 .codecs(c -> c.defaultCodecs().maxInMemorySize(2 * 1024 * 1024))
                 .filter(loggingFilter())
+                .filter(new AzureThrottleFilter())
                 .build();
     }
 

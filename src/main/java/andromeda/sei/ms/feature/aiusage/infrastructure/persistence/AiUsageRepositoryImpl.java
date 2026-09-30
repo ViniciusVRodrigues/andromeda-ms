@@ -78,18 +78,30 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         mongoTemplate.updateFirst(query, update, AiUsageDocument.class);
     }
 
+    /**
+     * Inclusive on both ends and active only (metrics-correctness 11.1). The derived
+     * {@code ...DayBetween} query this replaced renders as {@code $gt/$lt}, which silently dropped
+     * the first and last day of a sprint from the developer dashboard's AI cost, and it also read
+     * soft-deleted records.
+     */
     @Override
     public List<AIUsage> findByOrganizationIdAndUserIdAndDayBetween(
             String organizationId, String userId, LocalDate from, LocalDate to) {
-        return mongoRepository.findByOrganizationIdAndUserIdAndDayBetween(organizationId, userId, from, to)
-                .stream().map(mapper::toDomain).toList();
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("userId").is(userId)
+                .and("active").is(true)
+                .and("day").gte(from).lte(to));
+        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
     }
 
+    /** Inclusive on both ends and active only, like the per-user variant. */
     @Override
     public List<AIUsage> findByOrganizationIdAndDayBetween(
             String organizationId, LocalDate from, LocalDate to) {
-        return mongoRepository.findByOrganizationIdAndDayBetween(organizationId, from, to)
-                .stream().map(mapper::toDomain).toList();
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("active").is(true)
+                .and("day").gte(from).lte(to));
+        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
     }
 
     @Override
@@ -265,10 +277,23 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     }
 
     @Override
-    public List<AIUsage> findByIds(List<String> ids) {
+    public List<AIUsage> findByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids) {
         if (ids == null || ids.isEmpty()) return List.of();
-        return mongoRepository.findAllById(ids)
-                .stream().map(mapper::toDomain).toList();
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("_id").in(ids)
+                .and("active").is(true));
+        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<AIUsage> findByOrganizationIdAndUserIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("userId").in(userIds)
+                .and("active").is(true)
+                .and("day").gte(from).lte(to));
+        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
     }
 
     private Criteria buildUserFilterCriteria(String organizationId, String userId,

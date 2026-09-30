@@ -4,12 +4,14 @@ import andromeda.sei.ms.feature.azure.application.dto.AzureConnectionStatusOutpu
 import andromeda.sei.ms.feature.azure.application.usecase.ConfigureAzureDevOpsPatUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.DisconnectAzureUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.GetAzureConnectionStatusUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.StartAzureOAuthUseCase;
+import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureOrgUrlUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCase;
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
-import andromeda.sei.ms.feature.azure.infrastructure.AzureSyncCooldownService;
+import andromeda.sei.ms.feature.sync.domain.exception.SyncCooldownActiveException;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,6 +30,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -44,11 +47,15 @@ class AzureConnectionControllerTest {
     @Mock
     private TriggerAzureSyncUseCase triggerAzureSyncUseCase;
 
-    @Mock
-    private AzureSyncCooldownService azureSyncCooldownService;
 
     @Mock
     private ConfigureAzureDevOpsPatUseCase configureAzureDevOpsPatUseCase;
+
+    @Mock
+    private StartAzureOAuthUseCase startAzureOAuthUseCase;
+
+    @Mock
+    private UpdateAzureOrgUrlUseCase updateAzureOrgUrlUseCase;
 
     @InjectMocks
     private AzureConnectionController controller;
@@ -102,17 +109,17 @@ class AzureConnectionControllerTest {
 
     @Test
     void triggerSync_shouldReturn409WhenNoConnection() throws Exception {
-        when(azureSyncCooldownService.remainingCooldown(any())).thenReturn(0L);
         doThrow(new AzureConnectionNotFoundException("org-1"))
                 .when(triggerAzureSyncUseCase).execute();
 
         mockMvc.perform(post("/api/v1/integrations/azure/sync"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("AZURE_CONNECTION_NOT_FOUND"));
     }
 
     @Test
     void triggerSync_shouldReturn429WithRetryAfterWhenCooldownActive() throws Exception {
-        when(azureSyncCooldownService.remainingCooldown(any())).thenReturn(18L);
+        when(triggerAzureSyncUseCase.execute()).thenThrow(new SyncCooldownActiveException(18));
 
         mockMvc.perform(post("/api/v1/integrations/azure/sync"))
                 .andExpect(status().isTooManyRequests())
@@ -120,11 +127,12 @@ class AzureConnectionControllerTest {
     }
 
     @Test
-    void triggerSync_shouldReturn202OnSuccess() throws Exception {
-        when(azureSyncCooldownService.remainingCooldown(any())).thenReturn(0L);
+    void triggerSync_shouldReturn202WithSyncIdBeforeSyncFinishes() throws Exception {
+        when(triggerAzureSyncUseCase.execute()).thenReturn("sync-1");
 
         mockMvc.perform(post("/api/v1/integrations/azure/sync"))
-                .andExpect(status().isAccepted());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.syncId").value("sync-1"));
     }
 
     @Test
@@ -154,5 +162,84 @@ class AzureConnectionControllerTest {
                         .content("{\"adoOrganizationUrl\":\"ghp_aFakePersonalAccessTokenValue1234567890\",\"personalAccessToken\":\"myPat\"}"))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("AZURE_ORG_URL_INVALID"));
+    }
+
+    @Test
+    void getStatus_shouldExposeReposAccessAndLastErrorCode() throws Exception {
+        when(getAzureConnectionStatusUseCase.execute()).thenReturn(new AzureConnectionStatusOutput(
+                AzureConnectionStatus.ERROR, "https://login.microsoftonline.com/t/v2.0", "user-1", null, 0,
+                AzureAuthMethod.OAUTH, false, "AZURE_ORG_URL_INVALID", "Informe a URL"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/connection"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reposAccess").value(false))
+                .andExpect(jsonPath("$.lastErrorCode").value("AZURE_ORG_URL_INVALID"))
+                .andExpect(jsonPath("$.lastErrorMessage").value("Informe a URL"));
+    }
+
+    @Test
+    void getStatus_shouldRenderUnknownReposAccessAsNull() throws Exception {
+        when(getAzureConnectionStatusUseCase.execute()).thenReturn(new AzureConnectionStatusOutput(
+                AzureConnectionStatus.CONNECTED, "https://dev.azure.com/myorg", null, null, 0, AzureAuthMethod.PAT));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/connection"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reposAccess").doesNotExist());
+    }
+
+    @Test
+    void connect_shouldRedirectToTheAuthorizationWithTheValidatedOrgUrl() throws Exception {
+        when(startAzureOAuthUseCase.execute("https://dev.azure.com/acme/")).thenReturn("https://dev.azure.com/acme");
+
+        mockMvc.perform(get("/api/v1/integrations/azure/connect").param("orgUrl", "https://dev.azure.com/acme/"))
+                .andExpect(status().isFound())
+                .andExpect(header().string("Location",
+                        "/api/v1/auth/oauth2/authorization/azure?orgUrl=https%3A%2F%2Fdev.azure.com%2Facme"));
+    }
+
+    @Test
+    void connect_shouldReturn422WhenTheOrgUrlIsMissingOrInvalid() throws Exception {
+        when(startAzureOAuthUseCase.execute(null)).thenThrow(new AzureOrgUrlInvalidException("orgUrl must match"));
+
+        mockMvc.perform(get("/api/v1/integrations/azure/connect"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("AZURE_ORG_URL_INVALID"));
+    }
+
+    @Test
+    void updateOrgUrl_shouldReturnTheRecoveredStatus() throws Exception {
+        when(updateAzureOrgUrlUseCase.execute("https://dev.azure.com/acme")).thenReturn(new AzureConnectionStatusOutput(
+                AzureConnectionStatus.CONNECTED, "https://dev.azure.com/acme", "user-1", null, 0, AzureAuthMethod.OAUTH,
+                true, null, null));
+
+        mockMvc.perform(put("/api/v1/integrations/azure/connection/org-url")
+                        .contentType("application/json")
+                        .content("{\"azureOrgUrl\":\"https://dev.azure.com/acme\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CONNECTED"))
+                .andExpect(jsonPath("$.reposAccess").value(true));
+    }
+
+    @Test
+    void updateOrgUrl_shouldReturn422ForAnUnreachableUrl() throws Exception {
+        when(updateAzureOrgUrlUseCase.execute(any())).thenThrow(new AzureOrgUrlInvalidException("unreachable"));
+
+        mockMvc.perform(put("/api/v1/integrations/azure/connection/org-url")
+                        .contentType("application/json")
+                        .content("{\"azureOrgUrl\":\"https://dev.azure.com/typo\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("AZURE_ORG_URL_INVALID"));
+    }
+
+    @Test
+    void connectPat_shouldReturn422WhenAzureDevOpsRejectsThePat() throws Exception {
+        doThrow(new andromeda.sei.ms.feature.azure.domain.exception.AzurePatInvalidException("rejected"))
+                .when(configureAzureDevOpsPatUseCase).execute(any());
+
+        mockMvc.perform(post("/api/v1/integrations/azure/connection/pat")
+                        .contentType("application/json")
+                        .content("{\"adoOrganizationUrl\":\"https://dev.azure.com/myorg\",\"personalAccessToken\":\"x\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("AZURE_PAT_INVALID"));
     }
 }

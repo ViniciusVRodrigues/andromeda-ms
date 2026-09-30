@@ -142,4 +142,95 @@ class GithubApiClientTest {
         assertThat(second).hasSize(1);
         assertThat(second.get(0).sha()).isEqualTo("abc123");
     }
+
+    private WebClient jsonClient(String body) {
+        return WebClient.builder()
+                .exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)
+                        .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                        .body(body)
+                        .build()))
+                .build();
+    }
+
+    /** metrics-correctness 3.x: the new fields decode through the real codec, not only via constructors. */
+    @Test
+    void getPullRequests_shouldDecodeDraftBaseBranchAndLabels() {
+        String page = """
+                [ { "id": 7, "number": 7, "title": "Revert x", "state": "closed", "draft": true,
+                    "user": { "login": "octocat", "id": 1 },
+                    "created_at": "2024-07-01T00:00:00Z", "updated_at": "2024-07-02T00:00:00Z",
+                    "merged_at": "2024-07-02T00:00:00Z", "closed_at": "2024-07-02T00:00:00Z",
+                    "head": { "ref": "hotfix/x" }, "base": { "ref": "main" },
+                    "labels": [ { "name": "bug" }, { "name": "urgent" } ] } ]
+                """;
+
+        List<GhPullRequestDto> prs = clientFor(jsonClient(page)).getPullRequests("octo", "hello", "Bearer t", null);
+
+        GhPullRequestDto pr = prs.getFirst();
+        assertThat(pr.draft()).isTrue();
+        assertThat(pr.base().ref()).isEqualTo("main");
+        assertThat(pr.head().ref()).isEqualTo("hotfix/x");
+        assertThat(pr.labels()).extracting(GhPullRequestDto.LabelDto::name).containsExactly("bug", "urgent");
+    }
+
+    @Test
+    void getReviews_shouldDecodeReviewerTypeAsBot() {
+        String page = """
+                [ { "id": 1, "state": "COMMENTED", "submitted_at": "2024-07-01T00:00:00Z",
+                    "user": { "login": "ci-app", "id": 9, "type": "Bot" } },
+                  { "id": 2, "state": "APPROVED", "submitted_at": "2024-07-01T01:00:00Z",
+                    "user": { "login": "alice", "id": 3, "type": "User" } } ]
+                """;
+
+        List<GhReviewDto> reviews = clientFor(jsonClient(page)).getReviews("octo", "hello", 7, "Bearer t");
+
+        assertThat(reviews).extracting(r -> r.user().isBot()).containsExactly(true, false);
+    }
+
+    @Test
+    void getRepo_shouldDecodeDefaultBranch() {
+        String body = """
+                { "id": 5, "name": "hello", "full_name": "octo/hello", "owner": { "login": "octo" },
+                  "updated_at": "2024-07-01T00:00:00Z", "default_branch": "trunk" }
+                """;
+
+        GhRepoDto repo = clientFor(jsonClient(body)).getRepo("octo", "hello", "Bearer t");
+
+        assertThat(repo.defaultBranch()).isEqualTo("trunk");
+    }
+
+    @Test
+    void getPullRequestsCreatedSince_shouldSortByCreationKeepOnlyWindowAndStopAtFirstPageFullyOutside() {
+        Instant cutoff = Instant.parse("2024-06-01T00:00:00Z");
+        String firstPage = """
+                [ { "id": 1, "number": 1, "created_at": "2024-07-01T00:00:00Z", "updated_at": "2024-07-02T00:00:00Z" },
+                  { "id": 2, "number": 2, "created_at": "2024-05-01T00:00:00Z", "updated_at": "2024-07-03T00:00:00Z" } ]
+                """;
+        String secondPage = """
+                [ { "id": 3, "number": 3, "created_at": "2024-04-01T00:00:00Z", "updated_at": "2024-04-02T00:00:00Z" } ]
+                """;
+        List<String> requestedUrls = new java.util.ArrayList<>();
+        WebClient webClient = WebClient.builder()
+                .exchangeFunction(request -> {
+                    requestedUrls.add(request.url().toString());
+                    boolean first = requestedUrls.size() == 1;
+                    ClientResponse.Builder response = ClientResponse.create(HttpStatus.OK)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                            .body(first ? firstPage : secondPage);
+                    if (first) {
+                        response.header("Link", "<https://api.github.com/repos/octo/hello/pulls?page=2>; rel=\"next\"");
+                    } else {
+                        response.header("Link", "<https://api.github.com/repos/octo/hello/pulls?page=3>; rel=\"next\"");
+                    }
+                    return Mono.just(response.build());
+                })
+                .build();
+        GithubApiClient client = clientFor(webClient);
+
+        List<GhPullRequestDto> prs = client.getPullRequestsCreatedSince("octo", "hello", "Bearer token", cutoff);
+
+        assertThat(prs).extracting(GhPullRequestDto::id).containsExactly(1L);
+        assertThat(requestedUrls).hasSize(2);
+        assertThat(requestedUrls.getFirst()).contains("sort=created").contains("direction=desc");
+    }
 }

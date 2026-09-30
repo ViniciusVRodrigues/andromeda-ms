@@ -6,7 +6,9 @@ import andromeda.sei.ms.feature.project.domain.exception.ProjectInvalidMemberExc
 import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundException;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.shared.application.security.ProjectMembersChanged;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -18,6 +20,7 @@ public class UpdateProjectMembersUseCase {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public Project execute(String projectId, List<String> memberIds) {
         String organizationId = TenantContextHolder.get();
@@ -33,6 +36,8 @@ public class UpdateProjectMembersUseCase {
 
         project.setMemberIds(memberIds);
         project.setUpdatedAt(Instant.now());
-        return projectRepository.save(project);
+        Project saved = projectRepository.save(project);
+        eventPublisher.publishEvent(new ProjectMembersChanged(organizationId, saved.getId()));
+        return saved;
     }
 }

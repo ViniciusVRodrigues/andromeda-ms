@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.workitem.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
+import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -18,6 +19,14 @@ import java.util.Optional;
 @Repository
 @RequiredArgsConstructor
 public class SprintRepositoryImpl implements SprintRepository {
+
+    /**
+     * Twins of a shared iteration have the same dates: break the tie like
+     * {@link SharedIterations#CANONICAL_ORDER} so the closest-sprint fallback lands on the twin
+     * the work items are linked to.
+     */
+    private static final org.springframework.data.domain.Sort CANONICAL_TIE_BREAK =
+            org.springframework.data.domain.Sort.by("createdAt", "teamId", "id");
 
     private final SprintMongoRepository mongoRepository;
     private final SprintDocumentMapper mapper;
@@ -67,15 +76,10 @@ public class SprintRepositoryImpl implements SprintRepository {
     }
 
     @Override
-    public Optional<Sprint> findByOrganizationIdAndExternalId(String organizationId, String externalId) {
-        return mongoRepository.findByOrganizationIdAndExternalId(organizationId, externalId)
-                .map(mapper::toDomain);
-    }
-
-    @Override
-    public Optional<Sprint> findByOrganizationIdAndPath(String organizationId, String path) {
-        return mongoRepository.findByOrganizationIdAndPath(organizationId, path)
-                .map(mapper::toDomain);
+    public List<Sprint> findAllByOrganizationIdAndProjectIdAndPath(String organizationId, String projectId,
+                                                                   String path) {
+        return mongoRepository.findAllByOrganizationIdAndProjectIdAndPathAndActiveTrue(organizationId, projectId, path)
+                .stream().map(mapper::toDomain).toList();
     }
 
     @Override
@@ -105,8 +109,10 @@ public class SprintRepositoryImpl implements SprintRepository {
                 .and("projectId").is(projectId)
                 .and("timeFrame").is(Sprint.TimeFrame.CURRENT)
                 .and("active").is(true));
-        SprintDocument doc = mongoTemplate.findOne(query, SprintDocument.class);
-        return Optional.ofNullable(doc).map(mapper::toDomain);
+        // findOne returned an arbitrary team's twin of a shared iteration: pick with the same
+        // comparator the work item sync uses to link items, or the dashboard reads zero items.
+        return SharedIterations.canonical(mongoTemplate.find(query, SprintDocument.class)
+                .stream().map(mapper::toDomain).toList());
     }
 
     @Override
@@ -117,7 +123,8 @@ public class SprintRepositoryImpl implements SprintRepository {
                 .and("active").is(true)
                 .and("endDate").lte(dayInstant))
                 .with(org.springframework.data.domain.Sort.by(
-                        org.springframework.data.domain.Sort.Direction.DESC, "endDate"))
+                        org.springframework.data.domain.Sort.Direction.DESC, "endDate")
+                        .and(CANONICAL_TIE_BREAK))
                 .limit(1);
         SprintDocument closest = mongoTemplate.findOne(past, SprintDocument.class);
         if (closest != null) return Optional.of(mapper.toDomain(closest));
@@ -127,7 +134,8 @@ public class SprintRepositoryImpl implements SprintRepository {
                 .and("active").is(true)
                 .and("startDate").gte(dayInstant))
                 .with(org.springframework.data.domain.Sort.by(
-                        org.springframework.data.domain.Sort.Direction.ASC, "startDate"))
+                        org.springframework.data.domain.Sort.Direction.ASC, "startDate")
+                        .and(CANONICAL_TIE_BREAK))
                 .limit(1);
         return Optional.ofNullable(mongoTemplate.findOne(future, SprintDocument.class))
                 .map(mapper::toDomain);
@@ -148,5 +156,10 @@ public class SprintRepositoryImpl implements SprintRepository {
     @Override
     public Optional<Sprint> findById(String id) {
         return mongoRepository.findById(id).map(mapper::toDomain);
+    }
+
+    @Override
+    public Optional<Sprint> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId) {
+        return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).map(mapper::toDomain);
     }
 }

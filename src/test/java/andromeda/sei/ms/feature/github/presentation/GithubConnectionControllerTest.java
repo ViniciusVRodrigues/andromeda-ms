@@ -1,16 +1,18 @@
 package andromeda.sei.ms.feature.github.presentation;
 
-import andromeda.sei.ms.feature.github.application.dto.AvailableGithubRepoOutput;
 import andromeda.sei.ms.feature.github.application.dto.GithubConnectionStatusOutput;
 import andromeda.sei.ms.feature.github.application.usecase.ConfigureGithubConnectionUseCase;
 import andromeda.sei.ms.feature.github.application.usecase.DisconnectGithubUseCase;
 import andromeda.sei.ms.feature.github.application.usecase.GetGithubConnectionStatusUseCase;
-import andromeda.sei.ms.feature.github.application.usecase.ListAvailableGithubReposUseCase;
 import andromeda.sei.ms.feature.github.application.usecase.TriggerGithubSyncUseCase;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionStatus;
 import andromeda.sei.ms.feature.github.domain.exception.GithubConnectionNotFoundException;
 import andromeda.sei.ms.feature.github.domain.exception.GithubPatInvalidException;
-import andromeda.sei.ms.feature.github.infrastructure.GithubSyncCooldownService;
+import andromeda.sei.ms.feature.sync.domain.exception.SyncCooldownActiveException;
+import andromeda.sei.ms.feature.vcs.application.dto.BindableRepositoryOutput;
+import andromeda.sei.ms.feature.vcs.application.usecase.ListBindableRepositoriesUseCase;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsConnectionNotFoundException;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,11 +53,9 @@ class GithubConnectionControllerTest {
     @Mock
     private TriggerGithubSyncUseCase triggerGithubSyncUseCase;
 
-    @Mock
-    private GithubSyncCooldownService githubSyncCooldownService;
 
     @Mock
-    private ListAvailableGithubReposUseCase listAvailableGithubReposUseCase;
+    private ListBindableRepositoriesUseCase listBindableRepositoriesUseCase;
 
     @InjectMocks
     private GithubConnectionController controller;
@@ -147,17 +147,17 @@ class GithubConnectionControllerTest {
 
     @Test
     void triggerSync_shouldReturn409WhenNoConnection() throws Exception {
-        when(githubSyncCooldownService.remainingCooldown(any())).thenReturn(0L);
         doThrow(new GithubConnectionNotFoundException("org-1"))
                 .when(triggerGithubSyncUseCase).execute();
 
         mockMvc.perform(post("/api/v1/integrations/github/sync"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("GITHUB_CONNECTION_NOT_FOUND"));
     }
 
     @Test
     void triggerSync_shouldReturn429WithRetryAfterWhenCooldownActive() throws Exception {
-        when(githubSyncCooldownService.remainingCooldown(any())).thenReturn(18L);
+        when(triggerGithubSyncUseCase.execute()).thenThrow(new SyncCooldownActiveException(18));
 
         mockMvc.perform(post("/api/v1/integrations/github/sync"))
                 .andExpect(status().isTooManyRequests())
@@ -165,51 +165,44 @@ class GithubConnectionControllerTest {
     }
 
     @Test
-    void triggerSync_shouldReturn202AndRecordCooldownOnSuccess() throws Exception {
-        when(githubSyncCooldownService.remainingCooldown(any())).thenReturn(0L);
+    void triggerSync_shouldReturn202WithSyncIdBeforeSyncFinishes() throws Exception {
+        when(triggerGithubSyncUseCase.execute()).thenReturn("sync-1");
 
         mockMvc.perform(post("/api/v1/integrations/github/sync"))
-                .andExpect(status().isAccepted());
-
-        verify(githubSyncCooldownService).record(any());
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.syncId").value("sync-1"));
     }
 
-    // ── Available repos listing (design.md D5) ───────────────────────────
+    // ── Deprecated available repos listing, now over the neutral use case ──
 
     @Test
-    void listAvailableRepos_shouldReturn200WithRepos() throws Exception {
-        when(listAvailableGithubReposUseCase.execute(null))
-                .thenReturn(List.of(new AvailableGithubRepoOutput(
-                        "octo/hello", "hello", "octo/hello",
-                        AvailableGithubRepoOutput.Source.LIVE, null)));
+    void listAvailableRepos_shouldKeepLegacyShape_andDropReposBoundElsewhere() throws Exception {
+        when(listBindableRepositoriesUseCase.execute(VcsProvider.GITHUB)).thenReturn(List.of(
+                bindable("octo/hello", true, null, BindableRepositoryOutput.Source.LIVE),
+                bindable("octo/taken", false, "proj-9", BindableRepositoryOutput.Source.LIVE),
+                bindable("octo/mine", false, "proj-1", BindableRepositoryOutput.Source.CACHED)));
 
-        mockMvc.perform(get("/api/v1/integrations/github/repos/available"))
+        mockMvc.perform(get("/api/v1/integrations/github/repos/available").param("forProjectId", "proj-1"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].repoId").value("octo/hello"))
+                .andExpect(jsonPath("$[0].name").value("hello"))
                 .andExpect(jsonPath("$[0].fullName").value("octo/hello"))
-                .andExpect(jsonPath("$[0].source").value("LIVE"));
+                .andExpect(jsonPath("$[0].source").value("LIVE"))
+                .andExpect(jsonPath("$[1].boundToProjectId").value("proj-1"));
     }
 
     @Test
-    void listAvailableRepos_shouldPassForProjectIdToUseCase() throws Exception {
-        when(listAvailableGithubReposUseCase.execute(eq("proj-1")))
-                .thenReturn(List.of(new AvailableGithubRepoOutput(
-                        "octo/hello", "hello", "octo/hello",
-                        AvailableGithubRepoOutput.Source.CACHED, "proj-1")));
-
-        mockMvc.perform(get("/api/v1/integrations/github/repos/available")
-                        .param("forProjectId", "proj-1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].boundToProjectId").value("proj-1"));
-    }
-
-    @Test
-    void listAvailableRepos_shouldReturn404WhenNoConnection() throws Exception {
-        when(listAvailableGithubReposUseCase.execute(any()))
-                .thenThrow(new GithubConnectionNotFoundException("org-1"));
+    void listAvailableRepos_shouldReturn409WhenNoConnection() throws Exception {
+        when(listBindableRepositoriesUseCase.execute(any())).thenThrow(new VcsConnectionNotFoundException("GITHUB"));
 
         mockMvc.perform(get("/api/v1/integrations/github/repos/available"))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("GITHUB_CONNECTION_NOT_FOUND"));
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VCS_CONNECTION_NOT_FOUND"));
+    }
+
+    private static BindableRepositoryOutput bindable(String name, boolean bindable, String boundTo,
+                                                     BindableRepositoryOutput.Source source) {
+        return new BindableRepositoryOutput(VcsProvider.GITHUB, "1", name, null, null, "main", bindable, boundTo, source);
     }
 }

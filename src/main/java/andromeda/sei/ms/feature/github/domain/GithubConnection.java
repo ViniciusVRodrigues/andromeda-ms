@@ -17,8 +17,6 @@ public class GithubConnection {
     private Instant createdAt;
     private Instant updatedAt;
     private Long version;
-    /** Optional; {@code null} means the organization never configured one. */
-    private WorkItemLinkConfig workItemLinkConfig;
 
     public GithubConnection(String id, String organizationId, String personalAccessToken,
                              String authorizedByUserId, GithubConnectionStatus status,
@@ -78,22 +76,4 @@ public class GithubConnection {
 
     public Long getVersion() { return version; }
     public void setVersion(Long version) { this.version = version; }
-
-    /** @return the stored configuration, or the defaults when none was ever set. */
-    public WorkItemLinkConfig getWorkItemLinkConfig() {
-        return WorkItemLinkConfig.orDefaults(workItemLinkConfig);
-    }
-
-    public void setWorkItemLinkConfig(WorkItemLinkConfig workItemLinkConfig) {
-        this.workItemLinkConfig = workItemLinkConfig;
-    }
-
-    /**
-     * The stored value, without the default fallback -- persistence must distinguish
-     * "never configured" from "configured to the defaults", otherwise saving a connection
-     * would silently freeze today's defaults onto every organization.
-     */
-    public WorkItemLinkConfig getStoredWorkItemLinkConfig() {
-        return workItemLinkConfig;
-    }
 }

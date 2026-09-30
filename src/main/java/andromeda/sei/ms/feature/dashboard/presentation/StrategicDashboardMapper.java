@@ -25,24 +25,26 @@ public class StrategicDashboardMapper {
         DeveloperDashboardResponse memberDetail = output.memberDetail() == null ? null :
                 developerDashboardMapper.toResponse(output.memberDetail());
 
-        return new StrategicDashboardResponse(output.level(), projects, projectDetail, memberDetail);
+        return new StrategicDashboardResponse(output.level(), projects, projectDetail, memberDetail, null,
+                output.delivery());
     }
 
     private StrategicDashboardResponse.ProjectSummaryResponse toProjectSummary(StrategicDashboardOutput.ProjectSummary s) {
         return new StrategicDashboardResponse.ProjectSummaryResponse(
                 s.projectId(), s.projectName(), s.totalWorkItems(),
                 s.storyPointsDelivered(), s.avgCycleTimeHours(), s.avgLeadTimeHours(),
-                toDora(s.dora()));
+                toDora(s.dora()), s.cycleTime(), s.leadTime(), s.delivery());
     }
 
     private StrategicDashboardResponse.ProjectDetailResponse toProjectDetail(StrategicDashboardOutput.ProjectDetail d) {
         List<StrategicDashboardResponse.MemberSummaryResponse> members = d.members() == null ? List.of() :
                 d.members().stream().map(m -> new StrategicDashboardResponse.MemberSummaryResponse(
                         m.userId(), m.name(), m.linkedToAzure(),
-                        m.storyPointsDelivered(), m.cycleTimeHours(), m.leadTimeHours(), m.workItemCount()))
+                        m.storyPointsDelivered(), m.cycleTimeHours(), m.leadTimeHours(), m.workItemCount(),
+                        m.cycleTime(), m.leadTime()))
                         .toList();
         return new StrategicDashboardResponse.ProjectDetailResponse(
-                d.projectId(), d.projectName(), members, toDora(d.dora()));
+                d.projectId(), d.projectName(), members, toDora(d.dora()), d.delivery());
     }
 
     private StrategicDashboardResponse.DoraMetricsResponse toDora(StrategicDashboardOutput.DoraMetrics dora) {

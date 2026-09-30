@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 public class SprintMetricsDocumentMapper {
 
     public SprintMetrics toDomain(SprintMetricsDocument doc) {
-        return new SprintMetrics(
+        SprintMetrics metrics = new SprintMetrics(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getProjectId(),
@@ -25,6 +25,12 @@ public class SprintMetricsDocumentMapper {
                 doc.getCreatedAt(),
                 doc.getUpdatedAt()
         );
+        metrics.setPlannedEffort(doc.getPlannedEffort());
+        metrics.setCycleTimeP50(doc.getCycleTimeP50());
+        metrics.setCycleTimeP90(doc.getCycleTimeP90());
+        metrics.setLeadTimeP50(doc.getLeadTimeP50());
+        metrics.setLeadTimeP90(doc.getLeadTimeP90());
+        return metrics;
     }
 
     public SprintMetricsDocument toDocument(SprintMetrics metrics) {
@@ -37,6 +43,11 @@ public class SprintMetricsDocumentMapper {
                 .velocity(metrics.getVelocity())
                 .avgCycleTime(metrics.getAvgCycleTime())
                 .avgLeadTime(metrics.getAvgLeadTime())
+                .plannedEffort(metrics.getPlannedEffort())
+                .cycleTimeP50(metrics.getCycleTimeP50())
+                .cycleTimeP90(metrics.getCycleTimeP90())
+                .leadTimeP50(metrics.getLeadTimeP50())
+                .leadTimeP90(metrics.getLeadTimeP90())
                 .completedItemCount(metrics.getCompletedItemCount())
                 .totalItemCount(metrics.getTotalItemCount())
                 .itemsWithPoints(metrics.getItemsWithPoints())

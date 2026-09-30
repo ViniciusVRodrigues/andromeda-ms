@@ -21,6 +21,11 @@ public class ProjectRepositoryImpl implements ProjectRepository {
     }
 
     @Override
+    public Optional<Project> findActiveByIdAndOrganizationId(String id, String organizationId) {
+        return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).map(mapper::toDomain);
+    }
+
+    @Override
     public List<Project> findAllActiveByOrganizationId(String organizationId) {
         return mongoRepository.findAllByOrganizationIdAndActiveTrue(organizationId)
                 .stream().map(mapper::toDomain).toList();

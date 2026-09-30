@@ -25,6 +25,8 @@ public class PermissionDocument {
     private String code;
     private String description;
     private String module;
+    /** {@code ORG_ONLY} or {@code PROJECT_SCOPABLE} (project-scoped-permissions, permission-scopes). */
+    private String scope;
     private boolean active = true;
 
     @Version

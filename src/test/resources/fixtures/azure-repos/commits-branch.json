@@ -1,0 +1,34 @@
+{
+  "count": 3,
+  "value": [
+    {
+      "commitId": "9991b4f66def4c0a9ad8f9f27043ece7eddcf1c7",
+      "author": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:53Z" },
+      "committer": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:53Z" },
+      "comment": "Merged PR 2: Deleted README.md",
+      "commentTruncated": true,
+      "changeCounts": { "Add": 0, "Edit": 0, "Delete": 1 },
+      "url": "https://dev.azure.com/fabrikam/1fec3816-a6f6-4d90-97eb-3bc4630ac416/_apis/git/repositories/1701bc47-1145-4739-a805-64b02e40dbe7/commits/9991b4f66def4c0a9ad8f9f27043ece7eddcf1c7",
+      "remoteUrl": "https://dev.azure.com/fabrikam/SomeGitProject/_git/SampleRepository/commit/9991b4f66def4c0a9ad8f9f27043ece7eddcf1c7"
+    },
+    {
+      "commitId": "20510720ffe1443d6ed3cb98ca340bc732ba04e5",
+      "author": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:32Z" },
+      "committer": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:32Z" },
+      "comment": "Deleted README.md",
+      "changeCounts": { "Add": 0, "Edit": 0, "Delete": 1 },
+      "url": "https://dev.azure.com/fabrikam/1fec3816-a6f6-4d90-97eb-3bc4630ac416/_apis/git/repositories/1701bc47-1145-4739-a805-64b02e40dbe7/commits/20510720ffe1443d6ed3cb98ca340bc732ba04e5",
+      "remoteUrl": "https://dev.azure.com/fabrikam/SomeGitProject/_git/SampleRepository/commit/20510720ffe1443d6ed3cb98ca340bc732ba04e5"
+    },
+    {
+      "commitId": "4bac640ecfd017eeadfd282a8e31bcd8ab6d132b",
+      "author": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:17Z" },
+      "committer": { "name": "Norman Paulk", "email": "Fabrikamfiber16@hotmail.com", "date": "2018-06-15T17:06:17Z" },
+      "comment": "Merged PR 1: Added file debug.log",
+      "commentTruncated": true,
+      "changeCounts": { "Add": 1, "Edit": 0, "Delete": 0 },
+      "url": "https://dev.azure.com/fabrikam/1fec3816-a6f6-4d90-97eb-3bc4630ac416/_apis/git/repositories/1701bc47-1145-4739-a805-64b02e40dbe7/commits/4bac640ecfd017eeadfd282a8e31bcd8ab6d132b",
+      "remoteUrl": "https://dev.azure.com/fabrikam/SomeGitProject/_git/SampleRepository/commit/4bac640ecfd017eeadfd282a8e31bcd8ab6d132b"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ import java.util.Optional;
 
 /**
  * Validates the submitted PAT against {@code GET /user}, encrypts it, and persists the
- * connection -- requires {@code GITHUB_CONFIGURE} (enforced at the controller).
+ * connection -- requires {@code REPOS_CONFIGURE} (enforced at the controller).
  */
 @Slf4j
 @Component

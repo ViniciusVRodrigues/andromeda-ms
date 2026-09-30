@@ -53,6 +53,7 @@ class AiUsageAllocationControllerTest {
     @Mock AcceptAllocationUseCase acceptAllocation;
     @Mock ManualAllocateUseCase manualAllocate;
     @Mock GetAllocationHistoryUseCase getAllocationHistory;
+    @Mock andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions currentUserPermissions;
 
     MockMvc mockMvc;
     ObjectMapper objectMapper;
@@ -61,7 +62,8 @@ class AiUsageAllocationControllerTest {
     void setUp() {
         AiUsageAllocationController controller = new AiUsageAllocationController(
                 getPendingAllocations, getAllocationCandidates, saveAllocation,
-                getPendingAllocationBatches, acceptAllocation, manualAllocate, getAllocationHistory);
+                getPendingAllocationBatches, acceptAllocation, manualAllocate, getAllocationHistory,
+                currentUserPermissions);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
