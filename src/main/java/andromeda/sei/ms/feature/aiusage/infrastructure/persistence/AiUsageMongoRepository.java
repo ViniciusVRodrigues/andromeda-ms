@@ -7,12 +7,6 @@ import java.util.List;
 
 public interface AiUsageMongoRepository extends MongoRepository<AiUsageDocument, String> {
 
-    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayBetween(
-            String organizationId, String userId, LocalDate from, LocalDate to);
-
-    List<AiUsageDocument> findByOrganizationIdAndDayBetween(
-            String organizationId, LocalDate from, LocalDate to);
-
     List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayInAndActiveTrue(
             String organizationId, String userId, List<LocalDate> days);
 

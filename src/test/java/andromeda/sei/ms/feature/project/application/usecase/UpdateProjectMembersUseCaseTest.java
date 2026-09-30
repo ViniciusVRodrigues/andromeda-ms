@@ -30,6 +30,7 @@ class UpdateProjectMembersUseCaseTest {
 
     @Mock private ProjectRepository projectRepository;
     @Mock private UserRepository userRepository;
+    @Mock private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private UpdateProjectMembersUseCase useCase;
@@ -64,6 +65,8 @@ class UpdateProjectMembersUseCaseTest {
         var result = useCase.execute(PROJECT_ID, List.of(USER_ID));
 
         assertThat(result.getMemberIds()).containsExactly(USER_ID);
+        org.mockito.Mockito.verify(eventPublisher).publishEvent(org.mockito.ArgumentMatchers.any(
+                andromeda.sei.ms.shared.application.security.ProjectMembersChanged.class));
     }
 
     @Test

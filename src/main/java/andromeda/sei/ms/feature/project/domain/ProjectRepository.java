@@ -7,6 +7,9 @@ public interface ProjectRepository {
 
     Optional<Project> findById(String id);
 
+    /** Projeto ativo da organizacao; vazio quando nao existe, esta inativo ou e de outro tenant. */
+    Optional<Project> findActiveByIdAndOrganizationId(String id, String organizationId);
+
     List<Project> findAllActiveByOrganizationId(String organizationId);
 
     List<Project> findAllActiveByOrganizationIdAndMemberId(String organizationId, String memberId);

@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
+import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
@@ -19,6 +20,7 @@ import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.feature.workitem.domain.FieldValueSource;
+import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -59,6 +61,20 @@ public class SyncAzureWorkItemsUseCase {
      *         falhar com OptimisticLockingFailureException.
      */
     public AzureProjectBinding execute(AzureConnection connection, AzureProjectBinding binding, SyncTrigger trigger) {
+        return sync(connection, binding, trigger, null).binding();
+    }
+
+    /**
+     * Sincroniza os work items do binding e devolve o desfecho completo.
+     *
+     * @param backfillFrom limite inferior do primeiro sync (quando o binding ainda nao tem
+     *                     watermark): so work items alterados a partir dele sao buscados, via
+     *                     {@code [System.ChangedDate] >= backfillFrom} no WIQL. {@code null}
+     *                     busca o historico inteiro. Ignorado nos syncs incrementais.
+     * @return binding persistido e status; {@code PARTIAL} quando algum item falhou
+     */
+    public AzureWorkItemsSyncResult sync(AzureConnection connection, AzureProjectBinding binding,
+                                         SyncTrigger trigger, Instant backfillFrom) {
         Instant startedAt = Instant.now();
         IntegrationSyncLog syncLog = new IntegrationSyncLog(
                 null, connection.getOrganizationId(), Integration.AZURE_DEVOPS,
@@ -86,18 +102,22 @@ public class SyncAzureWorkItemsUseCase {
              * so o que mudou no dia. */
             Instant watermark = binding.getWorkItemsWatermark();
             boolean fullSync = watermark == null;
-            log.info("Work item sync for org={} project={} mode={}", orgId, projectId,
-                    fullSync ? "FULL" : "INCREMENTAL");
+            /* Primeiro sync limitado pela janela de backfill da organizacao (design D6): sem
+             * isso um projeto com anos de historico baixaria tudo de uma vez. */
+            Instant since = fullSync ? backfillFrom : watermark;
+            log.info("Work item sync for org={} project={} mode={} since={}", orgId, projectId,
+                    fullSync ? "FULL" : "INCREMENTAL", since);
 
             List<Integer> ids = fetchAllWorkItemIds(orgUrl, azureProjectId, authHeader,
-                    watermark, config);
+                    since, config);
 
             if (ids.isEmpty()) {
                 log.info("No work items to sync for org={} project={}", orgId, projectId);
                 finishSuccess(syncLog, startedAt, 0, 0);
                 binding.setLastSyncAt(Instant.now());
                 binding.setWorkItemsWatermark(startedAt);
-                return azureProjectBindingRepository.save(binding);
+                return new AzureWorkItemsSyncResult(
+                        azureProjectBindingRepository.save(binding), SyncStatus.SUCCESS, 0, 0);
             }
 
             List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
@@ -119,7 +139,7 @@ public class SyncAzureWorkItemsUseCase {
             AzureProjectBinding saved = azureProjectBindingRepository.save(binding);
 
             Instant finishedAt = Instant.now();
-            SyncStatus status = processed > 0 || failed == 0 ? SyncStatus.SUCCESS : SyncStatus.FAILED;
+            SyncStatus status = resolveStatus(processed, failed);
             syncLog.setStatus(status);
             syncLog.setFinishedAt(finishedAt);
             syncLog.setDurationMs(finishedAt.toEpochMilli() - startedAt.toEpochMilli());
@@ -129,7 +149,7 @@ public class SyncAzureWorkItemsUseCase {
             log.info("Work item sync completed: org={} project={} status={} processed={} failed={} durationMs={}",
                     connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
                     finishedAt.toEpochMilli() - startedAt.toEpochMilli());
-            return saved;
+            return new AzureWorkItemsSyncResult(saved, status, processed, failed);
 
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
@@ -161,6 +181,15 @@ public class SyncAzureWorkItemsUseCase {
             syncLogRepository.save(syncLog);
             throw e;
         }
+    }
+
+    /**
+     * Um sync so e {@code SUCCESS} quando nenhum item falhou. Reportar sucesso com itens
+     * perdidos escondia do refresh (e do usuario) que o historico ficou incompleto.
+     */
+    private static SyncStatus resolveStatus(int processed, int failed) {
+        if (failed == 0) return SyncStatus.SUCCESS;
+        return processed > 0 ? SyncStatus.PARTIAL : SyncStatus.FAILED;
     }
 
     /**
@@ -211,7 +240,7 @@ public class SyncAzureWorkItemsUseCase {
         WorkItem.ResolvedStatus resolvedStatus = resolveStatus(rawType, rawStatus, config);
 
         String iterationPath = getString(fields, "System.IterationPath");
-        Sprint sprint = resolveSprint(orgId, iterationPath);
+        Sprint sprint = resolveSprint(orgId, projectId, iterationPath);
 
         String tagsRaw = getString(fields, "System.Tags");
         List<String> labels = tagsRaw != null
@@ -499,10 +528,18 @@ public class SyncAzureWorkItemsUseCase {
      * desnormalizado em {@code WorkItem.sprintName} para que a listagem do backlog possa
      * exibir e filtrar por sprint sem um join por página — e sai de graça aqui, já que
      * esta busca sempre carregou o documento inteiro e descartava tudo menos o id.
+     *
+     * <p>Uma iteração compartilhada por vários times existe uma vez por time (sprints são únicas por
+     * {@code (organizationId, externalId, teamId)}): a busca devolve todas as "gêmeas" do projeto e
+     * escolhe a canônica ({@link SharedIterations}) — a mesma que dashboards e métricas leem. A
+     * busca antiga por path (resultado único) lançava {@code IncorrectResultSizeDataAccessException},
+     * e o item contava como falha e ficava sem sprint.
      */
-    private Sprint resolveSprint(String orgId, String iterationPath) {
+    private Sprint resolveSprint(String orgId, String projectId, String iterationPath) {
         if (iterationPath == null) return null;
-        return sprintRepository.findByOrganizationIdAndPath(orgId, iterationPath).orElse(null);
+        return SharedIterations.canonical(
+                sprintRepository.findAllByOrganizationIdAndProjectIdAndPath(orgId, projectId, iterationPath))
+                .orElse(null);
     }
 
     private String getString(Map<String, Object> fields, String key) {

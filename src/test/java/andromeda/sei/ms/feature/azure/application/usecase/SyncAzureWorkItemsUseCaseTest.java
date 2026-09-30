@@ -574,4 +574,117 @@ class SyncAzureWorkItemsUseCaseTest {
         verify(azureProjectBindingRepository, never()).save(any());
         assertThat(binding.getWorkItemsWatermark()).isEqualTo(anterior);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // metrics-correctness 1.3 — iteration shared by two teams (one sprint document per team)
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void should_linkItemToCanonicalTwin_andNotCountItFailed_when_twoTeamsShareTheIteration() {
+        String path = "My Project\\Sprint 25";
+        Sprint teamB = new Sprint("sprint-team-b", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS, "iter-25",
+                "team-b", "Team B", "Sprint 25", path, NOW, NOW, Sprint.TimeFrame.CURRENT, true, 0L,
+                NOW.plusSeconds(1), NOW);
+        Sprint teamA = new Sprint("sprint-team-a", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS, "iter-25",
+                "team-a", "Team A", "Sprint 25", path, NOW, NOW, Sprint.TimeFrame.CURRENT, true, 0L, NOW, NOW);
+        when(sprintRepository.findAllByOrganizationIdAndProjectIdAndPath("org-1", "proj-1", path))
+                .thenReturn(List.of(teamB, teamA));
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        Map<String, Object> fields = new java.util.HashMap<>(adoItem(100, "Active").fields());
+        fields.put("System.IterationPath", path);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(new AdoWorkItemDto(100, fields, null)));
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty());
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = useCase.sync(connection, binding, SyncTrigger.MANUAL, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.processed()).isEqualTo(1);
+        assertThat(result.failed()).isZero();
+        ArgumentCaptor<WorkItem> saved = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(saved.capture());
+        assertThat(saved.getValue().getSprintId()).isEqualTo("sprint-team-a");
+        assertThat(saved.getValue().getSprintName()).isEqualTo("Sprint 25");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // on-demand-refresh 2.5 / 8.3 — PARTIAL por item e janela de backfill no primeiro sync
+    // ---------------------------------------------------------------------------------------
+
+    @Test
+    void shouldReportPartialWhenSomeItemsFailAndOthersSucceed() {
+        stubTwoItemsWhereSecondFails(false);
+
+        var result = useCase.sync(connection, binding, SyncTrigger.MANUAL, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.PARTIAL);
+        assertThat(result.processed()).isEqualTo(1);
+        assertThat(result.failed()).isEqualTo(1);
+        ArgumentCaptor<IntegrationSyncLog> logCaptor = ArgumentCaptor.forClass(IntegrationSyncLog.class);
+        verify(syncLogRepository, atLeastOnce()).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getStatus()).isEqualTo(SyncStatus.PARTIAL);
+    }
+
+    @Test
+    void shouldReportFailedWhenEveryItemFails() {
+        stubTwoItemsWhereSecondFails(true);
+
+        var result = useCase.sync(connection, binding, SyncTrigger.MANUAL, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.FAILED);
+        assertThat(result.processed()).isZero();
+        assertThat(result.failed()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldBoundFirstSyncByBackfillWindow() {
+        Instant backfillFrom = NOW.minus(java.time.Duration.ofDays(90));
+        binding.setWorkItemsWatermark(null);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(backfillFrom), isNull(), any()))
+                .thenReturn(List.of());
+
+        useCase.sync(connection, binding, SyncTrigger.MANUAL, backfillFrom);
+
+        verify(azureDevOpsClient).queryWorkItemIdsPage(
+                anyString(), anyString(), anyString(), eq(backfillFrom), isNull(), any());
+    }
+
+    @Test
+    void shouldIgnoreBackfillWindowOnIncrementalSync() {
+        Instant watermark = NOW.minusSeconds(3600);
+        binding.setWorkItemsWatermark(watermark);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(watermark), isNull(), any()))
+                .thenReturn(List.of());
+
+        useCase.sync(connection, binding, SyncTrigger.MANUAL, NOW.minus(java.time.Duration.ofDays(90)));
+
+        verify(azureDevOpsClient).queryWorkItemIdsPage(
+                anyString(), anyString(), anyString(), eq(watermark), isNull(), any());
+    }
+
+    private void stubTwoItemsWhereSecondFails(boolean firstFailsToo) {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100, 101));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active"), adoItem(101, "Active")));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        if (firstFailsToo) {
+            when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                    .thenThrow(new RuntimeException("item quebrado"));
+            return;
+        }
+        WorkItem savedItem = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), eq("100"), any()))
+                .thenReturn(Optional.of(savedItem));
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), eq("101"), any()))
+                .thenThrow(new RuntimeException("item quebrado"));
+        when(workItemRepository.save(any())).thenReturn(savedItem);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+    }
 }

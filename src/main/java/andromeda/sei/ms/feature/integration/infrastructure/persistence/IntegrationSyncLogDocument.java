@@ -17,7 +17,9 @@ import java.time.Instant;
 
 @Document(collection = "integration_sync_logs")
 @CompoundIndexes({
-        @CompoundIndex(def = "{'organizationId': 1, 'integration': 1, 'startedAt': -1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'integration': 1, 'startedAt': -1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'parentSyncId': 1}"),
+        @CompoundIndex(def = "{'organizationId': 1, 'projectId': 1, 'status': 1, 'operation': 1}")
 })
 @Data
 @Builder
@@ -43,4 +45,6 @@ public class IntegrationSyncLogDocument {
     private String errorMessage;
     private Integer httpStatus;
     private String errorDetail;
+    private String parentSyncId;
+    private String bindingId;
 }

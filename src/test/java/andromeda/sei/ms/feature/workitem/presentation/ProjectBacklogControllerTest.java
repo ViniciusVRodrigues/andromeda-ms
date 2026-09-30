@@ -7,6 +7,8 @@ import andromeda.sei.ms.feature.workitem.application.usecase.ListProjectBacklogR
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemPageResult;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
+import andromeda.sei.ms.feature.sync.application.dto.DataFreshness;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,6 +43,9 @@ class ProjectBacklogControllerTest {
 
     @Mock
     private AssigneeNameResolver assigneeNameResolver;
+
+    @Mock
+    private DataFreshnessResolver dataFreshnessResolver;
 
     @InjectMocks
     private ProjectBacklogController controller;
@@ -189,5 +194,18 @@ class ProjectBacklogControllerTest {
                 null, null, List.of(), null, null, null, null, null,
                 NOW, null, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void listRoots_shouldIncludeProjectDataFreshness() throws Exception {
+        when(listProjectBacklogRootsUseCase.execute(eq("proj-1"), anyInt(), anyInt(), any()))
+                .thenReturn(new WorkItemPageResult(List.of(), 0, 20, 0));
+        when(dataFreshnessResolver.resolve(any(), eq("proj-1")))
+                .thenReturn(new DataFreshness(Instant.parse("2026-09-27T10:00:00Z"), false));
+
+        mockMvc.perform(get("/api/v1/projects/proj-1/work-items/roots"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dataFreshness.oldestSyncAt").value("2026-09-27T10:00:00Z"))
+                .andExpect(jsonPath("$.dataFreshness.refreshRunning").value(false));
     }
 }

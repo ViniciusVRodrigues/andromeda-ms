@@ -40,7 +40,7 @@ class RoleUseCaseTest {
     }
 
     private Role orgRole(String id, String name) {
-        return new Role(id, ORG_ID, name, name, false, "role-admin", List.of("AZURE_READ", "GITHUB_READ"), true, 0L, NOW, NOW);
+        return new Role(id, ORG_ID, name, name, false, "role-admin", List.of("AZURE_READ", "REPOS_READ"), true, 0L, NOW, NOW);
     }
 
     // ── ListRolesUseCase ─────────────────────────────────────────────────────

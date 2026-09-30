@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.auth.application.dto;
 
 import java.util.List;
+import java.util.Map;
 
 public record GetCurrentUserOutput(
         String userId,
@@ -9,5 +10,7 @@ public record GetCurrentUserOutput(
         String organizationId,
         String orgName,
         String orgSlug,
-        List<String> permissions
+        List<String> permissions,
+        List<String> orgPermissions,
+        Map<String, List<String>> projectPermissions
 ) {}

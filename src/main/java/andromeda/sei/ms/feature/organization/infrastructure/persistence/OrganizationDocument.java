@@ -33,6 +33,16 @@ public class OrganizationDocument {
     private BigDecimal subscriptionCostPerUserUsd;
     private boolean active = true;
 
+    /** Ausente em documentos anteriores a on-demand-refresh (a migracao preenche com DAILY/90). */
+    private SyncSettingsDocument syncSettings;
+    private Instant lastScheduledSyncAt;
+
+    /** Ausente em documentos anteriores a metrics-correctness; o mapper le os defaults. */
+    private MetricSettingsDocument metricSettings;
+
+    /** Ausente em documentos anteriores a vcs-core-refactor; a migracao copia o de github_configs. */
+    private VcsSettingsDocument vcsSettings;
+
     @Version
     private Long version;
 

@@ -1,60 +1,40 @@
 package andromeda.sei.ms.feature.github.application.usecase;
 
-import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
-import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.feature.integration.domain.Integration;
+import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.feature.sync.application.SyncOrchestrator;
+import andromeda.sei.ms.feature.sync.application.SyncRequest;
+import andromeda.sei.ms.feature.sync.application.SyncTargetResolver;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 /**
  * Reconstroi os dados do GitHub de uma organizacao sem apaga-los: zera o watermark de leitura
- * dos bindings e deixa o proximo sync reler tudo.
+ * dos bindings e deixa o sync reler tudo o que cabe na janela de backfill.
  *
- * <p>No GitHub o watermark e o proprio {@code lastSyncAt} do binding, e isso aqui e seguro: ao
- * contrario do Azure, nenhum outro sync escreve nesse campo — {@code SyncGithubRepoDataUseCase} o
- * captura numa variavel local antes de qualquer sub-sync rodar, que e justamente a disciplina que
- * o lado Azure tinha perdido.
+ * <p>No GitHub o watermark e o proprio {@code lastSyncAt} do binding, e isso aqui e seguro: nenhum
+ * outro sync escreve nesse campo — {@code SyncGithubRepoDataUseCase} o captura numa variavel local
+ * antes de qualquer sub-sync rodar.
+ *
+ * <p>Passa pelo {@link SyncOrchestrator} (on-demand-refresh): o watermark e zerado no inicio do sync
+ * de cada binding, em background, e o primeiro sync e limitado por {@code backfillDays}.
  *
  * <p>Preserva os registros existentes: commits, PRs e reviews sao upsert por id externo.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RepairGithubDataUseCase {
 
-    private final GithubRepoBindingRepository githubRepoBindingRepository;
-    private final TriggerGithubSyncUseCase triggerGithubSyncUseCase;
+    private final SyncTargetResolver syncTargetResolver;
+    private final SyncOrchestrator syncOrchestrator;
 
     /**
      * @param projectId quando null, repara todos os bindings sincronizaveis da organizacao
+     * @return {@code syncId} do sync de reparo
      */
-    @Async
-    public void execute(String organizationId, String projectId) {
-        /* ThreadLocal nao atravessa o @Async: sem reposicionar, TriggerGithubSyncUseCase leria
-         * tenant null. O finally evita vazar tenant numa thread reutilizada do pool. */
-        TenantContextHolder.set(organizationId);
-        try {
-            List<GithubRepoBinding> bindings = githubRepoBindingRepository
-                    .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(organizationId);
-
-            List<GithubRepoBinding> alvos = projectId == null
-                    ? bindings
-                    : bindings.stream().filter(b -> projectId.equals(b.getProjectId())).toList();
-
-            for (GithubRepoBinding b : alvos) {
-                b.setLastSyncAt(null);
-                githubRepoBindingRepository.save(b);
-                log.info("Repair GitHub: watermark zerado para org={} repo={}", organizationId, b.getRepoId());
-            }
-
-            /* O sync ja registra em integration_sync_logs e ja e idempotente por upsert. */
-            triggerGithubSyncUseCase.execute();
-        } finally {
-            TenantContextHolder.clear();
-        }
+    public String execute(String organizationId, String projectId) {
+        return syncOrchestrator.submit(SyncRequest.organization(organizationId, Integration.GITHUB,
+                syncTargetResolver.forOrganization(organizationId, Integration.GITHUB, projectId),
+                SyncTrigger.MANUAL).withResetWatermarks());
     }
 }

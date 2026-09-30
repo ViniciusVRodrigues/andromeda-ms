@@ -10,6 +10,8 @@ import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserEmailConflictException;
 import andromeda.sei.ms.feature.user.domain.exception.UserNotFoundException;
+import andromeda.sei.ms.feature.user.domain.exception.UserSelfDeactivationDeniedException;
+import andromeda.sei.ms.feature.user.domain.exception.UserSelfRoleChangeDeniedException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -23,7 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -38,6 +42,10 @@ class UserUseCaseTest {
     @Mock
     private ProjectRepository projectRepository;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+
     @InjectMocks
     private CreateUserUseCase createUserUseCase;
 
@@ -48,6 +56,7 @@ class UserUseCaseTest {
     private DeactivateUserUseCase deactivateUserUseCase;
 
     private static final String ORG_ID = "org-1";
+    private static final String CALLER_ID = "admin-1";
     private static final Instant NOW = Instant.now();
 
     private User activeUser(String id) {
@@ -92,23 +101,64 @@ class UserUseCaseTest {
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(updated);
 
-        UserOutput output = updateUserUseCase.execute(new UpdateUserInput("user-1", "Jane Doe", "role-lead", null), ORG_ID);
+        UserOutput output = updateUserUseCase.execute(new UpdateUserInput("user-1", "Jane Doe", "role-lead", null, CALLER_ID), ORG_ID);
 
         assertThat(output.name()).isEqualTo("Jane Doe");
         assertThat(output.roleId()).isEqualTo("role-lead");
         verify(userRepository).save(any(User.class));
+        verify(eventPublisher).publishEvent(new andromeda.sei.ms.shared.application.security.UserPermissionsChanged(
+                ORG_ID, output.id()));
     }
 
     @Test
     void updateUser_shouldThrowNotFoundForInvalidId() {
         when(userRepository.findByIdAndOrganizationId("invalid", ORG_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> updateUserUseCase.execute(new UpdateUserInput("invalid", "Name", null, null), ORG_ID))
+        assertThatThrownBy(() -> updateUserUseCase.execute(new UpdateUserInput("invalid", "Name", null, null, CALLER_ID), ORG_ID))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining("invalid");
     }
 
+    @Test
+    void should_throwSelfRoleChangeDenied_when_callerChangesOwnRole() {
+        when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(activeUser("user-1")));
+
+        assertThatThrownBy(() -> updateUserUseCase.execute(
+                new UpdateUserInput("user-1", "Jane", "role-admin", null, "user-1"), ORG_ID))
+                .isInstanceOf(UserSelfRoleChangeDeniedException.class)
+                .extracting("code").isEqualTo("USER_SELF_ROLE_CHANGE_DENIED");
+        verify(userRepository, never()).save(any(User.class));
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void should_allowSelfEdit_when_roleIdIsUnchanged() {
+        var existing = activeUser("user-1");
+        when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // The UI echoes the caller's CURRENT roleId on every self edit (name, seniority, Azure link).
+        UserOutput output = updateUserUseCase.execute(
+                new UpdateUserInput("user-1", "Renamed", "role-dev", "Senior", "user-1"), ORG_ID);
+
+        assertThat(output.name()).isEqualTo("Renamed");
+        assertThat(output.roleId()).isEqualTo("role-dev");
+        assertThat(output.seniority()).isEqualTo("Senior");
+        verifyNoInteractions(eventPublisher);
+    }
+
     // ── DeactivateUserUseCase ────────────────────────────────────────────────
+
+    @Test
+    void should_throwSelfDeactivationDenied_when_callerDeactivatesThemselves() {
+        when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(activeUser("user-1")));
+
+        assertThatThrownBy(() -> deactivateUserUseCase.execute("user-1", ORG_ID, "user-1"))
+                .isInstanceOf(UserSelfDeactivationDeniedException.class)
+                .extracting("code").isEqualTo("USER_SELF_DEACTIVATION_DENIED");
+        verify(userRepository, never()).save(any(User.class));
+        verifyNoInteractions(projectRepository, eventPublisher);
+    }
 
     @Test
     void deactivateUser_shouldSoftDelete() {
@@ -118,7 +168,7 @@ class UserUseCaseTest {
         when(userRepository.findByIdAndOrganizationId("user-1", ORG_ID)).thenReturn(Optional.of(existing));
         when(userRepository.save(any(User.class))).thenReturn(deactivated);
 
-        deactivateUserUseCase.execute("user-1", ORG_ID);
+        deactivateUserUseCase.execute("user-1", ORG_ID, CALLER_ID);
 
         verify(userRepository).save(any(User.class));
     }
@@ -127,7 +177,7 @@ class UserUseCaseTest {
     void deactivateUser_shouldThrowNotFoundForInvalidId() {
         when(userRepository.findByIdAndOrganizationId("invalid", ORG_ID)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> deactivateUserUseCase.execute("invalid", ORG_ID))
+        assertThatThrownBy(() -> deactivateUserUseCase.execute("invalid", ORG_ID, CALLER_ID))
                 .isInstanceOf(UserNotFoundException.class)
                 .hasMessageContaining("invalid");
     }

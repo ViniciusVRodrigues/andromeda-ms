@@ -11,8 +11,15 @@ public record SprintMetricsOutput(
         Instant endDate,
         Sprint.TimeFrame timeFrame,
         Double velocity,
+        // deprecated since metrics-correctness: use cycleTimeP50/cycleTimeP90
         Double avgCycleTime,
+        // deprecated since metrics-correctness: use leadTimeP50/leadTimeP90
         Double avgLeadTime,
+        Double plannedEffort,
+        Double cycleTimeP50,
+        Double cycleTimeP90,
+        Double leadTimeP50,
+        Double leadTimeP90,
         Integer completedItemCount,
         Integer totalItemCount,
         Integer itemsWithPoints,

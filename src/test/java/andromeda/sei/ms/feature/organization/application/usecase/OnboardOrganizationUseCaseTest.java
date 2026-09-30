@@ -89,6 +89,40 @@ class OnboardOrganizationUseCaseTest {
     }
 
     @Test
+    void should_addProjectAccessAllAndProjectManage_onlyToWizardRolesHoldingUserManage() {
+        var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
+                List.of("Junior"), null, null, true, 0L, NOW, NOW);
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
+                List.of("USER_MANAGE", "PROJECT_ACCESS_ALL"), true, 0L, NOW, NOW);
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(false);
+        when(organizationRepository.save(any())).thenReturn(savedOrg);
+        when(roleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(roleRepository.findGlobalByName("ADMIN")).thenReturn(Optional.of(adminRole));
+        when(passwordHasher.hash("Secure@1")).thenReturn("hashed");
+        when(userRepository.save(any())).thenReturn(new User("user-1", "org-1", "admin@acme.com", "hashed",
+                "Maria Admin", "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW));
+        when(projectRepository.save(any())).thenReturn(new Project("proj-1", "org-1", "Orion Core", "orion-core",
+                "Main platform.", true, null, 0L, NOW, NOW));
+        var input = new OnboardOrganizationInput(
+                new OnboardOrganizationInput.OrgData("Acme Corp", "Tecnologia", "Brasil"),
+                new OnboardOrganizationInput.AdminData("admin@acme.com", "Maria Admin", "Secure@1"),
+                new OnboardOrganizationInput.ProjectData("Orion Core", "Main platform."),
+                List.of("Junior"),
+                List.of(new OnboardOrganizationInput.RoleData("Coordenador", "Coordenador", List.of("USER_MANAGE")),
+                        new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor",
+                                List.of("DASHBOARD_INDIVIDUAL"))),
+                List.of());
+
+        useCase.execute(input);
+
+        org.mockito.ArgumentCaptor<Role> roles = org.mockito.ArgumentCaptor.forClass(Role.class);
+        verify(roleRepository, org.mockito.Mockito.times(2)).save(roles.capture());
+        assertThat(roles.getAllValues().get(0).getPermissionCodes())
+                .containsExactly("USER_MANAGE", "PROJECT_ACCESS_ALL", "PROJECT_MANAGE");
+        assertThat(roles.getAllValues().get(1).getPermissionCodes()).containsExactly("DASHBOARD_INDIVIDUAL");
+    }
+
+    @Test
     void shouldThrowConflictWhenOrgSlugAlreadyExists() {
         when(organizationRepository.existsBySlug("acme-corp")).thenReturn(true);
 

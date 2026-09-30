@@ -243,6 +243,22 @@ public class GithubApiClient {
                 .block();
     }
 
+    /**
+     * Fetches a single repo by its numeric id ({@code GET /repositories/{id}}) -- stable across
+     * renames and transfers, which is why the neutral model keys GitHub repositories by it
+     * (vcs-core D2).
+     */
+    public GhRepoDto getRepoById(String repositoryId, String authHeader) {
+        Mono<GhRepoDto> call = githubWebClient.get()
+                .uri(BASE_URL + "/repositories/" + repositoryId)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(GhRepoDto.class);
+        return withRetry(call)
+                .onErrorMap(this::translateSecondaryRateLimitExhaustion)
+                .block();
+    }
+
     // ------------------------------------------------------------------
     // Commits (task 4.9) -- native since param, follow Link to exhaustion
     // ------------------------------------------------------------------
@@ -288,6 +304,36 @@ public class GithubApiClient {
         return all;
     }
 
+    /**
+     * First-sync (backfill) variant: pull requests <em>created</em> at or after
+     * {@code createdSince}, newest first (on-demand-refresh D6).
+     *
+     * <p>Uses {@code sort=created} rather than the incremental path's {@code sort=updated}:
+     * under update order an old pull request touched yesterday would sit on the first page and
+     * the stop condition could never be trusted. Under creation order every page after the first
+     * one that is entirely older than the cutoff is older too, so paging stops there.
+     */
+    public List<GhPullRequestDto> getPullRequestsCreatedSince(String owner, String repo, String authHeader,
+                                                              Instant createdSince) {
+        List<GhPullRequestDto> all = new ArrayList<>();
+        String url = BASE_URL + "/repos/" + owner + "/" + repo
+                + "/pulls?per_page=100&state=all&sort=created&direction=desc";
+
+        while (url != null) {
+            PagedResult<GhPullRequestDto> page = fetchPage(url, authHeader,
+                    new ParameterizedTypeReference<List<GhPullRequestDto>>() {});
+            page.items().stream()
+                    .filter(pr -> !isOlderThan(pr.createdAt(), createdSince))
+                    .forEach(all::add);
+
+            boolean allOlderThanCutoff = page.items().stream()
+                    .allMatch(pr -> isOlderThan(pr.createdAt(), createdSince));
+            if (allOlderThanCutoff) break;
+            url = page.nextUrl();
+        }
+        return all;
+    }
+
     // ------------------------------------------------------------------
     // Reviews (task 4.11) -- single-PR call, standard Link pagination
     // ------------------------------------------------------------------
@@ -321,28 +367,6 @@ public class GithubApiClient {
         while (url != null) {
             PagedResult<GhCommitDto> page = fetchPage(url, authHeader,
                     new ParameterizedTypeReference<List<GhCommitDto>>() {});
-            all.addAll(page.items());
-            url = page.nextUrl();
-        }
-        return all;
-    }
-
-    // ------------------------------------------------------------------
-    // Issues (task 4.12) -- CFR corrective-issue lookup, caller unions bug+hotfix by id
-    // ------------------------------------------------------------------
-
-    public List<GhIssueDto> getIssues(String owner, String repo, String authHeader, String label, Instant since) {
-        List<GhIssueDto> all = new ArrayList<>();
-        StringBuilder urlBuilder = new StringBuilder(BASE_URL + "/repos/" + owner + "/" + repo
-                + "/issues?per_page=100&state=all&labels=" + label);
-        if (since != null) {
-            urlBuilder.append("&since=").append(since);
-        }
-        String url = urlBuilder.toString();
-
-        while (url != null) {
-            PagedResult<GhIssueDto> page = fetchPage(url, authHeader,
-                    new ParameterizedTypeReference<List<GhIssueDto>>() {});
             all.addAll(page.items());
             url = page.nextUrl();
         }
@@ -424,6 +448,16 @@ public class GithubApiClient {
             }
         }
         return null;
+    }
+
+    /** Strictly before the cutoff; an unparseable/absent timestamp is kept (never silently dropped). */
+    private boolean isOlderThan(String isoTimestamp, Instant cutoff) {
+        if (isoTimestamp == null) return false;
+        try {
+            return Instant.parse(isoTimestamp).isBefore(cutoff);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isOlderOrEqual(String isoTimestamp, Instant watermark) {

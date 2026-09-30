@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.github.infrastructure.client;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record GhPullRequestDto(
         @JsonProperty("id") long id,
@@ -15,15 +17,28 @@ public record GhPullRequestDto(
         @JsonProperty("merged_at") String mergedAt,
         @JsonProperty("closed_at") String closedAt,
         @JsonProperty("body") String body,
-        @JsonProperty("head") HeadDto head) {
+        @JsonProperty("head") HeadDto head,
+        @JsonProperty("base") HeadDto base,
+        @JsonProperty("draft") Boolean draft,
+        @JsonProperty("labels") List<LabelDto> labels) {
+
+    /** Pre-metrics-correctness shape, kept for callers that do not care about the new fields. */
+    public GhPullRequestDto(long id, int number, String title, String state, UserDto user, String createdAt,
+                            String updatedAt, String mergedAt, String closedAt, String body, HeadDto head) {
+        this(id, number, title, state, user, createdAt, updatedAt, mergedAt, closedAt, body, head,
+                null, null, null);
+    }
+
     /**
-     * {@code head.ref} is the source branch name. Both this and {@code body} already ship in
-     * the pull request payload, so reading them costs no additional request; they feed work
-     * item reference extraction.
+     * {@code head.ref} is the source branch name and {@code base.ref} the target branch. Both,
+     * like {@code body}, {@code draft} and {@code labels}, already ship in the pull request
+     * payload, so reading them costs no additional request.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record HeadDto(@JsonProperty("ref") String ref) {}
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record LabelDto(@JsonProperty("name") String name) {}
 
     /**
      * {@code id} is GitHub's numeric user id; used to resolve {@code authorUserId} against

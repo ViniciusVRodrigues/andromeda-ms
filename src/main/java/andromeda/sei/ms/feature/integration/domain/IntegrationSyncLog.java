@@ -20,6 +20,10 @@ public class IntegrationSyncLog {
     private String errorMessage;
     private Integer httpStatus;
     private String errorDetail;
+    /** Id do log pai (refresh de projeto ou sync de organizacao) quando este log e um filho por binding. */
+    private String parentSyncId;
+    /** Binding sincronizado; presente nos logs filhos por binding criados pelo orquestrador. */
+    private String bindingId;
 
     public IntegrationSyncLog(String id, String organizationId, Integration integration,
                                SyncOperation operation, SyncStatus status, SyncTrigger triggeredBy,
@@ -89,4 +93,13 @@ public class IntegrationSyncLog {
 
     public String getErrorDetail() { return errorDetail; }
     public void setErrorDetail(String errorDetail) { this.errorDetail = errorDetail; }
+
+    public String getParentSyncId() { return parentSyncId; }
+    public void setParentSyncId(String parentSyncId) { this.parentSyncId = parentSyncId; }
+
+    public String getBindingId() { return bindingId; }
+    public void setBindingId(String bindingId) { this.bindingId = bindingId; }
+
+    /** Verdadeiro enquanto o log nao atingiu um status terminal. */
+    public boolean isRunning() { return status == SyncStatus.RUNNING; }
 }

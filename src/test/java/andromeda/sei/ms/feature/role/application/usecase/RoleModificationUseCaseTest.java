@@ -34,6 +34,10 @@ class RoleModificationUseCaseTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
+
     @InjectMocks
     private UpdateRolePermissionsUseCase updateRolePermissionsUseCase;
 
@@ -60,19 +64,59 @@ class RoleModificationUseCaseTest {
 
     @Test
     void updatePermissions_shouldAddAndRemovePermissions() {
-        var role = customRole("role-1", List.of("AZURE_READ", "GITHUB_READ"));
+        var role = customRole("role-1", List.of("AZURE_READ", "REPOS_READ"));
         var updated = customRole("role-1", List.of("AZURE_READ", "AI_READ_OWN"));
 
         when(roleRepository.findById("role-1")).thenReturn(Optional.of(role));
         when(roleRepository.save(any(Role.class))).thenReturn(updated);
 
         RoleOutput output = updateRolePermissionsUseCase.execute(
-                new UpdateRolePermissionsInput("role-1", List.of("AI_READ_OWN"), List.of("GITHUB_READ")),
+                new UpdateRolePermissionsInput("role-1", List.of("AI_READ_OWN"), List.of("REPOS_READ")),
                 ORG_ID
         );
 
         assertThat(output.permissionCodes()).containsExactlyInAnyOrder("AZURE_READ", "AI_READ_OWN");
         verify(roleRepository).save(any(Role.class));
+        verify(eventPublisher).publishEvent(any(andromeda.sei.ms.shared.application.security.RoleChanged.class));
+    }
+
+    @Test
+    void updatePermissions_shouldStoreCurrentCode_whenOldClientSendsLegacyGithubCode() {
+        var role = customRole("role-1", new ArrayList<>(List.of("AZURE_READ")));
+        when(roleRepository.findById("role-1")).thenReturn(Optional.of(role));
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoleOutput output = updateRolePermissionsUseCase.execute(
+                new UpdateRolePermissionsInput("role-1", List.of("GITHUB_READ", "REPOS_READ"), List.of()),
+                ORG_ID
+        );
+
+        assertThat(output.permissionCodes()).containsExactly("AZURE_READ", "REPOS_READ");
+    }
+
+    /** A role still carrying the GITHUB_READ mirror must not get REPOS_READ back through the alias. */
+    @Test
+    void should_revokeRenamedCode_when_removingItFromRoleThatStillHoldsTheLegacyMirror() {
+        var role = customRole("role-1", List.of("AZURE_READ", "REPOS_READ", "GITHUB_READ"));
+        when(roleRepository.findById("role-1")).thenReturn(Optional.of(role));
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoleOutput output = updateRolePermissionsUseCase.execute(
+                new UpdateRolePermissionsInput("role-1", List.of(), List.of("REPOS_READ")), ORG_ID);
+
+        assertThat(output.permissionCodes()).containsExactly("AZURE_READ");
+    }
+
+    @Test
+    void should_revokeCurrentCode_when_oldClientRemovesTheLegacyCode() {
+        var role = customRole("role-1", List.of("AZURE_READ", "REPOS_READ"));
+        when(roleRepository.findById("role-1")).thenReturn(Optional.of(role));
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoleOutput output = updateRolePermissionsUseCase.execute(
+                new UpdateRolePermissionsInput("role-1", List.of(), List.of("GITHUB_READ")), ORG_ID);
+
+        assertThat(output.permissionCodes()).containsExactly("AZURE_READ");
     }
 
     @Test

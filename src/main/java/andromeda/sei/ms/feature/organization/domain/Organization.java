@@ -22,6 +22,10 @@ public class Organization {
     private Long version;
     private Instant createdAt;
     private Instant updatedAt;
+    private SyncSettings syncSettings = SyncSettings.defaults();
+    private Instant lastScheduledSyncAt;
+    private MetricSettings metricSettings = MetricSettings.defaults();
+    private VcsSettings vcsSettings = VcsSettings.defaults();
 
     public Organization(String id, String name, String slug, String sector, String country,
                         List<String> seniorities, List<AiPriceEntry> aiPrices,
@@ -87,4 +91,36 @@ public class Organization {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    /** Nunca nulo: documentos antigos sem a configuracao leem os defaults. */
+    public SyncSettings getSyncSettings() { return syncSettings; }
+    public void setSyncSettings(SyncSettings syncSettings) {
+        this.syncSettings = syncSettings != null ? syncSettings : SyncSettings.defaults();
+    }
+
+    /** Nunca nulo: documentos sem a configuracao leem os defaults (hotfix/, BUG conta, revert conta). */
+    public MetricSettings getMetricSettings() { return metricSettings; }
+    public void setMetricSettings(MetricSettings metricSettings) {
+        this.metricSettings = metricSettings != null ? metricSettings : MetricSettings.defaults();
+    }
+
+    /** Nunca nulo: documentos sem a configuracao leem "nunca configurado" (defaults na leitura). */
+    public VcsSettings getVcsSettings() { return vcsSettings; }
+    public void setVcsSettings(VcsSettings vcsSettings) {
+        this.vcsSettings = vcsSettings != null ? vcsSettings : VcsSettings.defaults();
+    }
+
+    /** Instante (tick do scheduler) do ultimo sync agendado disparado para a organizacao. */
+    public Instant getLastScheduledSyncAt() { return lastScheduledSyncAt; }
+    public void setLastScheduledSyncAt(Instant lastScheduledSyncAt) { this.lastScheduledSyncAt = lastScheduledSyncAt; }
+
+    /**
+     * O sync agendado venceu no {@code tick}? Nunca para {@link ScheduledSyncFrequency#OFF};
+     * caso contrario, quando nunca rodou ou quando {@code lastScheduledSyncAt + intervalo <= tick}.
+     */
+    public boolean isScheduledSyncDue(Instant tick) {
+        return syncSettings.scheduledSync().interval()
+                .map(interval -> lastScheduledSyncAt == null || !lastScheduledSyncAt.plus(interval).isAfter(tick))
+                .orElse(false);
+    }
 }

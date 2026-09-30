@@ -28,8 +28,7 @@ import java.util.List;
  * all and the backlog tree can never populate until the next full re-sync from Azure.
  *
  * <p>Idempotent by design: for each active Azure connection/binding (the same enumeration
- * {@link andromeda.sei.ms.feature.azure.infrastructure.scheduler.AzureSyncJob} uses for
- * scheduled syncs, so this never touches an org outside its own tenant), it re-fetches from Azure
+ * the old scheduled Azure sync job used, now {@code AzureBindingSyncRunner}, so this never touches an org outside its own tenant), it re-fetches from Azure
  * only the work items in that project that currently have no {@code parentExternalId} stored, and
  * writes back only when Azure's current parent link differs from what's stored. Running it again
  * after a partial failure, or after the next scheduled sync has already populated some items, is

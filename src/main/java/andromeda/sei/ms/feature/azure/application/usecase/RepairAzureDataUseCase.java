@@ -1,19 +1,20 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
-import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
-import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureBindingNotFoundException;
-import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.feature.integration.domain.Integration;
+import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.feature.sync.application.SyncOrchestrator;
+import andromeda.sei.ms.feature.sync.application.SyncRequest;
+import andromeda.sei.ms.feature.sync.application.SyncTargetResolver;
+import andromeda.sei.ms.feature.sync.domain.SyncTarget;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 /**
  * Reconstroi os dados do Azure DevOps de uma organizacao sem apaga-los: zera o watermark e deixa
- * o proximo sync rodar em FULL.
+ * o sync rodar como primeiro sync.
  *
  * <p>E o caminho de recuperacao para quem ficou com historico incompleto por causa do defeito do
  * watermark compartilhado — um sync incremental nunca volta atras para buscar o que pulou.
@@ -21,51 +22,31 @@ import java.util.List;
  * <p>Preserva os registros existentes: o sync faz upsert por {@code externalId}, entao ids locais,
  * overrides manuais e metricas derivadas sobrevivem; o que faltava e criado.
  *
+ * <p>Passa pelo {@link SyncOrchestrator} (on-demand-refresh): o watermark e zerado no inicio do
+ * sync de cada binding, em background. Como o primeiro sync e limitado pela janela de backfill da
+ * organizacao, o repair rele {@code backfillDays} dias; para ir mais longe, aumente a janela
+ * (ate 730 dias) antes de reparar.
+ *
  * <p>Diferente de {@link ForceResyncProjectUseCase}, que percorre os work items <b>ja gravados</b>
  * para reconstruir historico de transicoes e por construcao nao alcanca item que nunca foi baixado.
  */
-@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RepairAzureDataUseCase {
 
-    private final AzureProjectBindingRepository azureProjectBindingRepository;
-    private final TriggerAzureSyncUseCase triggerAzureSyncUseCase;
+    private final SyncTargetResolver syncTargetResolver;
+    private final SyncOrchestrator syncOrchestrator;
 
     /**
      * @param projectId quando null, repara todos os bindings sincronizaveis da organizacao
+     * @return {@code syncId} do sync de reparo
      */
-    @Async
-    public void execute(String organizationId, String projectId) {
-        /* TenantContextHolder e um ThreadLocal simples: nao atravessa a fronteira do @Async.
-         * Sem reposicionar aqui, TriggerAzureSyncUseCase leria tenant null nesta thread. O
-         * finally e obrigatorio — threads do pool sao reutilizadas, e um tenant vazado daria
-         * acesso cruzado entre organizacoes. */
-        TenantContextHolder.set(organizationId);
-        try {
-            List<AzureProjectBinding> bindings = azureProjectBindingRepository
-                    .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(organizationId);
-
-            List<AzureProjectBinding> alvos = projectId == null
-                    ? bindings
-                    : bindings.stream().filter(b -> projectId.equals(b.getProjectId())).toList();
-
-            if (alvos.isEmpty()) {
-                throw new AzureBindingNotFoundException(projectId == null ? organizationId : projectId);
-            }
-
-            for (AzureProjectBinding b : alvos) {
-                b.setWorkItemsWatermark(null);
-                azureProjectBindingRepository.save(b);
-                log.info("Repair: watermark zerado para org={} projeto={}", organizationId, b.getProjectId());
-            }
-
-            /* O sync em si ja registra em integration_sync_logs e ja e idempotente por upsert. */
-            for (AzureProjectBinding b : alvos) {
-                triggerAzureSyncUseCase.execute(b.getId());
-            }
-        } finally {
-            TenantContextHolder.clear();
+    public String execute(String organizationId, String projectId) {
+        List<SyncTarget> targets = syncTargetResolver.forOrganization(organizationId, Integration.AZURE_DEVOPS, projectId);
+        if (targets.isEmpty()) {
+            throw new AzureBindingNotFoundException(projectId == null ? organizationId : projectId);
         }
+        return syncOrchestrator.submit(SyncRequest.organization(organizationId, Integration.AZURE_DEVOPS, targets,
+                SyncTrigger.MANUAL).withResetWatermarks());
     }
 }

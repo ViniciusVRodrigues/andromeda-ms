@@ -6,7 +6,10 @@ import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.role.domain.exception.DefaultRoleModificationException;
 import andromeda.sei.ms.feature.role.domain.exception.RoleNotFoundException;
+import andromeda.sei.ms.shared.domain.security.PermissionAliasResolver;
+import andromeda.sei.ms.shared.application.security.RoleChanged;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -19,6 +22,7 @@ import java.util.Set;
 public class UpdateRolePermissionsUseCase {
 
     private final RoleRepository roleRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RoleOutput execute(UpdateRolePermissionsInput input, String organizationId) {
         Role role = roleRepository.findById(input.roleId())
@@ -32,16 +36,17 @@ public class UpdateRolePermissionsUseCase {
             throw new DefaultRoleModificationException();
         }
 
-        Set<String> codes = new LinkedHashSet<>(role.getPermissionCodes());
-        if (input.add() != null) {
-            codes.addAll(input.add());
-        }
-        if (input.remove() != null) {
-            codes.removeAll(input.remove());
-        }
+        // Canonicalize BEFORE applying the edit: a role still carrying a GITHUB_* mirror would
+        // otherwise resurrect REPOS_* after its removal. An old client sending GITHUB_* in add or
+        // remove is normalized to the current code the same way. The legacy mirrors are re-derived
+        // on write by RoleDocumentMapper (PermissionAliasResolver.withLegacyMirrors).
+        Set<String> codes = new LinkedHashSet<>(PermissionAliasResolver.canonicalize(role.getPermissionCodes()));
+        codes.addAll(PermissionAliasResolver.canonicalize(input.add()));
+        PermissionAliasResolver.canonicalize(input.remove()).forEach(codes::remove);
         role.setPermissionCodes(new ArrayList<>(codes));
 
         Role saved = roleRepository.save(role);
+        eventPublisher.publishEvent(new RoleChanged(saved.getId(), saved.getOrganizationId()));
         return RoleOutput.from(saved);
     }
 }

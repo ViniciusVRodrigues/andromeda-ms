@@ -2,10 +2,13 @@ package andromeda.sei.ms.feature.organization.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.organization.domain.ScheduledSyncFrequency;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -38,5 +41,15 @@ public class OrganizationRepositoryImpl implements OrganizationRepository {
         var doc = mapper.toDocument(organization);
         doc.setUpdatedAt(Instant.now());
         return mapper.toDomain(mongoRepository.save(doc));
+    }
+
+    @Override
+    public List<Organization> findAllDueForScheduledSync(Instant tick) {
+        return Arrays.stream(ScheduledSyncFrequency.values())
+                .flatMap(frequency -> frequency.interval().stream()
+                        .flatMap(interval -> mongoRepository
+                                .findAllDueForScheduledSync(frequency, tick.minus(interval)).stream()))
+                .map(mapper::toDomain)
+                .toList();
     }
 }

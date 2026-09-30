@@ -24,6 +24,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,6 +54,7 @@ public class UserController {
     private final DeactivateUserUseCase deactivateUserUseCase;
     private final UserPresentationMapper mapper;
     private final LinkAzureIdentityUseCase linkAzureIdentityUseCase;
+    private final CurrentUserPermissions currentUserPermissions;
 
     @PostMapping
     @PreAuthorize("hasAuthority('USER_MANAGE')")
@@ -108,7 +110,8 @@ public class UserController {
             @PathVariable String id,
             @RequestBody UpdateUserRequest request) {
         String orgId = TenantContextHolder.get();
-        UpdateUserInput input = new UpdateUserInput(id, request.name(), request.roleId(), request.seniority());
+        UpdateUserInput input = new UpdateUserInput(id, request.name(), request.roleId(), request.seniority(),
+                currentUserPermissions.require().userId());
         return ResponseEntity.ok(mapper.toResponse(updateUserUseCase.execute(input, orgId)));
     }
 
@@ -116,7 +119,7 @@ public class UserController {
     @PreAuthorize("hasAuthority('USER_MANAGE')")
     public ResponseEntity<Void> deactivateUser(@PathVariable String id) {
         String orgId = TenantContextHolder.get();
-        deactivateUserUseCase.execute(id, orgId);
+        deactivateUserUseCase.execute(id, orgId, currentUserPermissions.require().userId());
         return ResponseEntity.noContent().build();
     }
 

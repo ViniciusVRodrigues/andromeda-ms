@@ -8,6 +8,7 @@ import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,6 +36,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class StrategicDashboardControllerTest {
 
     @Mock GetStrategicDashboardUseCase getStrategicDashboardUseCase;
+    @Mock DataFreshnessResolver dataFreshnessResolver;
+    @Mock andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions currentUserPermissions;
+    @Mock andromeda.sei.ms.shared.application.security.EffectivePermissionService effectivePermissionService;
 
     MockMvc mockMvc;
     ObjectMapper objectMapper;
@@ -43,7 +47,10 @@ class StrategicDashboardControllerTest {
     @BeforeEach
     void setUp() {
         mapper = new StrategicDashboardMapper(new DeveloperDashboardMapper());
-        StrategicDashboardController controller = new StrategicDashboardController(getStrategicDashboardUseCase, mapper);
+        StrategicDashboardController controller = new StrategicDashboardController(getStrategicDashboardUseCase, mapper, dataFreshnessResolver,
+                currentUserPermissions, effectivePermissionService);
+        org.mockito.Mockito.lenient().when(effectivePermissionService.projectIdsWith(any(), eq("DASHBOARD_STRATEGIC")))
+                .thenReturn(java.util.Set.of("project-1"));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
@@ -70,7 +77,7 @@ class StrategicDashboardControllerTest {
     void should_return200_when_orgScope() throws Exception {
         StrategicDashboardOutput output = new StrategicDashboardOutput("ORG", List.of(), null, null);
 
-        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), isNull(), isNull(), any(), any()))
+        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), isNull(), isNull(), any(), any(), any()))
                 .thenReturn(output);
 
         mockMvc.perform(get("/api/v1/dashboard/strategic"))
@@ -87,7 +94,7 @@ class StrategicDashboardControllerTest {
                 "project-1", "My Project", List.of(), dora);
         StrategicDashboardOutput output = new StrategicDashboardOutput("PROJECT", null, detail, null);
 
-        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), isNull(), any(), any()))
+        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), isNull(), any(), any(), any()))
                 .thenReturn(output);
 
         mockMvc.perform(get("/api/v1/dashboard/strategic").param("projectId", "project-1"))
@@ -104,7 +111,7 @@ class StrategicDashboardControllerTest {
                 List.of(), 0, List.of(), null, null, null, List.of());
         StrategicDashboardOutput output = new StrategicDashboardOutput("MEMBER", null, null, devOutput);
 
-        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), eq("member-1"), any(), any()))
+        when(getStrategicDashboardUseCase.execute(eq("org-1"), any(), eq("project-1"), eq("member-1"), any(), any(), any()))
                 .thenReturn(output);
 
         mockMvc.perform(get("/api/v1/dashboard/strategic")

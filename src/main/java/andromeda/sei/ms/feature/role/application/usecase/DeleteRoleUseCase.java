@@ -6,7 +6,9 @@ import andromeda.sei.ms.feature.role.domain.exception.DefaultRoleModificationExc
 import andromeda.sei.ms.feature.role.domain.exception.RoleInUseException;
 import andromeda.sei.ms.feature.role.domain.exception.RoleNotFoundException;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
+import andromeda.sei.ms.shared.application.security.RoleChanged;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -15,6 +17,7 @@ public class DeleteRoleUseCase {
 
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public void execute(String roleId, String organizationId) {
         Role role = roleRepository.findById(roleId)
@@ -34,5 +37,6 @@ public class DeleteRoleUseCase {
 
         role.setActive(false);
         roleRepository.save(role);
+        eventPublisher.publishEvent(new RoleChanged(roleId, role.getOrganizationId()));
     }
 }

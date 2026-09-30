@@ -74,7 +74,7 @@ public class DeveloperDashboardMapper {
                         .map(p -> new DeveloperDashboardResponse.SprintHistoryResponse(
                                 p.sprintId(), p.name(), p.startDate(), p.endDate(),
                                 p.spPlanned(), p.spDelivered(), p.avgCycleTimeHours(),
-                                p.totalTokens(), p.totalCostUsd()))
+                                p.totalTokens(), p.totalCostUsd(), p.cycleTimeP50()))
                         .toList();
 
         return new DeveloperDashboardResponse(
@@ -95,7 +95,10 @@ public class DeveloperDashboardMapper {
                 output.aiCostByWorkItemId(),
                 output.subscriptionCostPerUserUsd(),
                 sprintHistory,
-                output.sprintContext()
+                output.sprintContext(),
+                null,
+                output.cycleTime(),
+                output.leadTime()
         );
     }
 }

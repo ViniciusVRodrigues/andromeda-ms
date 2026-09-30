@@ -11,8 +11,15 @@ public record SprintMetricsResponse(
         Instant endDate,
         Sprint.TimeFrame timeFrame,
         Double velocity,
-        Double avgCycleTime,
-        Double avgLeadTime,
+        // deprecated since metrics-correctness: use cycleTimeP50/cycleTimeP90
+        @io.swagger.v3.oas.annotations.media.Schema(deprecated = true) Double avgCycleTime,
+        // deprecated since metrics-correctness: use leadTimeP50/leadTimeP90
+        @io.swagger.v3.oas.annotations.media.Schema(deprecated = true) Double avgLeadTime,
+        Double plannedEffort,
+        Double cycleTimeP50,
+        Double cycleTimeP90,
+        Double leadTimeP50,
+        Double leadTimeP90,
         Integer completedItemCount,
         Integer totalItemCount,
         Integer itemsWithPoints,

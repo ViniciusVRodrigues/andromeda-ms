@@ -10,10 +10,22 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Tokens per unit of effort of each work item: tokens of the usage records its validated
+ * allocations cover, weighted by the split percentage, divided by the item's effort.
+ *
+ * <p>metrics-correctness 11.5: allocations and usage records are read once for the whole project,
+ * tenant-scoped (organization + active, {@code VALIDATED} only) — before, one unscoped allocation
+ * query per work item plus one usage query per item.
+ */
 @Service
 @RequiredArgsConstructor
 public class CalculateTokensPerSpUseCase {
@@ -23,58 +35,51 @@ public class CalculateTokensPerSpUseCase {
     private final AIUsageRepository aiUsageRepository;
 
     public void execute(String orgId, String projectId) {
-        List<WorkItem> workItems = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId);
+        List<WorkItem> withEffort = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId).stream()
+                .filter(WorkItem::isActive)
+                .filter(wi -> wi.getId() != null && wi.getEffort() != null && wi.getEffort() != 0)
+                .toList();
+        if (withEffort.isEmpty()) return;
 
-        for (WorkItem workItem : workItems) {
-            if (workItem.getEffort() == null || workItem.getEffort() == 0) {
-                continue;
-            }
+        Set<String> workItemIds = withEffort.stream().map(WorkItem::getId).collect(Collectors.toSet());
+        List<AiUsageAllocation> allocations =
+                allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(orgId, workItemIds);
+        Map<String, AIUsage> usageById = usageById(orgId, allocations);
 
-            // Find all validated allocations that reference this work item in their splits
-            List<AiUsageAllocation> allocations = allocationRepository.findByWorkItemId(workItem.getId());
-
-            if (allocations.isEmpty()) {
-                workItemRepository.updateTokensPerSp(workItem.getId(), null);
-                continue;
-            }
-
-            // Collect all aiUsageIds referenced across all allocations for this work item
-            List<String> allUsageIds = allocations.stream()
-                    .filter(a -> a.getAiUsageIds() != null)
-                    .flatMap(a -> a.getAiUsageIds().stream())
-                    .distinct()
-                    .collect(Collectors.toList());
-
-            // Fetch all referenced usage records in one query
-            Map<String, AIUsage> usageById = aiUsageRepository.findByIds(allUsageIds).stream()
-                    .collect(Collectors.toMap(AIUsage::getId, u -> u, (a, b) -> a));
-
-            double totalAttributedTokens = 0.0;
-            for (AiUsageAllocation allocation : allocations) {
-                if (allocation.getAiUsageIds() == null || allocation.getSplits() == null) continue;
-
-                // Find the split percentage for this work item in this allocation
-                double splitPercentage = allocation.getSplits().stream()
-                        .filter(s -> workItem.getId().equals(s.getWorkItemId()))
-                        .findFirst()
-                        .map(AllocationSplit::getPercentage)
-                        .map(java.math.BigDecimal::doubleValue)
-                        .orElse(0.0);
-
-                if (splitPercentage == 0.0) continue;
-
-                // Sum tokens from all usage records referenced by this allocation
-                double allocationTokens = allocation.getAiUsageIds().stream()
-                        .map(usageById::get)
-                        .filter(u -> u != null)
-                        .mapToDouble(u -> u.getInputTokens() + u.getOutputTokens())
-                        .sum();
-
-                totalAttributedTokens += allocationTokens * splitPercentage;
-            }
-
-            double tokensPerSp = totalAttributedTokens / workItem.getEffort();
+        for (WorkItem workItem : withEffort) {
+            double tokens = attributedTokens(workItem.getId(), allocations, usageById);
+            double tokensPerSp = tokens / workItem.getEffort();
             workItemRepository.updateTokensPerSp(workItem.getId(), tokensPerSp > 0 ? tokensPerSp : null);
         }
+    }
+
+    private Map<String, AIUsage> usageById(String orgId, List<AiUsageAllocation> allocations) {
+        Set<String> usageIds = allocations.stream()
+                .filter(a -> a.getAiUsageIds() != null)
+                .flatMap(a -> a.getAiUsageIds().stream())
+                .collect(Collectors.toSet());
+        return aiUsageRepository.findByOrganizationIdAndIdIn(orgId, usageIds).stream()
+                .collect(Collectors.toMap(AIUsage::getId, Function.identity(), (a, b) -> a));
+    }
+
+    private double attributedTokens(String workItemId, List<AiUsageAllocation> allocations,
+                                    Map<String, AIUsage> usageById) {
+        double total = 0.0;
+        for (AiUsageAllocation allocation : allocations) {
+            if (allocation.getAiUsageIds() == null || allocation.getSplits() == null) continue;
+            double share = allocation.getSplits().stream()
+                    .filter(s -> workItemId.equals(s.getWorkItemId()) && s.getPercentage() != null)
+                    .map(AllocationSplit::getPercentage)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add)
+                    .doubleValue();
+            if (share == 0.0) continue;
+            double tokens = allocation.getAiUsageIds().stream()
+                    .map(usageById::get)
+                    .filter(Objects::nonNull)
+                    .mapToDouble(u -> u.getInputTokens() + u.getOutputTokens())
+                    .sum();
+            total += tokens * share;
+        }
+        return total;
     }
 }

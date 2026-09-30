@@ -96,6 +96,20 @@ class CalculateWorkItemMetricsUseCaseTest {
     }
 
     @Test
+    void should_leaveLeadTimeNullAndKeepCalculating_when_createdAtIsMissing() {
+        WorkItem noCreatedAt = workItem("wi-5", null, BASE.plusSeconds(3600), BASE.plusSeconds(7200));
+        WorkItem normal = workItem("wi-6", BASE, BASE.plusSeconds(3600), BASE.plusSeconds(7200));
+
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG_ID, PROJECT_ID))
+                .thenReturn(List.of(noCreatedAt, normal));
+
+        useCase.execute(ORG_ID, PROJECT_ID);
+
+        verify(workItemRepository).updateMetrics(eq("wi-5"), eq(1.0), isNull());
+        verify(workItemRepository).updateMetrics(eq("wi-6"), eq(1.0), eq(2.0));
+    }
+
+    @Test
     void doesNothingWhenNoWorkItems() {
         when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG_ID, PROJECT_ID))
                 .thenReturn(List.of());

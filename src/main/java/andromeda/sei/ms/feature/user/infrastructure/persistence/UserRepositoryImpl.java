@@ -2,7 +2,9 @@ package andromeda.sei.ms.feature.user.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
+import andromeda.sei.ms.feature.user.domain.exception.UserConflictException;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -47,6 +49,18 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
+    public List<User> findAllByOrganizationIdAndEmailIgnoringCase(String organizationId, String email) {
+        return mongoRepository.findAllByOrganizationIdAndEmailIgnoreCaseAndActiveTrue(organizationId, email)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<User> findAllByOrganizationIdAndAzureEmailIgnoringCase(String organizationId, String azureEmail) {
+        return mongoRepository.findAllByOrganizationIdAndAzureEmailIgnoreCaseAndActiveTrue(organizationId, azureEmail)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public Optional<User> findByOrganizationIdAndGithubId(String organizationId, String githubId) {
         return mongoRepository.findByOrganizationIdAndGithubIdAndActiveTrue(organizationId, githubId)
                 .map(mapper::toDomain);
@@ -66,7 +80,11 @@ public class UserRepositoryImpl implements UserRepository {
     public User save(User user) {
         UserDocument doc = mapper.toDocument(user);
         doc.setUpdatedAt(Instant.now());
-        UserDocument saved = mongoRepository.save(doc);
-        return mapper.toDomain(saved);
+        try {
+            return mapper.toDomain(mongoRepository.save(doc));
+        } catch (OptimisticLockingFailureException e) {
+            // Concurrent write on the same version (e.g. two admins replacing overrides).
+            throw new UserConflictException(user.getId());
+        }
     }
 }

@@ -57,7 +57,7 @@ class RoleRepositoryImplTest {
         // role belonging to another org — should not be returned
         mongoRepository.save(RoleDocument.builder()
                 .organizationId(OTHER_ORG_ID).name("Other Org Role").isDefault(false)
-                .permissionCodes(List.of("GITHUB_READ")).active(true)
+                .permissionCodes(List.of("REPOS_READ")).active(true)
                 .createdAt(NOW).updatedAt(NOW).build());
 
         List<Role> roles = repository.findAvailableForOrganization(ORG_ID);

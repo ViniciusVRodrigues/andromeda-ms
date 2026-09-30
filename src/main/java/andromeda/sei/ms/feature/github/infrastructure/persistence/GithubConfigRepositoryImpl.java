@@ -36,6 +36,16 @@ public class GithubConfigRepositoryImpl implements GithubConnectionRepository {
         if (doc.getCreatedAt() == null) {
             doc.setCreatedAt(now);
         }
+        preserveLegacyLinkConfig(doc);
         return mapper.toDomain(mongoRepository.save(doc));
+    }
+
+    /** A full-document save must not erase the legacy config kept for rollback. */
+    @SuppressWarnings("deprecation")
+    private void preserveLegacyLinkConfig(GithubConfigDocument doc) {
+        if (doc.getId() == null) return;
+        mongoRepository.findById(doc.getId())
+                .map(GithubConfigDocument::getWorkItemLinkConfig)
+                .ifPresent(doc::setWorkItemLinkConfig);
     }
 }

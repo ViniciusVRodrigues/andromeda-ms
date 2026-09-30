@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 public class AzureConnectionDocumentMapper {
 
     public AzureConnection toDomain(AzureConnectionDocument doc) {
-        return new AzureConnection(
+        AzureConnection connection = new AzureConnection(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getAzureOrgUrl(),
@@ -27,6 +27,8 @@ public class AzureConnectionDocumentMapper {
                 doc.getAuthMethod(),
                 doc.getPersonalAccessToken()
         );
+        connection.setReposAccess(doc.getReposAccess());
+        return connection;
     }
 
     public AzureConnectionDocument toDocument(AzureConnection connection) {
@@ -49,6 +51,7 @@ public class AzureConnectionDocumentMapper {
                 .version(connection.getVersion())
                 .authMethod(connection.getAuthMethod())
                 .personalAccessToken(connection.getPersonalAccessToken())
+                .reposAccess(connection.getReposAccess())
                 .build();
     }
 }

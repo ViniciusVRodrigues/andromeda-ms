@@ -1,6 +1,10 @@
 package andromeda.sei.ms.feature.user.domain;
 
+import andromeda.sei.ms.shared.domain.security.PermissionOverride;
+
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 public class User {
 
@@ -20,6 +24,8 @@ public class User {
     private Long version;
     private Instant createdAt;
     private Instant updatedAt;
+    /** Per-user overrides on top of the role preset (project-scoped-permissions D1/D2). */
+    private List<PermissionOverride> permissionOverrides = new ArrayList<>();
 
     public User(String id, String organizationId, String email, String passwordHash,
                 String name, String roleId, String seniority, String githubId,
@@ -92,4 +98,9 @@ public class User {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public List<PermissionOverride> getPermissionOverrides() { return permissionOverrides; }
+    public void setPermissionOverrides(List<PermissionOverride> permissionOverrides) {
+        this.permissionOverrides = permissionOverrides != null ? new ArrayList<>(permissionOverrides) : new ArrayList<>();
+    }
 }

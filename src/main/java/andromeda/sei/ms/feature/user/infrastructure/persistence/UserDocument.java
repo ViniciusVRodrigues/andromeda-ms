@@ -11,6 +11,8 @@ import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Document(collection = "users")
 @CompoundIndexes({
@@ -57,4 +59,8 @@ public class UserDocument {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    /** Per-user overrides on top of the role preset; empty by default (project-scoped-permissions D2). */
+    @Builder.Default
+    private List<PermissionOverrideDocument> permissionOverrides = new ArrayList<>();
 }

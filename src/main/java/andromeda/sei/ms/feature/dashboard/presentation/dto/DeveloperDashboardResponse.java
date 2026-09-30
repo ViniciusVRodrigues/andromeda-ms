@@ -1,6 +1,10 @@
 package andromeda.sei.ms.feature.dashboard.presentation.dto;
 
+import andromeda.sei.ms.feature.sync.application.dto.DataFreshness;
+
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.shared.domain.metrics.DurationStat;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -9,8 +13,8 @@ import java.util.Map;
 
 public record DeveloperDashboardResponse(
         List<WorkItemSummary> currentSprintItems,
-        Double avgCycleTimeHours,
-        Double avgLeadTimeHours,
+        @Schema(deprecated = true) Double avgCycleTimeHours,
+        @Schema(deprecated = true) Double avgLeadTimeHours,
         Double storyPointsDelivered,
         Double totalSpInSprint,
         List<DailyUsageResponse> tokensByDay,
@@ -25,8 +29,19 @@ public record DeveloperDashboardResponse(
         Map<String, BigDecimal> aiCostByWorkItemId,
         BigDecimal subscriptionCostPerUserUsd,
         List<SprintHistoryResponse> sprintHistory,
-        andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext sprintContext
+        andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext sprintContext,
+        /** Frescura dos dados do projeto; {@code null} sem {@code projectId}. */
+        DataFreshness dataFreshness,
+        DurationStat cycleTime,
+        DurationStat leadTime
 ) {
+
+    public DeveloperDashboardResponse withDataFreshness(DataFreshness freshness) {
+        return new DeveloperDashboardResponse(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours, storyPointsDelivered, totalSpInSprint,
+                tokensByDay, sprintCostUsd, avgTokensPerSp, openPrs, mergedPrs, inProgressItems, totalSprintItems,
+                burndownSeries, aiSprintSummary, aiCostByWorkItemId, subscriptionCostPerUserUsd, sprintHistory,
+                sprintContext, freshness, cycleTime, leadTime);
+    }
     /**
      * complexity/effort and their sources are exposed so the dashboard can render the same
      * manual-override editor the backlog uses (WorkItemManualFieldsEditor) -- without the
@@ -59,9 +74,10 @@ public record DeveloperDashboardResponse(
             LocalDate endDate,
             Double spPlanned,
             Double spDelivered,
-            Double avgCycleTimeHours,
+            @Schema(deprecated = true) Double avgCycleTimeHours,
             Long totalTokens,
-            BigDecimal totalCostUsd
+            BigDecimal totalCostUsd,
+            Double cycleTimeP50
     ) {}
 
     public record WorkItemSummaryDto(

@@ -46,5 +46,10 @@ public interface AIUsageRepository {
 
     List<AIUsage> findAllByOrganizationId(String organizationId);
 
-    List<AIUsage> findByIds(List<String> ids);
+    /** Tenant-scoped, active-only lookup by ids. */
+    List<AIUsage> findByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids);
+
+    /** Active usage records of the users with {@code day} within {@code [from, to]} (inclusive). */
+    List<AIUsage> findByOrganizationIdAndUserIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to);
 }

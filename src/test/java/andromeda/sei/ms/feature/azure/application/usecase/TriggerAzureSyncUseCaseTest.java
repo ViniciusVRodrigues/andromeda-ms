@@ -8,8 +8,14 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureBindingNotFoundException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
-import andromeda.sei.ms.feature.azure.infrastructure.security.AzureTokenRefreshService;
+import andromeda.sei.ms.feature.integration.domain.Integration;
+import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.feature.sync.application.SyncOrchestrator;
+import andromeda.sei.ms.feature.sync.application.SyncRequest;
+import andromeda.sei.ms.feature.sync.application.SyncTargetResolver;
+import andromeda.sei.ms.feature.sync.domain.SyncTarget;
+import andromeda.sei.ms.feature.sync.domain.exception.SyncCooldownActiveException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,38 +33,27 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.same;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+/**
+ * O trigger agora so valida e submete ao orquestrador (on-demand-refresh). Os casos que viviam
+ * aqui sobre o sync em si — encadeamento sprints → work items, watermark nulo no primeiro sync,
+ * isolamento de falhas — foram portados para {@code AzureBindingSyncRunnerTest}.
+ */
 @ExtendWith(MockitoExtension.class)
 class TriggerAzureSyncUseCaseTest {
 
+    private static final Instant NOW = Instant.now();
+
     @Mock private AzureConnectionRepository azureConnectionRepository;
     @Mock private AzureProjectBindingRepository azureProjectBindingRepository;
-    @Mock private AzureTokenRefreshService azureTokenRefreshService;
-    @Mock private SyncAzureSprintsUseCase syncAzureSprintsUseCase;
-    @Mock private SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
+    @Mock private SyncTargetResolver syncTargetResolver;
+    @Mock private SyncOrchestrator syncOrchestrator;
 
     @InjectMocks
     private TriggerAzureSyncUseCase useCase;
-
-    private static final Instant NOW = Instant.now();
-
-    private AzureConnection connection() {
-        return new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
-                null, null, null, "user-1", AzureConnectionStatus.CONNECTED,
-                null, 0, null, null, true, NOW, NOW, null,
-                AzureAuthMethod.PAT, "enc-pat");
-    }
-
-    private AzureProjectBinding binding(String id) {
-        return new AzureProjectBinding(id, "org-1", "proj-" + id, "azure-" + id, "Project " + id,
-                true, null, null, true, NOW, NOW, null);
-    }
 
     @BeforeEach
     void setUp() {
@@ -71,123 +66,79 @@ class TriggerAzureSyncUseCaseTest {
     }
 
     @Test
-    void unscopedExecute_shouldSyncAllSyncEnabledBindings() {
-        AzureConnection connection = connection();
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.of(connection));
-        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
-                .thenReturn(List.of(binding("bind-1"), binding("bind-2")));
+    void unscopedExecute_shouldSubmitEverySyncEnabledBindingAsManualOrganizationSync() {
+        List<SyncTarget> targets = List.of(
+                new SyncTarget(Integration.AZURE_DEVOPS, "bind-1", "proj-1"),
+                new SyncTarget(Integration.AZURE_DEVOPS, "bind-2", "proj-2"));
+        givenConnection();
+        when(syncTargetResolver.forOrganization("org-1", Integration.AZURE_DEVOPS, null)).thenReturn(targets);
+        when(syncOrchestrator.submit(any())).thenReturn("sync-1");
 
-        useCase.execute();
+        String syncId = useCase.execute();
 
-        verify(syncAzureSprintsUseCase, times(2)).execute(eq(connection), any(), eq(SyncTrigger.MANUAL));
-        verify(syncAzureWorkItemsUseCase, times(2)).execute(eq(connection), any(), eq(SyncTrigger.MANUAL));
-        verify(azureProjectBindingRepository, never()).findByIdAndOrganizationIdAndActiveTrue(any(), any());
+        assertThat(syncId).isEqualTo("sync-1");
+        SyncRequest request = capturedRequest();
+        assertThat(request.operation()).isEqualTo(SyncOperation.ORGANIZATION_SYNC);
+        assertThat(request.integration()).isEqualTo(Integration.AZURE_DEVOPS);
+        assertThat(request.trigger()).isEqualTo(SyncTrigger.MANUAL);
+        assertThat(request.targets()).isEqualTo(targets);
+        assertThat(request.resetWatermarks()).isFalse();
     }
 
     @Test
-    void scopedExecute_shouldSyncOnlyTheGivenBinding() {
-        AzureConnection connection = connection();
-        AzureProjectBinding target = binding("bind-1");
-        AzureProjectBinding afterSprints = binding("bind-1");
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.of(connection));
+    void scopedExecute_shouldSubmitOnlyTheGivenBindingEvenWhenSyncIsDisabled() {
+        givenConnection();
+        AzureProjectBinding binding = new AzureProjectBinding("bind-1", "org-1", "proj-1", "azure-1", "Project",
+                false, null, null, true, NOW, NOW, 1L);
         when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
-                .thenReturn(Optional.of(target));
-        when(syncAzureSprintsUseCase.execute(connection, target, SyncTrigger.MANUAL))
-                .thenReturn(afterSprints);
+                .thenReturn(Optional.of(binding));
+        when(syncOrchestrator.submit(any())).thenReturn("sync-2");
 
-        useCase.execute("bind-1");
+        assertThat(useCase.execute("bind-1")).isEqualTo("sync-2");
 
-        verify(syncAzureSprintsUseCase, times(1)).execute(connection, target, SyncTrigger.MANUAL);
-        verify(syncAzureWorkItemsUseCase, times(1)).execute(connection, afterSprints, SyncTrigger.MANUAL);
-        verify(azureProjectBindingRepository, never())
-                .findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue(any());
-    }
-
-    /**
-     * Os dois syncs gravam lastSyncAt no mesmo binding. Passar a instância original
-     * para o segundo usaria uma version já consumida pelo primeiro save, e o Mongo
-     * rejeitaria a escrita com OptimisticLockingFailureException — derrubando um sync
-     * que na verdade tinha funcionado.
-     */
-    @Test
-    void execute_shouldFeedWorkItemSyncTheBindingReturnedBySprintSync() {
-        AzureConnection connection = connection();
-        AzureProjectBinding original = binding("bind-1");
-        AzureProjectBinding afterSprints = binding("bind-1");
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.of(connection));
-        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
-                .thenReturn(List.of(original));
-        when(syncAzureSprintsUseCase.execute(connection, original, SyncTrigger.MANUAL))
-                .thenReturn(afterSprints);
-
-        useCase.execute();
-
-        /* same() e não eq(): o ponto é ser a instância devolvida pelo save, e as duas
-         * são iguais por valor. */
-        verify(syncAzureWorkItemsUseCase).execute(eq(connection), same(afterSprints), eq(SyncTrigger.MANUAL));
-        verify(syncAzureWorkItemsUseCase, never()).execute(any(), same(original), any());
-    }
-
-    /**
-     * Regressão f5eb6c7: encadear a instância devolvida pelo sprint sync consertou o lock
-     * otimista, mas passou a propagar o `lastSyncAt` recém-carimbado por ele. Como o sync de
-     * work items decidia FULL por `lastSyncAt == null`, binding novo nunca mais fazia FULL —
-     * o WIQL virava `ChangedDate >= hoje` e importava só o que mudou no dia (medido contra o
-     * projeto real: 15 de 344 itens).
-     *
-     * <p>O watermark é campo próprio justamente para que o sprint sync não o alcance.
-     */
-    @Test
-    void execute_shouldKeepWorkItemsWatermarkNullWhenSprintSyncStampsLastSyncAt() {
-        AzureConnection connection = connection();
-        AzureProjectBinding original = binding("bind-1");
-
-        /* O que o sprint sync devolve: lastSyncAt carimbado, watermark intacto. */
-        AzureProjectBinding afterSprints = binding("bind-1");
-        afterSprints.setLastSyncAt(NOW);
-
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.of(connection));
-        when(azureProjectBindingRepository.findAllByOrganizationIdAndSyncEnabledTrueAndActiveTrue("org-1"))
-                .thenReturn(List.of(original));
-        when(syncAzureSprintsUseCase.execute(connection, original, SyncTrigger.MANUAL))
-                .thenReturn(afterSprints);
-
-        useCase.execute();
-
-        ArgumentCaptor<AzureProjectBinding> captor = ArgumentCaptor.forClass(AzureProjectBinding.class);
-        verify(syncAzureWorkItemsUseCase).execute(eq(connection), captor.capture(), eq(SyncTrigger.MANUAL));
-
-        AzureProjectBinding recebido = captor.getValue();
-        assertThat(recebido.getLastSyncAt())
-                .as("o sprint sync carimba lastSyncAt, e isso é esperado")
-                .isNotNull();
-        assertThat(recebido.getWorkItemsWatermark())
-                .as("watermark tem que continuar null para o sync rodar FULL")
-                .isNull();
+        SyncRequest request = capturedRequest();
+        assertThat(request.targets()).containsExactly(new SyncTarget(Integration.AZURE_DEVOPS, "bind-1", "proj-1"));
+        assertThat(request.projectId()).isEqualTo("proj-1");
+        verifyNoInteractions(syncTargetResolver);
     }
 
     @Test
     void scopedExecute_shouldThrowWhenBindingNotFound() {
-        AzureConnection connection = connection();
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.of(connection));
+        givenConnection();
         when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("missing", "org-1"))
                 .thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase.execute("missing"))
-                .isInstanceOf(AzureBindingNotFoundException.class);
+        assertThatThrownBy(() -> useCase.execute("missing")).isInstanceOf(AzureBindingNotFoundException.class);
+        verifyNoInteractions(syncOrchestrator);
     }
 
     @Test
     void execute_shouldThrowWhenNoConnection() {
-        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
-                .thenReturn(Optional.empty());
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase.execute())
-                .isInstanceOf(AzureConnectionNotFoundException.class);
+        assertThatThrownBy(() -> useCase.execute()).isInstanceOf(AzureConnectionNotFoundException.class);
+        verifyNoInteractions(syncOrchestrator);
+    }
+
+    @Test
+    void execute_shouldPropagateCooldownRejection() {
+        givenConnection();
+        when(syncTargetResolver.forOrganization("org-1", Integration.AZURE_DEVOPS, null)).thenReturn(List.of());
+        when(syncOrchestrator.submit(any())).thenThrow(new SyncCooldownActiveException(12));
+
+        assertThatThrownBy(() -> useCase.execute()).isInstanceOf(SyncCooldownActiveException.class);
+    }
+
+    private void givenConnection() {
+        AzureConnection connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
+                null, null, null, "user-1", AzureConnectionStatus.ERROR, null, 3, null, null, true, NOW, NOW, 1L,
+                AzureAuthMethod.PAT, "enc-pat");
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(Optional.of(connection));
+    }
+
+    private SyncRequest capturedRequest() {
+        ArgumentCaptor<SyncRequest> captor = ArgumentCaptor.forClass(SyncRequest.class);
+        verify(syncOrchestrator).submit(captor.capture());
+        return captor.getValue();
     }
 }

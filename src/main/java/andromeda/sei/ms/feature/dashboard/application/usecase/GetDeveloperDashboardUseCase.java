@@ -10,14 +10,19 @@ import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.dto.SprintHistoryPoint;
-import andromeda.sei.ms.feature.github.domain.GithubPullRequest;
-import andromeda.sei.ms.feature.github.domain.GithubPullRequestRepository;
-import andromeda.sei.ms.feature.github.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
+import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.vcs.domain.ReviewMetricsPolicy;
+import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver;
+import andromeda.sei.ms.shared.domain.metrics.Percentiles;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -46,9 +51,8 @@ public class GetDeveloperDashboardUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
     private final OrganizationRepository organizationRepository;
-    private final GithubPullRequestRepository githubPullRequestRepository;
-    private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
-            effortBearingLevelResolver;
+    private final VcsReadPort vcsReadPort;
+    private final EffortBearingLevelResolver effortBearingLevelResolver;
 
 
 
@@ -95,8 +99,9 @@ public class GetDeveloperDashboardUseCase {
 
         // effectiveEffort: the unit's own value when set, otherwise the sum of its children. Summing
         // both would double count a Story whose Tasks restate the same work at finer granularity.
-        Double storyPointsDelivered = effortBearingLevelResolver.totalEffort(doneItems, currentSprintItems);
-        Double totalSpInSprint = effortBearingLevelResolver.totalEffort(storyItems, currentSprintItems);
+        EffortBearingLevelResolver.EffortScope effortScope = effortBearingLevelResolver.scope(currentSprintItems);
+        Double storyPointsDelivered = effortScope.totalEffort(doneItems);
+        Double totalSpInSprint = effortScope.totalEffort(storyItems);
 
         LocalDate sprintStart = sprintOpt.map(s -> toLocalDate(s.getStartDate())).orElse(null);
         LocalDate sprintEnd = sprintOpt.map(s -> toLocalDate(s.getEndDate())).orElse(null);
@@ -129,7 +134,7 @@ public class GetDeveloperDashboardUseCase {
                 .toArray());
 
         // Burndown series
-        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, currentSprintItems, sprintStart, sprintEnd);
+        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, effortScope, sprintStart, sprintEnd);
 
         // AI sprint summary
         AiSprintSummary aiSprintSummary = computeAiSprintSummary(orgId, userId, sprintStart, sprintEnd);
@@ -142,21 +147,24 @@ public class GetDeveloperDashboardUseCase {
 
         LocalDate prFrom = sprintStart != null ? sprintStart : startDate != null ? startDate : LocalDate.now().minusDays(30);
         LocalDate prTo = sprintEnd != null ? sprintEnd : endDate != null ? endDate : LocalDate.now();
-        List<GithubPullRequest> prs = githubPullRequestRepository
-                .findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(orgId, userId,
-                        prFrom.atStartOfDay(ZoneOffset.UTC).toInstant(), prTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant().minusNanos(1))
-                .stream().filter(GithubPullRequest::isActive).toList();
+        List<VcsPullRequest> prs = vcsReadPort.pullRequestsByAuthor(orgId, userId,
+                prFrom.atStartOfDay(ZoneOffset.UTC).toInstant(), prTo.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
+        prs = scopeToProjectRepositories(orgId, projectId, prs);
         int[] prCounts = { (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count(),
                 (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).count() };
         var context = new andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext(
                 sprintOpt.map(Sprint::getId).orElse(null), sprintOpt.map(Sprint::getName).orElse(null), prFrom, prTo,
-                average(prs.stream().map(GithubPullRequest::getTimeToFirstReviewHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
-                average(prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).map(GithubPullRequest::getCycleTimeHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
+                average(prs.stream().map(VcsPullRequest::getTimeToFirstReviewHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
+                average(prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED).map(VcsPullRequest::getCycleTimeHours).filter(Objects::nonNull).mapToDouble(Double::doubleValue).toArray()),
                 (int) prs.stream().filter(pr -> pr.getTimeToFirstReviewHours() != null).count(),
-                prs.stream().sorted(Comparator.comparing(GithubPullRequest::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                prs.stream().sorted(Comparator.comparing(VcsPullRequest::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
                         .limit(20).map(pr -> new andromeda.sei.ms.feature.dashboard.application.dto.IndividualSprintContext.PullRequest(
                                 pr.getId(), pr.getNumber(), pr.getTitle(), pr.getStatus().name(), pr.getTimeToFirstReviewHours(),
-                                pr.getCycleTimeHours(), pr.getLinkedWorkItemExternalId())).toList());
+                                pr.getCycleTimeHours(), pr.getLinkedWorkItemExternalId(), pr.getAuthorLogin(),
+                                pr.getProvider() != null ? pr.getProvider().name() : null, pr.getAuthorLogin())).toList(),
+                ReviewMetricsPolicy.aggregate(prs, Instant.now()),
+                Percentiles.of(prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.MERGED)
+                        .map(VcsPullRequest::getCycleTimeHours).toList()));
 
         List<SprintHistoryPoint> sprintHistory =
                 computeSprintHistory(orgId, userId, projectId, sprintOpt.orElse(null));
@@ -179,8 +187,23 @@ public class GetDeveloperDashboardUseCase {
                 aiCostByWorkItemId,
                 subscriptionCostPerUserUsd,
                 sprintHistory,
-                context
+                context,
+                Percentiles.of(doneItems.stream().map(WorkItem::getCycleTimeHours).toList()),
+                Percentiles.of(doneItems.stream().map(WorkItem::getLeadTimeHours).toList())
         );
+    }
+
+    /**
+     * developer-dashboard: with a project informed, only pull requests of repositories bound to
+     * it count — the user's work in another project's repositories must not leak into this one.
+     */
+    private List<VcsPullRequest> scopeToProjectRepositories(String orgId, String projectId,
+                                                            List<VcsPullRequest> prs) {
+        if (projectId == null || prs.isEmpty()) return prs;
+        Set<String> repoIds = vcsReadPort.repositoriesOfProject(orgId, projectId).stream()
+                .map(VcsRepository::getId)
+                .collect(Collectors.toSet());
+        return prs.stream().filter(pr -> repoIds.contains(pr.getRepositoryId())).toList();
     }
 
     /**
@@ -196,9 +219,10 @@ public class GetDeveloperDashboardUseCase {
             return List.of();
         }
 
-        List<Sprint> candidates = projectId != null
+        // One point per iteration: a shared iteration's other twins hold no items (phantom zero bars).
+        List<Sprint> candidates = SharedIterations.distinct(projectId != null
                 ? sprintRepository.findAllByOrganizationIdAndProjectId(orgId, projectId)
-                : sprintRepository.findAllByOrganizationId(orgId);
+                : sprintRepository.findAllByOrganizationId(orgId));
 
         List<Sprint> ordered = candidates.stream()
                 .filter(s -> s.getId() != null && s.getStartDate() != null && s.getEndDate() != null)
@@ -225,19 +249,16 @@ public class GetDeveloperDashboardUseCase {
                             orgId, userId, s.getId(), projectId)
                     : workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(
                             orgId, userId, s.getId());
-            var level = effortBearingLevelResolver.resolve(null, items);
-            List<WorkItem> units = effortBearingLevelResolver.deliverableUnits(level, items);
-            List<WorkItem> done = units.stream()
-                    .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                    .toList();
-            Double planned = effortBearingLevelResolver.totalEffort(units, items);
-            Double delivered = effortBearingLevelResolver.totalEffort(done, items);
+            EffortBearingLevelResolver.EffortSummary summary = effortBearingLevelResolver.summarize(items);
+            List<WorkItem> done = summary.doneUnits();
+            Double planned = summary.planned();
+            Double delivered = summary.delivered();
             Double avgCycle = average(done.stream()
                     .map(WorkItem::getCycleTimeHours)
                     .filter(Objects::nonNull)
                     .mapToDouble(Double::doubleValue)
                     .toArray());
-            AiSprintSummary summary = computeAiSprintSummary(
+            AiSprintSummary aiSummary = computeAiSprintSummary(
                     orgId, userId, toLocalDate(s.getStartDate()), toLocalDate(s.getEndDate()));
 
             history.add(new SprintHistoryPoint(
@@ -248,8 +269,9 @@ public class GetDeveloperDashboardUseCase {
                     planned == null ? 0d : planned,
                     delivered == null ? 0d : delivered,
                     avgCycle,
-                    summary == null ? null : summary.totalTokens(),
-                    summary == null ? null : summary.totalCostUsd()));
+                    aiSummary == null ? null : aiSummary.totalTokens(),
+                    aiSummary == null ? null : aiSummary.totalCostUsd(),
+                    Percentiles.of(done.stream().map(WorkItem::getCycleTimeHours).toList()).p50()));
         }
         return history;
     }
@@ -318,13 +340,13 @@ public class GetDeveloperDashboardUseCase {
     }
 
     private List<BurndownPoint> computeBurndown(List<WorkItem> sprintItems,
-                                                 List<WorkItem> allSprintItems,
+                                                 EffortBearingLevelResolver.EffortScope effortScope,
                                                  LocalDate sprintStart, LocalDate sprintEnd) {
         if (sprintStart == null || sprintEnd == null) {
             return List.of();
         }
 
-        Double resolvedTotal = effortBearingLevelResolver.totalEffort(sprintItems, allSprintItems);
+        Double resolvedTotal = effortScope.totalEffort(sprintItems);
         double totalSp = resolvedTotal == null ? 0d : resolvedTotal;
 
         LocalDate today = LocalDate.now();
@@ -345,7 +367,7 @@ public class GetDeveloperDashboardUseCase {
                     .filter(wi -> wi.getCompletedAt() != null)
                     .filter(wi -> !toLocalDate(wi.getCompletedAt()).isAfter(currentDay))
                     .toList();
-            Double completedResolved = effortBearingLevelResolver.totalEffort(completedByDay, allSprintItems);
+            Double completedResolved = effortScope.totalEffort(completedByDay);
             double completedSp = completedResolved == null ? 0d : completedResolved;
 
             double remainingSp = totalSp - completedSp;
@@ -393,13 +415,17 @@ public class GetDeveloperDashboardUseCase {
 
     private Optional<Sprint> resolveCurrentSprint(String orgId, String userId, String projectId, String sprintId) {
         if (sprintId != null) {
-            return sprintRepository.findAllByOrganizationId(orgId).stream()
+            List<Sprint> all = sprintRepository.findAllByOrganizationId(orgId);
+            // Another team's twin of a shared iteration holds no items: read through the canonical one.
+            return all.stream()
                     .filter(s -> s.isActive() && sprintId.equals(s.getId()) && (projectId == null || projectId.equals(s.getProjectId())))
-                    .findFirst();
+                    .findFirst()
+                    .map(s -> SharedIterations.canonicalTwin(s, all.stream().filter(Sprint::isActive).toList()));
         }
-        List<Sprint> current = sprintRepository.findCurrentSprintsByOrganizationId(orgId).stream()
+        List<Sprint> current = SharedIterations.distinct(sprintRepository.findCurrentSprintsByOrganizationId(orgId)).stream()
                 .filter(s -> s.isActive() && (projectId == null || projectId.equals(s.getProjectId())))
-                .sorted(Comparator.comparing(Sprint::getStartDate, Comparator.nullsLast(Comparator.reverseOrder())))
+                .sorted(Comparator.comparing(Sprint::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
+                        .thenComparing(SharedIterations.CANONICAL_ORDER))
                 .toList();
         return current.stream().filter(s -> !workItemRepository
                 .findByOrganizationIdAndAssigneeUserIdAndSprintId(orgId, userId, s.getId()).isEmpty()).findFirst();

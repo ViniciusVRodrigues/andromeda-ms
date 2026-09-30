@@ -20,6 +20,7 @@ import andromeda.sei.ms.feature.allocation.presentation.dto.SplitResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.WorkItemCandidateResponse;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.shared.infrastructure.security.AndromedaUserDetails;
+import andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -31,10 +32,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -61,11 +59,15 @@ public class AiUsageAllocationController {
     private final AcceptAllocationUseCase acceptAllocation;
     private final ManualAllocateUseCase manualAllocate;
     private final GetAllocationHistoryUseCase getAllocationHistory;
+    private final CurrentUserPermissions currentUserPermissions;
+
+    /** Own allocations (AI_READ_OWN) or, with AI_READ_ALL on some project, those of its members. */
+    static final String AI_READ = "hasAuthority('AI_READ_OWN') or @perm.onAnyProject('AI_READ_ALL')";
 
     @Operation(summary = "Get pending allocations (legacy)", description = "Returns pending allocation days for the authenticated user")
     @ApiResponse(responseCode = "200", description = "Pending allocations returned")
     @GetMapping("/pending")
-    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
+    @PreAuthorize(AI_READ)
     public ResponseEntity<List<PendingAllocationDayResponse>> getPending(
             @AuthenticationPrincipal AndromedaUserDetails user) {
         String orgId = TenantContextHolder.get();
@@ -87,7 +89,7 @@ public class AiUsageAllocationController {
     @Operation(summary = "Get pending allocation batches", description = "Returns unallocated usage records grouped by day with auto-suggestions")
     @ApiResponse(responseCode = "200", description = "Pending batches returned")
     @GetMapping("/pending-batches")
-    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
+    @PreAuthorize(AI_READ)
     public ResponseEntity<List<PendingBatchResponse>> getPendingBatches(
             @RequestParam(required = false) String userId,
             @AuthenticationPrincipal AndromedaUserDetails user) {
@@ -157,7 +159,7 @@ public class AiUsageAllocationController {
     @Operation(summary = "Get allocation history", description = "Returns paginated validated allocations, optionally filtered by month")
     @ApiResponse(responseCode = "200", description = "History returned")
     @GetMapping("/history")
-    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
+    @PreAuthorize(AI_READ)
     public ResponseEntity<Page<AllocationHistoryResponse>> getHistory(
             @RequestParam(required = false) String month,
             @RequestParam(defaultValue = "0") int page,
@@ -182,7 +184,7 @@ public class AiUsageAllocationController {
     @Operation(summary = "Get candidates for a day (legacy)", description = "Returns work item candidates for allocation on a given day")
     @ApiResponse(responseCode = "200", description = "Candidates returned")
     @GetMapping("/{day}/candidates")
-    @PreAuthorize("hasAnyAuthority('AI_READ_OWN', 'AI_READ_ALL')")
+    @PreAuthorize(AI_READ)
     public ResponseEntity<List<WorkItemCandidateResponse>> getCandidates(
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate day,
             @AuthenticationPrincipal AndromedaUserDetails user) {
@@ -216,11 +218,8 @@ public class AiUsageAllocationController {
         if (requestedUserId == null || requestedUserId.equals(callerUserId)) {
             return callerUserId;
         }
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        boolean hasDashboardTeam = auth.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .anyMatch(p -> p.equals("DASHBOARD_TEAM") || p.equals("AI_READ_ALL"));
-        if (!hasDashboardTeam) {
+        // Only members of projects where the caller holds AI_READ_ALL/DASHBOARD_TEAM (6.4).
+        if (!currentUserPermissions.canReadUserData(requestedUserId)) {
             throw new ForbiddenOperationException("ALLOCATION_FORBIDDEN",
                     "You are not authorised to view another user's allocations");
         }

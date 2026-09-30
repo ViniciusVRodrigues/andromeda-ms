@@ -10,11 +10,12 @@ public interface SprintMongoRepository extends MongoRepository<SprintDocument, S
     Optional<SprintDocument> findByOrganizationIdAndExternalIdAndTeamId(
             String organizationId, String externalId, String teamId);
 
-    Optional<SprintDocument> findByOrganizationIdAndExternalId(String organizationId, String externalId);
-
-    Optional<SprintDocument> findByOrganizationIdAndPath(String organizationId, String path);
+    List<SprintDocument> findAllByOrganizationIdAndProjectIdAndPathAndActiveTrue(
+            String organizationId, String projectId, String path);
 
     List<SprintDocument> findAllByOrganizationId(String organizationId);
+
+    Optional<SprintDocument> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
 
     List<SprintDocument> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 }

@@ -30,6 +30,7 @@ import andromeda.sei.ms.feature.azure.presentation.dto.UpdateWorkflowConfigReque
 import andromeda.sei.ms.feature.azure.presentation.dto.WorkflowConfigResponse;
 import andromeda.sei.ms.feature.azure.application.usecase.ForceResyncProjectUseCase.ResyncSummaryResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.shared.presentation.dto.SyncStartedResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -132,9 +133,9 @@ public class AzureProjectBindingController {
     @ApiResponse(responseCode = "404", description = "Nenhum binding sincronizável encontrado")
     @PostMapping("/repair")
     @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
-    public ResponseEntity<Void> repair(@RequestParam(required = false) String projectId) {
-        repairAzureDataUseCase.execute(TenantContextHolder.get(), projectId);
-        return ResponseEntity.accepted().build();
+    public ResponseEntity<SyncStartedResponse> repair(@RequestParam(required = false) String projectId) {
+        String syncId = repairAzureDataUseCase.execute(TenantContextHolder.get(), projectId);
+        return ResponseEntity.accepted().body(new SyncStartedResponse(syncId));
     }
 
     /**

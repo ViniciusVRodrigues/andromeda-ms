@@ -20,13 +20,6 @@ public class GetAzureConnectionStatusUseCase {
                 .findByOrganizationIdAndActiveTrue(orgId)
                 .orElseThrow(() -> new AzureConnectionNotFoundException(orgId));
 
-        return new AzureConnectionStatusOutput(
-                connection.getStatus(),
-                connection.getAzureOrgUrl(),
-                connection.getAuthorizedByUserId(),
-                connection.getLastSuccessAt(),
-                connection.getConsecutiveFailures(),
-                connection.getAuthMethod()
-        );
+        return AzureConnectionStatusOutput.of(connection);
     }
 }

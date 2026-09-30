@@ -9,6 +9,8 @@ import andromeda.sei.ms.feature.workitem.presentation.dto.WorkItemPageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
+import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -30,6 +32,7 @@ public class ProjectBacklogController {
     private final ListProjectBacklogRootsUseCase listProjectBacklogRootsUseCase;
     private final ListProjectBacklogOrphansUseCase listProjectBacklogOrphansUseCase;
     private final AssigneeNameResolver assigneeNameResolver;
+    private final DataFreshnessResolver dataFreshnessResolver;
 
     @Operation(summary = "List top-level (root) work items for a project's backlog, paginated",
             description = "Without filters, returns only root items for the backlog tree. With any "
@@ -38,7 +41,7 @@ public class ProjectBacklogController {
     @ApiResponse(responseCode = "200", description = "Roots listed")
     @ApiResponse(responseCode = "404", description = "Project not found")
     @GetMapping("/roots")
-    @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
+    @PreAuthorize("@perm.onProject(#projectId, 'DASHBOARD_TEAM')")
     public ResponseEntity<WorkItemPageResponse> listRoots(
             @PathVariable String projectId,
             @RequestParam(defaultValue = "0") int page,
@@ -50,7 +53,8 @@ public class ProjectBacklogController {
             @RequestParam(required = false) String status) {
         var result = listProjectBacklogRootsUseCase.execute(
                 projectId, page, size, filterOf(sprintId, assigneeUserId, search, type, status));
-        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result)));
+        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result))
+                .withDataFreshness(dataFreshnessResolver.resolve(TenantContextHolder.get(), projectId)));
     }
 
     @Operation(summary = "List orphaned work items for a project's backlog, paginated",
@@ -59,7 +63,7 @@ public class ProjectBacklogController {
     @ApiResponse(responseCode = "200", description = "Orphans listed")
     @ApiResponse(responseCode = "404", description = "Project not found")
     @GetMapping("/orphans")
-    @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
+    @PreAuthorize("@perm.onProject(#projectId, 'DASHBOARD_TEAM')")
     public ResponseEntity<WorkItemPageResponse> listOrphans(
             @PathVariable String projectId,
             @RequestParam(defaultValue = "0") int page,
@@ -71,7 +75,8 @@ public class ProjectBacklogController {
             @RequestParam(required = false) String status) {
         var result = listProjectBacklogOrphansUseCase.execute(
                 projectId, page, size, filterOf(sprintId, assigneeUserId, search, type, status));
-        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result)));
+        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result))
+                .withDataFreshness(dataFreshnessResolver.resolve(TenantContextHolder.get(), projectId)));
     }
 
     private BacklogFilter filterOf(String sprintId, String assigneeUserId, String search,

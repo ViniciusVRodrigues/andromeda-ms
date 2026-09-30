@@ -3,8 +3,10 @@ package andromeda.sei.ms.feature.github.application.usecase;
 import andromeda.sei.ms.feature.github.domain.GithubConnection;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionRepository;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionStatus;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBinding;
-import andromeda.sei.ms.feature.github.domain.GithubRepoBindingRepository;
+import andromeda.sei.ms.feature.vcs.VcsLegacyFixtures;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import andromeda.sei.ms.feature.github.domain.exception.GithubConnectionNotFoundException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import org.junit.jupiter.api.AfterEach;
@@ -30,7 +32,7 @@ import static org.mockito.Mockito.when;
 class DisconnectGithubUseCaseTest {
 
     @Mock private GithubConnectionRepository githubConnectionRepository;
-    @Mock private GithubRepoBindingRepository githubRepoBindingRepository;
+    @Mock private VcsRepoBindingRepository githubRepoBindingRepository;
 
     @InjectMocks
     private DisconnectGithubUseCase useCase;
@@ -39,7 +41,7 @@ class DisconnectGithubUseCaseTest {
     private ArgumentCaptor<GithubConnection> connectionCaptor;
 
     @Captor
-    private ArgumentCaptor<List<GithubRepoBinding>> bindingsCaptor;
+    private ArgumentCaptor<List<VcsRepoBinding>> bindingsCaptor;
 
     private static final String ORG = "org-1";
     private static final Instant NOW = Instant.now();
@@ -59,7 +61,7 @@ class DisconnectGithubUseCaseTest {
         GithubConnection connection = connection();
         when(githubConnectionRepository.findByOrganizationIdAndActiveTrue(ORG))
                 .thenReturn(Optional.of(connection));
-        when(githubRepoBindingRepository.findAllByOrganizationIdAndActiveTrue(ORG))
+        when(githubRepoBindingRepository.findAllActiveByOrganizationIdAndProvider(ORG, VcsProvider.GITHUB))
                 .thenReturn(List.of(binding("binding-1", "proj-1"), binding("binding-2", "proj-2")));
 
         useCase.execute();
@@ -70,7 +72,7 @@ class DisconnectGithubUseCaseTest {
         assertThat(saved.getStatus()).isEqualTo(GithubConnectionStatus.DISCONNECTED);
 
         verify(githubRepoBindingRepository).saveAll(bindingsCaptor.capture());
-        List<GithubRepoBinding> savedBindings = bindingsCaptor.getValue();
+        List<VcsRepoBinding> savedBindings = bindingsCaptor.getValue();
         assertThat(savedBindings).hasSize(2);
         // Bindings stay active (dormant, re-enable after reconnect) but sync is disabled —
         // synced data itself is never touched.
@@ -94,7 +96,7 @@ class DisconnectGithubUseCaseTest {
                 GithubConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null);
     }
 
-    private GithubRepoBinding binding(String id, String projectId) {
-        return new GithubRepoBinding(id, ORG, projectId, "octo/hello", true, null, true, NOW, NOW, 1L);
+    private VcsRepoBinding binding(String id, String projectId) {
+        return VcsLegacyFixtures.binding(id, ORG, projectId, "repo-1", true, null, true, NOW, NOW, 1L);
     }
 }

@@ -7,10 +7,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.util.retry.Retry;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,16 +23,9 @@ public class AzureDevOpsClient {
     public static final int WIQL_MAX_PAGES = 50;
     private final WebClient azureWebClient;
 
+    /** 429/5xx retry honoring {@code Retry-After} / {@code X-RateLimit-Reset} (azure-repos-provider D1). */
     private Retry retrySpec() {
-        return Retry.backoff(3, Duration.ofSeconds(2))
-                .maxBackoff(Duration.ofSeconds(8))
-                .filter(throwable -> {
-                    if (throwable instanceof WebClientResponseException ex) {
-                        return ex.getStatusCode().value() == 429
-                                || ex.getStatusCode().is5xxServerError();
-                    }
-                    return false;
-                });
+        return AzureRetryPolicy.retrySpec();
     }
 
     private String baseUrl(String orgUrl) {

@@ -307,8 +307,12 @@ class AzureProjectBindingControllerTest {
     void repair_shouldReturn202AndDelegateWithTenant() throws Exception {
         andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder.set("org-1");
         try {
+            org.mockito.Mockito.when(repairAzureDataUseCase.execute("org-1", null)).thenReturn("sync-9");
+
             mockMvc.perform(post("/api/v1/integrations/azure/repair"))
-                    .andExpect(status().isAccepted());
+                    .andExpect(status().isAccepted())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                            .jsonPath("$.syncId").value("sync-9"));
 
             org.mockito.Mockito.verify(repairAzureDataUseCase).execute("org-1", null);
         } finally {

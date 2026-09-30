@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.dashboard.presentation;
 import andromeda.sei.ms.feature.dashboard.application.usecase.GetDeveloperDashboardUseCase;
 import andromeda.sei.ms.feature.dashboard.presentation.dto.DeveloperDashboardResponse;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +23,12 @@ public class DeveloperDashboardController {
 
     private final GetDeveloperDashboardUseCase getDeveloperDashboardUseCase;
     private final DeveloperDashboardMapper mapper;
+    private final DataFreshnessResolver dataFreshnessResolver;
 
     @GetMapping("/developer")
-    @PreAuthorize("hasAuthority('DASHBOARD_INDIVIDUAL')")
+    // Own data; a projectId narrows it and must be a project the caller can access.
+    @PreAuthorize("hasAuthority('DASHBOARD_INDIVIDUAL') "
+            + "and (#projectId == null or @perm.onProject(#projectId, 'DASHBOARD_INDIVIDUAL'))")
     public ResponseEntity<DeveloperDashboardResponse> getDeveloperDashboard(
             @RequestParam(required = false) String projectId,
             @RequestParam(required = false) String sprintId,
@@ -36,6 +40,7 @@ public class DeveloperDashboardController {
         String userId = SecurityContextHolder.getContext().getAuthentication().getName();
 
         var output = getDeveloperDashboardUseCase.execute(orgId, userId, projectId, sprintId, startDate, endDate, model);
-        return ResponseEntity.ok(mapper.toResponse(output));
+        return ResponseEntity.ok(mapper.toResponse(output)
+                .withDataFreshness(dataFreshnessResolver.resolve(orgId, projectId)));
     }
 }

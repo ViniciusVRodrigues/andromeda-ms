@@ -1,7 +1,6 @@
 package andromeda.sei.ms.feature.github.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.github.domain.GithubConnection;
-import andromeda.sei.ms.feature.github.domain.WorkItemLinkConfig;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -14,7 +13,6 @@ public class GithubConfigDocumentMapper {
                 doc.getAuthorizedByUserId(), doc.getStatus(), doc.getLastSuccessAt(),
                 doc.getConsecutiveFailures(), doc.getLastErrorCode(), doc.getLastErrorMessage(),
                 doc.isActive(), doc.getCreatedAt(), doc.getUpdatedAt(), doc.getVersion());
-        connection.setWorkItemLinkConfig(toLinkConfigDomain(doc.getWorkItemLinkConfig()));
         return connection;
     }
 
@@ -34,20 +32,6 @@ public class GithubConfigDocumentMapper {
                 .createdAt(connection.getCreatedAt())
                 .updatedAt(connection.getUpdatedAt())
                 .version(connection.getVersion())
-                .workItemLinkConfig(toLinkConfigDocument(connection.getStoredWorkItemLinkConfig()))
-                .build();
-    }
-
-    private WorkItemLinkConfig toLinkConfigDomain(GithubConfigDocument.WorkItemLinkConfigDocument doc) {
-        if (doc == null) return null;
-        return new WorkItemLinkConfig(doc.isEnabled(), doc.getPrefixes());
-    }
-
-    private GithubConfigDocument.WorkItemLinkConfigDocument toLinkConfigDocument(WorkItemLinkConfig config) {
-        if (config == null) return null;
-        return GithubConfigDocument.WorkItemLinkConfigDocument.builder()
-                .enabled(config.isEnabled())
-                .prefixes(config.getPrefixes())
                 .build();
     }
 }

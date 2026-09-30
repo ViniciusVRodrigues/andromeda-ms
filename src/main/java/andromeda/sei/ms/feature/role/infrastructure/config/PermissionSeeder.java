@@ -22,8 +22,8 @@ public class PermissionSeeder implements ApplicationRunner {
             new String[]{"ROLE_MANAGE",                    "Gerenciar roles e permissões",                   "Roles"},
             new String[]{"AZURE_CONFIGURE",                "Configurar integração com Azure DevOps",          "Azure"},
             new String[]{"AZURE_READ",                     "Visualizar dados do Azure DevOps",               "Azure"},
-            new String[]{"GITHUB_CONFIGURE",               "Configurar integração com GitHub",               "GitHub"},
-            new String[]{"GITHUB_READ",                    "Visualizar dados do GitHub",                     "GitHub"},
+            new String[]{"REPOS_CONFIGURE",                "Configurar conexões e vínculos de repositórios",  "Repositórios"},
+            new String[]{"REPOS_READ",                     "Visualizar dados de repositórios",               "Repositórios"},
             new String[]{"AI_READ_OWN",                    "Visualizar próprio uso de IA",                   "IA"},
             new String[]{"AI_READ_ALL",                    "Visualizar uso de IA de todos os membros",       "IA"},
             new String[]{"DASHBOARD_INDIVIDUAL",           "Acessar dashboard individual de métricas",       "Dashboard"},
@@ -33,9 +33,14 @@ public class PermissionSeeder implements ApplicationRunner {
             new String[]{"CONNECTOR_TOKEN_MANAGE_OWN",     "Gerenciar próprio token de conector",            "Conector"},
             new String[]{"CONNECTOR_TOKEN_MANAGE_ALL",     "Gerenciar tokens de conector de toda a org",     "Conector"},
             new String[]{"PROJECT_MANAGE",                 "Gerenciar projetos da organização",               "Projetos"},
-            new String[]{"WORK_ITEM_MANAGE",                "Editar manualmente campos de work items",         "Work Items"}
+            new String[]{"WORK_ITEM_MANAGE",                "Editar manualmente campos de work items",         "Work Items"},
+            new String[]{"PROJECT_ACCESS_ALL",             "Acesso a dados de todos os projetos da organização", "Projetos"}
     );
 
+    /**
+     * Inserts missing codes with their scope from {@code PermissionCatalog}. Existing entries get
+     * their {@code scope} from {@code PermissionScopesMigration}, not from here.
+     */
     @Override
     public void run(ApplicationArguments args) {
         for (String[] entry : PERMISSIONS) {

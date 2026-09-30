@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
+import andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,9 @@ class IntegrationSyncLogControllerTest {
     @Mock
     private GetIntegrationSyncLogsUseCase getIntegrationSyncLogsUseCase;
 
+    @Mock
+    private CurrentUserPermissions currentUserPermissions;
+
     @InjectMocks
     private IntegrationSyncLogController controller;
 
@@ -50,7 +54,7 @@ class IntegrationSyncLogControllerTest {
         var log = new SyncLogOutput("log-1", Integration.AZURE_DEVOPS, SyncOperation.SYNC_SPRINTS,
                 SyncStatus.SUCCESS, SyncTrigger.SCHEDULED, null,
                 Instant.now(), Instant.now(), 100L, 5, 0, null, null, null, null);
-        when(getIntegrationSyncLogsUseCase.execute(eq(Integration.AZURE_DEVOPS), any()))
+        when(getIntegrationSyncLogsUseCase.execute(eq(Integration.AZURE_DEVOPS), any(), any()))
                 .thenReturn(List.of(log));
 
         mockMvc.perform(get("/api/v1/integrations/sync-logs?integration=AZURE_DEVOPS"))

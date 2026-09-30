@@ -24,8 +24,6 @@ public interface AiUsageAllocationMongoRepository extends MongoRepository<AiUsag
     List<AiUsageAllocationDocument> findByOrganizationIdAndUserIdAndStatus(
             String organizationId, String userId, AiUsageAllocation.Status status);
 
-    List<AiUsageAllocationDocument> findBySplitsWorkItemId(String workItemId);
-
     Optional<AiUsageAllocationDocument> findByIdAndOrganizationIdAndActiveTrue(
             String id, String organizationId);
 }

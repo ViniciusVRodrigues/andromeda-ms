@@ -41,7 +41,8 @@ public class WorkItemController {
     @ApiResponse(responseCode = "200", description = "Detalhes do work item")
     @ApiResponse(responseCode = "404", description = "Work item não encontrado na organização")
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('DASHBOARD_INDIVIDUAL', 'DASHBOARD_TEAM', 'DASHBOARD_STRATEGIC', 'AI_READ_OWN', 'AI_READ_ALL', 'AZURE_READ', 'WORK_ITEM_MANAGE')")
+    @PreAuthorize("hasAnyAuthority('DASHBOARD_INDIVIDUAL', 'DASHBOARD_TEAM', 'DASHBOARD_STRATEGIC', 'AI_READ_OWN', 'AI_READ_ALL', 'AZURE_READ', 'WORK_ITEM_MANAGE') "
+            + "and @perm.canAccessWorkItem(#id)")
     public ResponseEntity<WorkItemDetailOutput> detail(@PathVariable String id) {
         return ResponseEntity.ok(getWorkItemDetailUseCase.execute(
                 TenantContextHolder.get(), id));
@@ -52,7 +53,7 @@ public class WorkItemController {
     @ApiResponse(responseCode = "404", description = "Work item not found")
     @ApiResponse(responseCode = "403", description = "Missing WORK_ITEM_MANAGE permission")
     @PatchMapping("/{id}/manual-fields")
-    @PreAuthorize("hasAuthority('WORK_ITEM_MANAGE')")
+    @PreAuthorize("@perm.onWorkItem(#id, 'WORK_ITEM_MANAGE')")
     public ResponseEntity<WorkItemManualFieldsResponse> updateManualFields(
             @PathVariable String id,
             @Valid @RequestBody UpdateWorkItemManualFieldsRequest request) {
@@ -80,7 +81,7 @@ public class WorkItemController {
     @ApiResponse(responseCode = "200", description = "Children listed")
     @ApiResponse(responseCode = "404", description = "Work item not found")
     @GetMapping("/{id}/children")
-    @PreAuthorize("hasAuthority('DASHBOARD_TEAM')")
+    @PreAuthorize("@perm.onWorkItem(#id, 'DASHBOARD_TEAM')")
     public ResponseEntity<WorkItemChildrenResponse> listChildren(@PathVariable String id) {
         var output = listWorkItemChildrenUseCase.execute(id);
         return ResponseEntity.ok(WorkItemChildrenResponse.from(

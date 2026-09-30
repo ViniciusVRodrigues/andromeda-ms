@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.dashboard.application.dto;
 
 import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -25,7 +26,9 @@ public record DeveloperDashboardOutput(
         Map<String, BigDecimal> aiCostByWorkItemId,
         BigDecimal subscriptionCostPerUserUsd,
         List<SprintHistoryPoint> sprintHistory,
-        IndividualSprintContext sprintContext
+        IndividualSprintContext sprintContext,
+        DurationStat cycleTime,
+        DurationStat leadTime
 ) {
     public DeveloperDashboardOutput(List<WorkItem> currentSprintItems, Double avgCycleTimeHours,
             Double avgLeadTimeHours, Double storyPointsDelivered, Double totalSpInSprint,
@@ -37,6 +40,6 @@ public record DeveloperDashboardOutput(
         this(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours, storyPointsDelivered, totalSpInSprint,
                 tokensByDay, sprintCostUsd, avgTokensPerSp, openPrs, mergedPrs, inProgressItems,
                 totalSprintItems, burndownSeries, aiSprintSummary, aiCostByWorkItemId,
-                subscriptionCostPerUserUsd, sprintHistory, null);
+                subscriptionCostPerUserUsd, sprintHistory, null, DurationStat.empty(), DurationStat.empty());
     }
 }
