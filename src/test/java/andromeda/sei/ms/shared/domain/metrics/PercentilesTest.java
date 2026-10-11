@@ -49,4 +49,19 @@ class PercentilesTest {
         assertThat(stat.p50()).isEqualTo(2.0);
         assertThat(stat.p90()).isEqualTo(4.0);
     }
+
+    @Test
+    void should_returnNearestRankP85_ignoringNulls() {
+        List<Double> values = new java.util.ArrayList<>(List.of(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0));
+        values.add(null);
+
+        // rank = ceil(0.85 × 10) = 9 → the 9th smallest value
+        assertThat(Percentiles.percentile(values, 85)).isEqualTo(9.0);
+    }
+
+    @Test
+    void should_returnNullPercentile_when_noSample() {
+        assertThat(Percentiles.percentile(List.of(), 85)).isNull();
+        assertThat(Percentiles.percentile(null, 85)).isNull();
+    }
 }

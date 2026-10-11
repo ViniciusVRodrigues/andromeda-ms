@@ -10,6 +10,8 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 /** {@code vcs_commits}; {@link #save} upserts on {@code (organizationId, repositoryId, sha)}. */
@@ -40,6 +42,17 @@ public class VcsCommitRepositoryImpl implements VcsCommitRepository {
                 .and("authoredAt").gte(from).lt(to)
                 .and("active").is(true));
         return mongoTemplate.count(query, VcsCommitDocument.class);
+    }
+
+    @Override
+    public List<VcsCommit> findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+            String organizationId, Collection<String> repositoryIds, Instant from, Instant to) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId)
+                .and(REPOSITORY_ID).in(repositoryIds)
+                .and("authoredAt").gte(from).lt(to)
+                .and("active").is(true));
+        return mongoTemplate.find(query, VcsCommitDocument.class).stream().map(mapper::toDomain).toList();
     }
 
     @Override

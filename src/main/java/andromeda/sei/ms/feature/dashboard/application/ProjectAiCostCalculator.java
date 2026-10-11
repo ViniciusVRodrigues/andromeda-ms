@@ -42,13 +42,47 @@ public class ProjectAiCostCalculator {
                 unallocatedByUser(organizationId, memberUserIds, from, to));
     }
 
-    private Map<String, BigDecimal> allocatedByUser(String organizationId, Set<String> projectWorkItemIds,
-                                                    LocalDate from, LocalDate to) {
-        if (projectWorkItemIds.isEmpty()) return Map.of();
-        List<AiUsageAllocation> allocations = allocationRepository
-                .findValidatedByOrganizationIdAndDayBetween(organizationId, from, to).stream()
+    /**
+     * The usage records behind {@link ProjectAiCost#allocatedByUser}, each with the share of it that
+     * the project carries: summing {@code costUsd × share} gives {@link ProjectAiCost#totalAllocated}
+     * for the same window, so per-day and per-model breakdowns reconcile with the headline cost.
+     */
+    public List<AllocatedUsage> allocatedUsage(String organizationId, Set<String> projectWorkItemIds,
+                                               LocalDate from, LocalDate to) {
+        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
+        if (allocations.isEmpty()) return List.of();
+        Map<String, AIUsage> usageById = usageById(organizationId, allocations);
+        return allocations.stream()
+                .filter(a -> a.getAiUsageIds() != null)
+                .flatMap(a -> a.getAiUsageIds().stream()
+                        .map(usageById::get)
+                        .filter(Objects::nonNull)
+                        .map(usage -> new AllocatedUsage(usage, projectShare(a, projectWorkItemIds))))
+                .toList();
+    }
+
+    private List<AiUsageAllocation> projectAllocations(String organizationId, Set<String> projectWorkItemIds,
+                                                       LocalDate from, LocalDate to) {
+        if (projectWorkItemIds.isEmpty()) return List.of();
+        return allocationRepository.findValidatedByOrganizationIdAndDayBetween(organizationId, from, to).stream()
                 .filter(a -> projectShare(a, projectWorkItemIds).signum() > 0)
                 .toList();
+    }
+
+    private Map<String, AIUsage> usageById(String organizationId, List<AiUsageAllocation> allocations) {
+        Set<String> usageIds = allocations.stream()
+                .filter(a -> a.getAiUsageIds() != null)
+                .flatMap(a -> a.getAiUsageIds().stream())
+                .collect(Collectors.toSet());
+        return aiUsageRepository.findByOrganizationIdAndIdIn(organizationId, usageIds).stream()
+                .filter(u -> u.getId() != null)
+                .collect(Collectors.toMap(AIUsage::getId, u -> u, (first, second) -> first));
+    }
+
+    private Map<String, BigDecimal> allocatedByUser(String organizationId, Set<String> projectWorkItemIds,
+                                                    LocalDate from, LocalDate to) {
+        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
+        if (allocations.isEmpty()) return Map.of();
         Map<String, BigDecimal> costByUsageId = costByUsageId(organizationId, allocations);
 
         Map<String, BigDecimal> byUser = new HashMap<>();
@@ -86,6 +120,15 @@ public class ProjectAiCostCalculator {
                 .stream()
                 .filter(u -> u.getAllocationId() == null && u.getCostUsd() != null && u.getUserId() != null)
                 .collect(Collectors.toMap(AIUsage::getUserId, AIUsage::getCostUsd, BigDecimal::add));
+    }
+
+    /** A usage record and the fraction of it (sum of the project's split percentages) the project carries. */
+    public record AllocatedUsage(AIUsage usage, BigDecimal share) {
+
+        /** {@code costUsd × share}; zero for a record without cost. */
+        public BigDecimal allocatedCostUsd() {
+            return usage.getCostUsd() == null ? BigDecimal.ZERO : usage.getCostUsd().multiply(share);
+        }
     }
 
     /** Allocated (project) and not-yet-allocated cost per user. */

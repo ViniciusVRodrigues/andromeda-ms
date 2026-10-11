@@ -29,6 +29,16 @@ public final class Percentiles {
         return new DurationStat(nearestRank(sorted, MEDIAN), nearestRank(sorted, P90), sorted.size());
     }
 
+    /**
+     * Nearest-rank {@code percentile} (1–100) over the non-null values; {@code null} with no sample.
+     * For references other than p50/p90 — e.g. the p85 cycle time an aging item is compared to.
+     */
+    public static Double percentile(Collection<Double> values, int percentile) {
+        if (values == null) return null;
+        List<Double> sorted = values.stream().filter(Objects::nonNull).sorted().toList();
+        return sorted.isEmpty() ? null : nearestRank(sorted, percentile);
+    }
+
     /** @param sortedValues ascending, non-empty, without nulls */
     static double nearestRank(List<Double> sortedValues, int percentile) {
         int rank = (int) Math.ceil(percentile / HUNDRED * sortedValues.size());
