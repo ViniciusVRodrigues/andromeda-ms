@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.workitem.domain;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -61,6 +63,14 @@ public interface WorkItemRepository {
      */
     List<WorkItem> findChildCandidatesByOrganizationIdAndParentExternalId(
             String organizationId, String projectId, String parentExternalId, int limit);
+
+    /** Active items of several sprints of one project, in one query (team flow v2). Empty without ids. */
+    List<WorkItem> findActiveByOrganizationIdAndProjectIdAndSprintIdIn(String organizationId, String projectId,
+                                                                       Collection<String> sprintIds);
+
+    /** Active items of one project completed in {@code [from, to)}, any sprint or backlog (team flow v2). */
+    List<WorkItem> findActiveByOrganizationIdAndProjectIdAndCompletedAtInRange(String organizationId, String projectId,
+                                                                               Instant from, Instant to);
 
     /** Ids of the project's active work items only — a lean read when the items themselves are not needed. */
     java.util.Set<String> findActiveIdsByOrganizationIdAndProjectId(String organizationId, String projectId);
