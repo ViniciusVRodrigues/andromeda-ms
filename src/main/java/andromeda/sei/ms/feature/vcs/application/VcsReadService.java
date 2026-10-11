@@ -79,6 +79,12 @@ public class VcsReadService implements VcsReadPort {
     }
 
     @Override
+    public List<VcsPullRequest> pullRequestsTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                         Instant since) {
+        return pullRequestRepository.findActiveTouchedSince(organizationId, repositoryIds, since);
+    }
+
+    @Override
     public List<VcsPullRequest> pullRequestsByAuthor(String organizationId, String userId, Instant from, Instant to) {
         return pullRequestRepository.findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
                         organizationId, userId, from, to).stream()

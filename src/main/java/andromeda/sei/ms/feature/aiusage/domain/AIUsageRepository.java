@@ -52,4 +52,18 @@ public interface AIUsageRepository {
     /** Active usage records of the users with {@code day} within {@code [from, to]} (inclusive). */
     List<AIUsage> findByOrganizationIdAndUserIdInAndDayBetween(
             String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to);
+
+    /**
+     * Usage of these users in {@code [from, to]}, summed per (user, day) in the database — one row per
+     * person-day instead of every record. Empty without users. Index {@code {organizationId, userId, day}}.
+     */
+    List<AiUsageUserDay> summarizeByUserAndDay(String organizationId, java.util.Collection<String> userIds,
+                                               LocalDate from, LocalDate to);
+
+    /**
+     * Active usage records by id with only the fields a cost breakdown reads: id, userId, day, model,
+     * tokens, interactions, cost and allocationId; every other field is {@code null}/zero. A lean read
+     * for large id sets — use {@link #findByOrganizationIdAndIdIn} when the whole record is needed.
+     */
+    List<AIUsage> findCostFieldsByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids);
 }

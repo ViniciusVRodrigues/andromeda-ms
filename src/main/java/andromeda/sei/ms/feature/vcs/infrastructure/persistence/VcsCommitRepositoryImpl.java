@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.vcs.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -42,6 +43,30 @@ public class VcsCommitRepositoryImpl implements VcsCommitRepository {
                 .and("authoredAt").gte(from).lt(to)
                 .and("active").is(true));
         return mongoTemplate.count(query, VcsCommitDocument.class);
+    }
+
+    /** Raw read (no document mapping) of the fields a commit classification reads. */
+    @Override
+    public List<VcsCommit> findMessagesByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+            String organizationId, Collection<String> repositoryIds, Instant from, Instant to) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        org.bson.Document filter = new org.bson.Document(ORGANIZATION_ID, organizationId)
+                .append(REPOSITORY_ID, new org.bson.Document("$in", List.copyOf(repositoryIds)))
+                .append("authoredAt", new org.bson.Document("$gte", java.util.Date.from(from)).append("$lt", java.util.Date.from(to)))
+                .append("active", true);
+        org.bson.Document projection = new org.bson.Document(REPOSITORY_ID, 1).append("message", 1)
+                .append("authorUserId", 1).append("authoredAt", 1).append("provider", 1).append("sha", 1);
+        List<VcsCommit> commits = new java.util.ArrayList<>();
+        for (org.bson.Document d : mongoTemplate.getCollection(VcsCommitDocument.COLLECTION).find(filter).projection(projection)) {
+            VcsCommit commit = new VcsCommit(d.get("_id").toString(), organizationId, d.getString(REPOSITORY_ID),
+                    d.getString("provider") == null ? null : VcsProvider.valueOf(d.getString("provider")), d.getString("sha"));
+            commit.setMessage(d.getString("message"));
+            commit.setAuthorUserId(d.getString("authorUserId"));
+            commit.setAuthoredAt(d.getDate("authoredAt") == null ? null : d.getDate("authoredAt").toInstant());
+            commit.setActive(true);
+            commits.add(commit);
+        }
+        return commits;
     }
 
     @Override

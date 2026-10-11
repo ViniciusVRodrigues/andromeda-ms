@@ -61,4 +61,7 @@ public interface WorkItemRepository {
      */
     List<WorkItem> findChildCandidatesByOrganizationIdAndParentExternalId(
             String organizationId, String projectId, String parentExternalId, int limit);
+
+    /** Ids of the project's active work items only — a lean read when the items themselves are not needed. */
+    java.util.Set<String> findActiveIdsByOrganizationIdAndProjectId(String organizationId, String projectId);
 }

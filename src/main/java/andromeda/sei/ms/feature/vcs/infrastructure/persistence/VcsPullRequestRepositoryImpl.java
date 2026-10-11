@@ -31,6 +31,8 @@ public class VcsPullRequestRepositoryImpl implements VcsPullRequestRepository {
     private static final String REPOSITORY_ID = "repositoryId";
     private static final String ACTIVE = "active";
     private static final String CREATED_AT = "createdAt";
+    private static final String MERGED_AT = "mergedAt";
+    private static final String STATUS = "status";
 
     private final MongoTemplate mongoTemplate;
     private final VcsDocumentMapper mapper;
@@ -84,6 +86,26 @@ public class VcsPullRequestRepositoryImpl implements VcsPullRequestRepository {
                 .and(REPOSITORY_ID).in(repositoryIds)
                 .and(CREATED_AT).gte(from).lt(to)
                 .and(ACTIVE).is(true));
+    }
+
+    /**
+     * One {@code $or} branch per reason a pull request is in the window, each a full predicate so
+     * each branch uses its own index ({@code {organizationId, repositoryId, createdAt}},
+     * {@code {..., mergedAt}}, {@code {..., status, createdAt}} — see DashboardQueryIndexInitializer).
+     */
+    @Override
+    public List<VcsPullRequest> findActiveTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                       Instant since) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        return find(new Criteria().orOperator(
+                        inRepositories(organizationId, repositoryIds).and(CREATED_AT).gte(since),
+                        inRepositories(organizationId, repositoryIds).and(MERGED_AT).gte(since),
+                        inRepositories(organizationId, repositoryIds).and(STATUS).is(PullRequestStatus.OPEN)))
+                .stream().filter(VcsPullRequest::isActive).toList();
+    }
+
+    private static Criteria inRepositories(String organizationId, Collection<String> repositoryIds) {
+        return Criteria.where(ORGANIZATION_ID).is(organizationId).and(REPOSITORY_ID).in(repositoryIds);
     }
 
     @Override
