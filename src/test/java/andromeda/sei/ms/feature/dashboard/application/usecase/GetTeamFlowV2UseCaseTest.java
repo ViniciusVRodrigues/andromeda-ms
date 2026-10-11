@@ -173,7 +173,9 @@ class GetTeamFlowV2UseCaseTest {
         WorkItem y = item("y", ResolvedStatus.TODO, 1.0, "2026-10-05T08:00:00Z");
         WorkItem z = item("z", ResolvedStatus.IN_PROGRESS, 1.0, "2026-09-20T00:00:00Z");
         z.setStartedAt(Instant.parse("2026-10-01T09:00:00Z"));
-        sprintItems("s2", x, y, z);
+        WorkItem epic = item("epic", ResolvedStatus.TODO, null, "2026-09-20T00:00:00Z");
+        epic.setResolvedType(WorkItem.ResolvedType.EPIC);
+        sprintItems("s2", x, y, z, epic);
 
         List<FlowDay> cfd = useCase.execute(ORG, PROJECT, "s2").cfd();
 
@@ -237,6 +239,23 @@ class GetTeamFlowV2UseCaseTest {
         assertThat(out.rework().reopened()).extracting(ItemView::id).containsExactly("r1");
         assertThat(out.rework().reopened().getFirst().assignee().name()).isEqualTo("Ana Ribeiro");
         assertThat(out.rework().ratePct()).isEqualTo(50.0);
+    }
+
+    @Test
+    void should_capTheReopenedList_butComputeTheRateFromEveryReopenedItem() {
+        int total = GetTeamFlowV2UseCase.REOPENED_LIST_LIMIT + 5;
+        for (int i = 0; i < total; i++) {
+            String at = Instant.parse("2026-10-02T10:00:00Z").plusSeconds(i).toString();
+            projectItem("r" + i, ResolvedStatus.IN_PROGRESS, at);
+            transition("r" + i, ResolvedStatus.DONE, at);
+            transition("r" + i, ResolvedStatus.IN_PROGRESS, "2026-10-05T10:00:00Z");
+        }
+
+        var rework = useCase.execute(ORG, PROJECT, "s2").rework();
+
+        assertThat(rework.reopened()).hasSize(GetTeamFlowV2UseCase.REOPENED_LIST_LIMIT);
+        assertThat(rework.doneInWindow()).isEqualTo(total);
+        assertThat(rework.ratePct()).isEqualTo(100.0);
     }
 
     @Test

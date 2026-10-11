@@ -14,6 +14,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.TeamFlowV2Output.St
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory.PersonInfo;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver;
+import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver.SprintSelection;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
@@ -69,6 +70,8 @@ import java.util.stream.Stream;
  */
 @Service
 public class GetTeamFlowV2UseCase {
+
+    static final int REOPENED_LIST_LIMIT = 50;
 
     /** Epics and features are containers: they are not counted in completions or reopens. */
     private static final Set<WorkItem.ResolvedType> CONTAINER_TYPES =
@@ -176,7 +179,9 @@ public class GetTeamFlowV2UseCase {
 
     /** Items of the sprint per category at the end of each working day elapsed so far; empty without items. */
     private static List<FlowDay> cfd(Context ctx) {
-        List<WorkItem> items = ctx.sprintItems(ctx.sprint());
+        /* épicos e features não são trabalho da sprint: ficam fora do fluxo, como em reabertos e atRiskSp */
+        List<WorkItem> items = ctx.sprintItems(ctx.sprint()).stream()
+                .filter(wi -> !ProjectPeriodItems.isContainer(wi)).toList();
         if (items.isEmpty()) return List.of();
         List<WorkItemStateTimeline> timelines = items.stream().map(ctx::timeline).toList();
         return DashboardV2Views.days(ctx.window().startDay(), ctx.window().lastElapsedDay(ctx.today())).stream()
@@ -229,14 +234,17 @@ public class GetTeamFlowV2UseCase {
                 .flatMap(wi -> ctx.transitionsOf(wi).stream()).toList());
         Map<String, VcsPullRequest> prByItem = DashboardV2Views.latestPullRequestByWorkItem(ctx.pullRequests());
         Map<String, String> repoNames = repositoryNames(ctx.repositories());
-        List<ItemView> reopened = ctx.doneInWindow().stream()
+        List<WorkItem> reopenedItems = ctx.doneInWindow().stream()
                 .filter(wi -> reopens.getOrDefault(wi.getId(), 0) > 0)
                 .sorted(Comparator.comparing(WorkItem::getCompletedAt).reversed())
+                .toList();
+        /* a lista para a tela é limitada; a taxa usa o total */
+        List<ItemView> reopened = reopenedItems.stream().limit(REOPENED_LIST_LIMIT)
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), null, prByItem.get(wi.getExternalId()),
                         repoNames, ctx.now()))
                 .toList();
         int done = ctx.doneInWindow().size();
-        return new Rework(reopened, done, done == 0 ? null : Ratios.percent(reopened.size(), done));
+        return new Rework(reopened, done, done == 0 ? null : Ratios.percent(reopenedItems.size(), done));
     }
 
     /** Effort of the units not done yet, for the current sprint; {@code null} when nothing carries effort. */
