@@ -162,13 +162,14 @@ class GetProjectQualityV2UseCaseTest {
     void should_classifyCommitsByMessage_andCountRemediationPullRequests() {
         when(vcsReadPort.repositoriesOfProject(ORG, PROJECT)).thenReturn(List.of(
                 new VcsRepository(REPO, ORG, VcsProvider.GITHUB, "ext-repo", "owner/orion")));
-        when(commitRepository.findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(eq(ORG), any(),
+        when(commitRepository.findMessagesByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(eq(ORG), any(),
                 eq(Instant.parse("2026-07-14T00:00:00Z")), eq(Instant.parse("2026-10-12T00:00:00Z"))))
                 .thenReturn(List.of(commit("c1", "fix: login", "2026-07-21T10:00:00Z"),
                         commit("c2", "feat(api): rota", "2026-07-22T10:00:00Z"),
                         commit("c3", "fix(ui)!: botão", "2026-08-04T10:00:00Z"),
                         commit("c4", "Merge branch main", "2026-08-05T10:00:00Z")));
-        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(
+        when(vcsReadPort.pullRequestsTouchedSince(eq(ORG), eq(List.of(REPO)), eq(Instant.parse("2026-07-14T00:00:00Z"))))
+                .thenReturn(List.of(
                 merged("pr1", "Revert \"feat: rota\"", "2026-08-01T10:00:00Z"),
                 merged("pr2", "feat: rota", "2026-08-02T10:00:00Z"),
                 merged("pr3", "Revert old", "2026-05-02T10:00:00Z")));

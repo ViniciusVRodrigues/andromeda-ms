@@ -5,8 +5,10 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.allocation.domain.ValidatedUserDay;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
+import andromeda.sei.ms.feature.dashboard.application.AiUsageSummaries;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiModel;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.ItemView;
@@ -201,14 +203,17 @@ class GetTeamDashboardV2UseCaseTest {
                 .thenReturn(List.of(done("wi-in", 5.0, 4.0)));
         AIUsage allocated = usage("u1", ME, "2026-10-02", "a1", "10.00", "claude");
         AIUsage unallocated = usage("u9", ME, "2026-10-03", null, "7.00", "gpt-5");
-        when(allocationRepository.findValidatedByOrganizationIdAndDayBetween(ORG, S2_START, S2_END))
-                .thenReturn(List.of(new AiUsageAllocation("a1", ORG, ME, LocalDate.parse("2026-10-02"), List.of("u1"),
-                        List.of(new AllocationSplit("wi-in", "In", new BigDecimal("0.50")),
-                                new AllocationSplit("wi-out", "Out", new BigDecimal("0.50"))),
-                        AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW)));
-        when(aiUsageRepository.findByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(allocated));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
-                .thenReturn(List.of(allocated, unallocated));
+        AiUsageAllocation a1 = new AiUsageAllocation("a1", ORG, ME, LocalDate.parse("2026-10-02"), List.of("u1"),
+                List.of(new AllocationSplit("wi-in", "In", new BigDecimal("0.50")),
+                        new AllocationSplit("wi-out", "Out", new BigDecimal("0.50"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                eq(ORG), anyCollection(), eq(S2_START), eq(S2_END))).thenReturn(List.of(a1));
+        when(allocationRepository.findValidatedUserDays(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
+                .thenReturn(List.of(new ValidatedUserDay(ME, LocalDate.parse("2026-10-02"))));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(allocated));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
+                .thenReturn(AiUsageSummaries.of(List.of(allocated, unallocated)));
 
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
@@ -251,8 +256,8 @@ class GetTeamDashboardV2UseCaseTest {
     void should_keepZeroAllocatedCost_when_membersHaveUsageButNothingIsAllocatedToTheProject() {
         sprintItems("s2", done("b1", 5.0, 8.0));
         AIUsage unallocated = usage("u9", ME, "2026-10-03", null, "7.00", "gpt-5");
-        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
-                .thenReturn(List.of(unallocated));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
+                .thenReturn(AiUsageSummaries.of(List.of(unallocated)));
 
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 

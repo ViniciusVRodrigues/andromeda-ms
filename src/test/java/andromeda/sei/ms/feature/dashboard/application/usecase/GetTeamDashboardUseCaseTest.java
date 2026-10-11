@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.AiUsageSummaries;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.TeamDashboardOutput;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
@@ -309,14 +310,16 @@ class GetTeamDashboardUseCaseTest {
                 .thenReturn(List.of(story("wi-a", "user-1", WorkItem.ResolvedStatus.DONE, 3.0)));
         LocalDate from = LocalDate.parse("2026-06-01");
         LocalDate to = LocalDate.parse("2026-06-14");
-        when(allocationRepository.findValidatedByOrganizationIdAndDayBetween(ORG, from, to)).thenReturn(List.of(
+        // the query is project-scoped now; the other project's allocation stays in the stub to prove the share filter
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                eq(ORG), any(), eq(from), eq(to))).thenReturn(List.of(
                 allocation("user-1", List.of("u-a"), "wi-a"),
                 allocation("user-1", List.of("u-b"), "wi-other-project")));
-        when(aiUsageRepository.findByOrganizationIdAndIdIn(eq(ORG), any())).thenReturn(List.of(
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), any())).thenReturn(List.of(
                 usage("u-a", "user-1", "10.00", "alloc")));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), any(), eq(from), eq(to)))
-                .thenReturn(List.of(usage("u-a", "user-1", "10.00", "alloc"),
-                        usage("u-c", "user-1", "5.00", null)));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), any(), eq(from), eq(to)))
+                .thenReturn(AiUsageSummaries.of(List.of(usage("u-a", "user-1", "10.00", "alloc"),
+                        usage("u-c", "user-1", "5.00", null))));
 
         TeamDashboardOutput output = useCase.execute(ORG, "auth-user", PROJECT, SPRINT_ID, null, null);
 
@@ -334,7 +337,7 @@ class GetTeamDashboardUseCaseTest {
 
         useCase.execute(ORG, "auth-user", PROJECT, SPRINT_ID, null, null);
 
-        verify(aiUsageRepository).findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), any(),
+        verify(aiUsageRepository).summarizeByUserAndDay(eq(ORG), any(),
                 eq(LocalDate.parse("2026-06-01")), eq(LocalDate.parse("2026-06-14")));
     }
 

@@ -40,19 +40,39 @@ public class ProjectVcsActivity {
     }
 
     /**
-     * Repositories, all their pull requests and the commits of {@code [from, to)}, without the review
-     * events: what a period view needs (time to first review is stored on each pull request).
+     * Repositories, the pull requests a window starting at {@code from} reads (open now, or created
+     * or merged at or after {@code from} — not the whole history) and the commits of
+     * {@code [from, to)}, without the review events: what a period view needs (time to first review
+     * is stored on each pull request).
      */
     public Snapshot loadWithoutReviews(String organizationId, String projectId, Instant from, Instant to) {
         List<VcsRepository> repositories = vcsReadPort.repositoriesOfProject(organizationId, projectId);
         if (repositories.isEmpty()) return Snapshot.EMPTY;
         List<String> repositoryIds = repositories.stream().map(VcsRepository::getId).toList();
-        List<VcsPullRequest> pullRequests = repositoryIds.stream()
-                .flatMap(id -> vcsReadPort.pullRequestsOfRepository(organizationId, id).stream())
-                .toList();
+        List<VcsPullRequest> pullRequests = vcsReadPort.pullRequestsTouchedSince(organizationId, repositoryIds, from);
         return new Snapshot(repositories, pullRequests, commitRepository
-                .findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(organizationId, repositoryIds, from, to),
+                .findMessagesByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(organizationId, repositoryIds, from, to),
                 List.of());
+    }
+
+    /**
+     * Repositories and the pull requests a window starting at {@code since} reads, without commits
+     * nor reviews — for a view that only counts commits ({@link #commitCounts}).
+     */
+    public Snapshot loadPullRequests(String organizationId, String projectId, Instant since) {
+        List<VcsRepository> repositories = vcsReadPort.repositoriesOfProject(organizationId, projectId);
+        if (repositories.isEmpty()) return Snapshot.EMPTY;
+        List<String> repositoryIds = repositories.stream().map(VcsRepository::getId).toList();
+        return new Snapshot(repositories, vcsReadPort.pullRequestsTouchedSince(organizationId, repositoryIds, since),
+                List.of(), List.of());
+    }
+
+    /** Active commits authored in {@code [from, to)} per repository, counted in the database (indexed). */
+    public Map<String, Long> commitCounts(String organizationId, List<VcsRepository> repositories,
+                                          Instant from, Instant to) {
+        return repositories.stream().filter(r -> r.getId() != null).collect(Collectors.toMap(VcsRepository::getId,
+                r -> commitRepository.countByOrganizationIdAndRepositoryIdAndAuthoredAtBetween(
+                        organizationId, r.getId(), from, to), Long::sum));
     }
 
     /**

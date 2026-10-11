@@ -28,6 +28,24 @@ public interface VcsPullRequestRepository {
     List<VcsPullRequest> findAllByOrganizationIdAndRepositoryIdInAndCreatedAtBetween(
             String organizationId, Collection<String> repositoryIds, Instant from, Instant to);
 
+    /**
+     * Active pull requests of the repositories that are still open or were created or merged at or
+     * after {@code since}: everything a dashboard window starting at {@code since} reads (created/
+     * merged in the window, open now), without the whole history. The default filters
+     * {@link #findAllByOrganizationIdAndRepositoryId} in memory; the Mongo adapter queries by index.
+     */
+    default List<VcsPullRequest> findActiveTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                        Instant since) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        return repositoryIds.stream()
+                .flatMap(id -> findAllByOrganizationIdAndRepositoryId(organizationId, id).stream())
+                .filter(VcsPullRequest::isActive)
+                .filter(pr -> pr.getStatus() == PullRequestStatus.OPEN
+                        || (pr.getCreatedAt() != null && !pr.getCreatedAt().isBefore(since))
+                        || (pr.getMergedAt() != null && !pr.getMergedAt().isBefore(since)))
+                .toList();
+    }
+
     /** Pull requests authored by an Andromeda user, created within {@code [from, to)}. */
     List<VcsPullRequest> findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
             String organizationId, String authorUserId, Instant from, Instant to);

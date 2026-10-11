@@ -2,6 +2,11 @@ package andromeda.sei.ms.feature.aiusage.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
+import andromeda.sei.ms.shared.infrastructure.persistence.ParallelChunks;
+import andromeda.sei.ms.shared.infrastructure.persistence.RawDocuments;
+import com.mongodb.client.MongoCollection;
+import org.bson.Document;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageSummary;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageSummaryByModel;
 import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
@@ -22,6 +27,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -294,6 +301,69 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 .and("active").is(true)
                 .and("day").gte(from).lte(to));
         return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    /** Raw aggregation (see {@link RawDocuments}): one row per (user, day) instead of every record. */
+    @Override
+    public List<AiUsageUserDay> summarizeByUserAndDay(String organizationId, java.util.Collection<String> userIds,
+                                                      LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        Document unclaimed = new Document("$eq", Arrays.asList(
+                new Document("$ifNull", Arrays.asList("$allocationId", null)), null));
+        Document cost = new Document("$ifNull", Arrays.asList("$costUsd", 0));
+        List<Document> pipeline = List.of(
+                new Document("$match", new Document("organizationId", organizationId)
+                        .append("userId", new Document("$in", List.copyOf(userIds)))
+                        .append("active", true)
+                        .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
+                                .append("$lte", RawDocuments.storedDay(mongoTemplate, to)))),
+                new Document("$group", new Document("_id", new Document("userId", "$userId").append("day", "$day"))
+                        .append("cost", new Document("$sum", cost))
+                        .append("unallocated", new Document("$sum",
+                                new Document("$cond", Arrays.asList(unclaimed, cost, 0))))
+                        .append("records", new Document("$sum", 1))
+                        .append("claimed", new Document("$max",
+                                new Document("$cond", Arrays.asList(unclaimed, 0, 1))))));
+        List<AiUsageUserDay> rows = new ArrayList<>();
+        for (Document row : usageCollection().aggregate(pipeline)) {
+            Document key = row.get("_id", Document.class);
+            rows.add(new AiUsageUserDay(key.getString("userId"), RawDocuments.day(mongoTemplate, key.get("day")),
+                    RawDocuments.decimal(row.get("cost")), RawDocuments.decimal(row.get("unallocated")),
+                    RawDocuments.longValue(row.get("records")), RawDocuments.longValue(row.get("claimed")) > 0));
+        }
+        return rows;
+    }
+
+    /** Raw read (see {@link RawDocuments}) of the fields a cost breakdown needs. */
+    @Override
+    public List<AIUsage> findCostFieldsByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids) {
+        if (ids == null || ids.isEmpty()) return List.of();
+        return ParallelChunks.read(ids, chunk -> leanUsages(organizationId, chunk));
+    }
+
+    private List<AIUsage> leanUsages(String organizationId, List<String> ids) {
+        Document filter = new Document("organizationId", organizationId)
+                .append("_id", new Document("$in", RawDocuments.storedIds(ids)))
+                .append("active", true);
+        Document projection = new Document("userId", 1).append("day", 1).append("model", 1).append("inputTokens", 1)
+                .append("outputTokens", 1).append("interactions", 1).append("costUsd", 1).append("allocationId", 1);
+        List<AIUsage> usages = new ArrayList<>();
+        for (Document document : usageCollection().find(filter).projection(projection)) {
+            usages.add(leanUsage(document, organizationId, RawDocuments.day(mongoTemplate, document.get("day"))));
+        }
+        return usages;
+    }
+
+    static AIUsage leanUsage(Document document, String organizationId, LocalDate day) {
+        return new AIUsage(RawDocuments.id(document), organizationId, document.getString("userId"), null, null, day,
+                document.getString("model"), null, null, null, null,
+                RawDocuments.longValue(document.get("inputTokens")), RawDocuments.longValue(document.get("outputTokens")),
+                (int) RawDocuments.longValue(document.get("interactions")), null, document.getString("allocationId"),
+                RawDocuments.decimal(document.get("costUsd")), null, true, null, null, null);
+    }
+
+    private MongoCollection<Document> usageCollection() {
+        return mongoTemplate.getCollection(mongoTemplate.getCollectionName(AiUsageDocument.class));
     }
 
     private Criteria buildUserFilterCriteria(String organizationId, String userId,

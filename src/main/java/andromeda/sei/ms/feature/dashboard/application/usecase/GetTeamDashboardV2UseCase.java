@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -200,7 +200,7 @@ public class GetTeamDashboardV2UseCase {
      * it the AI cost is "no data" ({@code null}); with usage but nothing allocated, 0 is a real value.
      */
     private boolean hasAiUsage(Context ctx, SprintWindow window, ProjectAiCost aiCost) {
-        return aiCost.totalAllocated().signum() > 0 || !aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(
+        return aiCost.totalAllocated().signum() > 0 || !aiUsageRepository.summarizeByUserAndDay(
                 ctx.orgId(), ctx.memberIds(), window.startDay(), window.endDay()).isEmpty();
     }
 
@@ -347,16 +347,16 @@ public class GetTeamDashboardV2UseCase {
         SprintWindow window = ctx.window();
         List<AllocatedUsage> allocated = aiCostCalculator.allocatedUsage(ctx.orgId(), ctx.projectWorkItemIds(),
                 window.startDay(), window.endDay());
-        List<AIUsage> memberUsage = aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(
+        List<AiUsageUserDay> memberUsage = aiUsageRepository.summarizeByUserAndDay(
                 ctx.orgId(), ctx.memberIds(), window.startDay(), window.endDay());
         Set<String> validated = allocationRepository
-                .findValidatedByOrganizationIdAndDayBetween(ctx.orgId(), window.startDay(), window.endDay()).stream()
-                .filter(a -> a.getUserId() != null && a.getDay() != null && ctx.memberIds().contains(a.getUserId()))
-                .map(a -> DashboardV2Views.personDay(a.getUserId(), a.getDay()))
+                .findValidatedUserDays(ctx.orgId(), ctx.memberIds(), window.startDay(), window.endDay()).stream()
+                .filter(d -> d.userId() != null && d.day() != null && ctx.memberIds().contains(d.userId()))
+                .map(d -> DashboardV2Views.personDay(d.userId(), d.day()))
                 .collect(Collectors.toSet());
         return new Ai(aiByDay(ctx, allocated), aiByModel(allocated),
-                DashboardV2Views.allocationSummary(memberUsage, validated),
-                (int) memberUsage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct().count(),
+                DashboardV2Views.allocationSummaryOfDays(memberUsage, validated),
+                (int) memberUsage.stream().map(AiUsageUserDay::userId).filter(Objects::nonNull).distinct().count(),
                 current.hasAiUsage() ? current.aiCost().totalUnallocated() : null);
     }
 

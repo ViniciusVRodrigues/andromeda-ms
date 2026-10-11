@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
+import andromeda.sei.ms.feature.dashboard.application.AiUsageSummaries;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.ThroughputRow;
@@ -104,6 +105,9 @@ class GetProjectOverviewV2UseCaseTest {
         when(projectRepository.findActiveByIdAndOrganizationId(PROJECT, ORG)).thenReturn(Optional.of(
                 new Project(PROJECT, ORG, "Orion", "orion", null, true, List.of(ME, OTHER, THIRD), 0L, NOW, NOW)));
         when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(items);
+        // the AI chain starts from the ids of the active items (a lean read of the same items)
+        when(workItemRepository.findActiveIdsByOrganizationIdAndProjectId(ORG, PROJECT)).thenAnswer(inv -> items.stream()
+                .filter(WorkItem::isActive).map(WorkItem::getId).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test
@@ -153,9 +157,10 @@ class GetProjectOverviewV2UseCaseTest {
                 inSprint(done("b1", WorkItem.ResolvedType.STORY, 4.0, "2026-08-20T10:00:00Z"), "s2"),
                 inSprint(done("c1", WorkItem.ResolvedType.STORY, 2.0, "2026-06-20T10:00:00Z"), "s0")));
         AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "10.00", "claude");
-        when(allocationRepository.findValidatedByOrganizationIdAndDayBetween(eq(ORG), any(), any()))
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                any(), any()))
                 .thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
-        when(aiUsageRepository.findByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(usage));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(usage));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
@@ -180,10 +185,10 @@ class GetProjectOverviewV2UseCaseTest {
     @Test
     void should_compareMembersConsumption_withTheSubscriptionOfThePeriod() {
         when(organizationRepository.findById(ORG)).thenReturn(Optional.of(org(new BigDecimal("20"))));
-        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(),
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(),
                 eq(LocalDate.parse("2026-07-14")), eq(LocalDate.parse("2026-10-11"))))
-                .thenReturn(List.of(usage("u1", ME, "2026-08-01", null, "4.00", "claude"),
-                        usage("u2", OTHER, "2026-08-02", null, "6.00", "gpt-5")));
+                .thenReturn(AiUsageSummaries.of(List.of(usage("u1", ME, "2026-08-01", null, "4.00", "claude"),
+                        usage("u2", OTHER, "2026-08-02", null, "6.00", "gpt-5"))));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
@@ -217,11 +222,14 @@ class GetProjectOverviewV2UseCaseTest {
         merged.setLinkedWorkItemExternalId("ext-x");
         VcsPullRequest open = pr("pr2", "2026-07-22T10:00:00Z", null, 6.0);
         VcsPullRequest old = pr("pr3", "2026-05-01T10:00:00Z", "2026-05-02T10:00:00Z", 1.0);
-        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(merged, open, old));
-        when(commitRepository.findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(eq(ORG), any(),
-                eq(Instant.parse("2026-04-15T00:00:00Z")), eq(Instant.parse("2026-10-12T00:00:00Z"))))
-                .thenReturn(List.of(commit("c1", "2026-07-20T10:00:00Z"), commit("c2", "2026-08-20T10:00:00Z"),
-                        commit("c3", "2026-05-20T10:00:00Z")));
+        // PRs are read from the start of the previous period (plus the open ones), not the whole history
+        when(vcsReadPort.pullRequestsTouchedSince(eq(ORG), eq(List.of(REPO)), eq(Instant.parse("2026-04-15T00:00:00Z"))))
+                .thenReturn(List.of(merged, open, old));
+        // commits are counted in the database per repository and period (2 in the period, 1 before)
+        when(commitRepository.countByOrganizationIdAndRepositoryIdAndAuthoredAtBetween(ORG, REPO,
+                Instant.parse("2026-07-14T00:00:00Z"), Instant.parse("2026-10-12T00:00:00Z"))).thenReturn(2L);
+        when(commitRepository.countByOrganizationIdAndRepositoryIdAndAuthoredAtBetween(ORG, REPO,
+                Instant.parse("2026-04-15T00:00:00Z"), Instant.parse("2026-07-14T00:00:00Z"))).thenReturn(1L);
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 

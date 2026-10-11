@@ -18,5 +18,15 @@ public interface VcsCommitRepository {
     List<VcsCommit> findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
             String organizationId, Collection<String> repositoryIds, Instant from, Instant to);
 
+    /**
+     * Same commits as {@link #findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween} with only
+     * id, repository, message, author and authoring time — a lean read for counting or classifying
+     * tens of thousands of commits. The default delegates; the Mongo adapter reads raw documents.
+     */
+    default List<VcsCommit> findMessagesByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+            String organizationId, Collection<String> repositoryIds, Instant from, Instant to) {
+        return findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(organizationId, repositoryIds, from, to);
+    }
+
     VcsCommit save(VcsCommit commit);
 }

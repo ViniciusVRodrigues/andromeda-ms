@@ -60,6 +60,21 @@ public final class ProjectPeriodItems {
         return new ProjectPeriodItems(active, resolver.summarize(active), figures);
     }
 
+    /**
+     * Earliest start among the past sprints (one per shared iteration) whose last day falls in
+     * {@code range} — the same sprints as {@link #sprintsEndingIn}, from the sprints alone.
+     */
+    public static java.util.Optional<java.time.LocalDate> earliestStartOfPastSprintsEndingIn(Collection<Sprint> sprints,
+                                                                                         DayRange range) {
+        return SharedIterations.distinct(sprints.stream().filter(Sprint::isActive).toList()).stream()
+                .filter(s -> s.getId() != null && s.getStartDate() != null && s.getEndDate() != null)
+                .filter(s -> s.getTimeFrame() == Sprint.TimeFrame.PAST)
+                .map(SprintWindow::of)
+                .filter(w -> range.containsDay(w.endDay()))
+                .map(SprintWindow::startDay)
+                .min(Comparator.naturalOrder());
+    }
+
     public List<WorkItem> all() {
         return all;
     }
