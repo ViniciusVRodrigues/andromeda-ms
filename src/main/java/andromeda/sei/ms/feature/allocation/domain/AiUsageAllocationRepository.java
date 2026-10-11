@@ -48,7 +48,29 @@ public interface AiUsageAllocationRepository {
     List<AiUsageAllocation> findValidatedByOrganizationIdAndDayBetween(
             String organizationId, LocalDate from, LocalDate to);
 
+    /**
+     * Active {@code VALIDATED} allocations of the organization, day within {@code [from, to]}, that
+     * split to any of the work items; empty without ids. Index {@code {organizationId,
+     * splits.workItemId, day}}.
+     */
+    List<AiUsageAllocation> findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> workItemIds, LocalDate from, LocalDate to);
+
+    /**
+     * Active {@code VALIDATED} allocations of these users, day within {@code [from, to]}; empty
+     * without users. Index {@code {organizationId, userId, day}}.
+     */
+    List<AiUsageAllocation> findValidatedByOrganizationIdAndUserIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to);
+
     /** Active {@code VALIDATED} allocations of the organization splitting to any of the work items. */
     List<AiUsageAllocation> findValidatedByOrganizationIdAndWorkItemIdIn(
             String organizationId, java.util.Collection<String> workItemIds);
+
+    /**
+     * Distinct (user, day) pairs of these users with an active {@code VALIDATED} allocation in
+     * {@code [from, to]}, grouped in the database. Empty without users.
+     */
+    List<ValidatedUserDay> findValidatedUserDays(String organizationId, java.util.Collection<String> userIds,
+                                                 LocalDate from, LocalDate to);
 }

@@ -101,6 +101,19 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .stream().map(mapper::toDomain).toList();
     }
 
+    /** Raw read of {@code _id} only (no document mapping), by the {@code {organizationId, projectId}} index. */
+    @Override
+    public java.util.Set<String> findActiveIdsByOrganizationIdAndProjectId(String organizationId, String projectId) {
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        org.bson.Document filter = new org.bson.Document("organizationId", organizationId)
+                .append("projectId", projectId).append("active", true);
+        for (org.bson.Document document : mongoTemplate.getCollection(mongoTemplate.getCollectionName(WorkItemDocument.class))
+                .find(filter).projection(new org.bson.Document("_id", 1))) {
+            ids.add(document.get("_id").toString());
+        }
+        return ids;
+    }
+
     @Override
     public List<WorkItem> findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
             String organizationId, String sprintId, String assigneeUserId, WorkItem.ResolvedStatus status) {

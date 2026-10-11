@@ -71,4 +71,7 @@ public interface WorkItemRepository {
     /** Active items of one project completed in {@code [from, to)}, any sprint or backlog (team flow v2). */
     List<WorkItem> findActiveByOrganizationIdAndProjectIdAndCompletedAtInRange(String organizationId, String projectId,
                                                                                Instant from, Instant to);
+
+    /** Ids of the project's active work items only — a lean read when the items themselves are not needed. */
+    java.util.Set<String> findActiveIdsByOrganizationIdAndProjectId(String organizationId, String projectId);
 }

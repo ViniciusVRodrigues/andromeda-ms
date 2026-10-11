@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.dashboard.application.v2;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AllocationSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.Assignee;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.CommitDay;
@@ -150,6 +151,27 @@ public final class DashboardV2Views {
             if (usage.getUserId() == null || usage.getDay() == null) continue;
             claimedByPersonDay.merge(personDay(usage.getUserId(), usage.getDay()), usage.getAllocationId() != null,
                     Boolean::logicalOr);
+        }
+        int validated = 0;
+        int pending = 0;
+        int unallocated = 0;
+        for (Map.Entry<String, Boolean> entry : claimedByPersonDay.entrySet()) {
+            if (validatedPersonDays.contains(entry.getKey())) validated++;
+            else if (entry.getValue()) pending++;
+            else unallocated++;
+        }
+        return new AllocationSummary(validated, pending, unallocated);
+    }
+
+    /**
+     * Same classification as {@link #allocationSummary(List, Set)}, from usage already summed per
+     * (person, day) in the database ({@link AiUsageUserDay#anyAllocated} = some record is claimed).
+     */
+    public static AllocationSummary allocationSummaryOfDays(List<AiUsageUserDay> days, Set<String> validatedPersonDays) {
+        Map<String, Boolean> claimedByPersonDay = new HashMap<>();
+        for (AiUsageUserDay day : days) {
+            if (day.userId() == null || day.day() == null) continue;
+            claimedByPersonDay.merge(personDay(day.userId(), day.day()), day.anyAllocated(), Boolean::logicalOr);
         }
         int validated = 0;
         int pending = 0;
