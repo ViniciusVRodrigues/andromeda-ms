@@ -11,8 +11,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
@@ -46,6 +49,32 @@ public class DataFreshnessResolver {
         return new DataFreshness(oldestSyncAt(organizationId, projectId),
                 syncLogRepository.existsRunningByOrganizationIdAndProjectIdAndOperationIn(
                         organizationId, projectId, RUNNING_OPERATIONS));
+    }
+
+    /**
+     * Frescura de uma tela que le varios projetos (dashboards da organizacao e de integracoes): o sync
+     * mais antigo entre os bindings ativos e sincronizaveis desses projetos e se algum refresh roda.
+     * Duas leituras de bindings e um {@code exists}, independente do numero de projetos.
+     *
+     * @param projectIds projetos lidos pela tela; {@code null} = todos os da organizacao
+     * @return {@code null} quando a tela nao le nenhum projeto
+     */
+    public DataFreshness resolveForProjects(String organizationId, Collection<String> projectIds) {
+        if (projectIds != null && projectIds.isEmpty()) {
+            return null;
+        }
+        Predicate<String> included = projectIds == null ? id -> true : Set.copyOf(projectIds)::contains;
+        Stream<Instant> azure = azureProjectBindingRepository.findAllByOrganizationIdAndActiveTrue(organizationId)
+                .stream()
+                .filter(b -> b.isSyncEnabled() && included.test(b.getProjectId()))
+                .map(AzureProjectBinding::getLastSyncAt);
+        Stream<Instant> repositories = vcsRepoBindingRepository.findAllActiveByOrganizationId(organizationId).stream()
+                .filter(b -> b.isSyncEnabled() && included.test(b.getProjectId()))
+                .map(VcsRepoBinding::getLastSyncAt);
+        Instant oldest = Stream.concat(azure, repositories).filter(Objects::nonNull).min(Instant::compareTo)
+                .orElse(null);
+        return new DataFreshness(oldest, syncLogRepository.existsRunningByOrganizationIdAndProjectIdInAndOperationIn(
+                organizationId, projectIds, RUNNING_OPERATIONS));
     }
 
     private Instant oldestSyncAt(String organizationId, String projectId) {

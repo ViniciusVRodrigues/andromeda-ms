@@ -74,6 +74,42 @@ class DataFreshnessResolverTest {
         verifyNoInteractions(azureProjectBindingRepository, vcsRepoBindingRepository, syncLogRepository);
     }
 
+    @Test
+    void shouldReportTheOldestSyncOfTheGivenProjectsOnly_withOneRunningCheck() {
+        Instant oneDayAgo = NOW.minus(Duration.ofDays(1));
+        AzureProjectBinding otherProject = new AzureProjectBinding("az-2", ORG, "proj-2", "azure-2", "Other", true,
+                NOW.minus(Duration.ofDays(40)), null, true, NOW, NOW, 1L);
+        when(azureProjectBindingRepository.findAllByOrganizationIdAndActiveTrue(ORG))
+                .thenReturn(List.of(azure(true, NOW.minus(Duration.ofHours(1))), otherProject));
+        when(vcsRepoBindingRepository.findAllActiveByOrganizationId(ORG))
+                .thenReturn(List.of(github(true, oneDayAgo), github(false, NOW.minus(Duration.ofDays(30)))));
+        when(syncLogRepository.existsRunningByOrganizationIdAndProjectIdInAndOperationIn(eq(ORG), eq(List.of(PROJECT)),
+                any())).thenReturn(true);
+
+        DataFreshness freshness = resolver.resolveForProjects(ORG, List.of(PROJECT));
+
+        assertThat(freshness.oldestSyncAt()).isEqualTo(oneDayAgo);
+        assertThat(freshness.refreshRunning()).isTrue();
+    }
+
+    @Test
+    void shouldCoverTheWholeOrganization_whenNoProjectListIsGiven() {
+        AzureProjectBinding otherProject = new AzureProjectBinding("az-2", ORG, "proj-2", "azure-2", "Other", true,
+                NOW.minus(Duration.ofDays(40)), null, true, NOW, NOW, 1L);
+        when(azureProjectBindingRepository.findAllByOrganizationIdAndActiveTrue(ORG)).thenReturn(List.of(otherProject));
+        when(vcsRepoBindingRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of());
+
+        DataFreshness freshness = resolver.resolveForProjects(ORG, null);
+
+        assertThat(freshness.oldestSyncAt()).isEqualTo(NOW.minus(Duration.ofDays(40)));
+    }
+
+    @Test
+    void shouldReturnNull_whenTheScreenReadsNoProject() {
+        assertThat(resolver.resolveForProjects(ORG, List.of())).isNull();
+        verifyNoInteractions(azureProjectBindingRepository, vcsRepoBindingRepository, syncLogRepository);
+    }
+
     private static AzureProjectBinding azure(boolean syncEnabled, Instant lastSyncAt) {
         return new AzureProjectBinding("az-1", ORG, PROJECT, "azure-1", "Project", syncEnabled, lastSyncAt,
                 null, true, NOW, NOW, 1L);

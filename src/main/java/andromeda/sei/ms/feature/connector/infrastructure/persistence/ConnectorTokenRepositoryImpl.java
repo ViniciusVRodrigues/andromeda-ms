@@ -37,6 +37,11 @@ public class ConnectorTokenRepositoryImpl implements ConnectorTokenRepository {
     }
 
     @Override
+    public List<ConnectorToken> findAllByOrganizationId(String organizationId) {
+        return mongoRepository.findAllByOrganizationId(organizationId).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public ConnectorToken save(ConnectorToken token) {
         ConnectorTokenDocument doc = mapper.toDocument(token);
         doc.setUpdatedAt(Instant.now());

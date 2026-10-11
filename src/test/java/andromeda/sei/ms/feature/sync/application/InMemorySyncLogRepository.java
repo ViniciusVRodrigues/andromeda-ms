@@ -51,6 +51,26 @@ class InMemorySyncLogRepository implements IntegrationSyncLogRepository {
     }
 
     @Override
+    public boolean existsRunningByOrganizationIdAndProjectIdInAndOperationIn(String organizationId,
+                                                                            Collection<String> projectIds,
+                                                                            Collection<SyncOperation> operations) {
+        return logs.values().stream()
+                .anyMatch(l -> organizationId.equals(l.getOrganizationId()) && l.getStatus() == SyncStatus.RUNNING
+                        && operations.contains(l.getOperation())
+                        && (projectIds == null || projectIds.contains(l.getProjectId())));
+    }
+
+    @Override
+    public List<IntegrationSyncLog> findByOrganizationIdAndIntegrationAndOperationInAndStartedAtFrom(
+            String organizationId, Integration integration, Collection<SyncOperation> operations, Instant startedFrom) {
+        return logs.values().stream()
+                .filter(l -> organizationId.equals(l.getOrganizationId()) && l.getIntegration() == integration)
+                .filter(l -> operations.contains(l.getOperation()))
+                .filter(l -> l.getStartedAt() != null && !l.getStartedAt().isBefore(startedFrom))
+                .toList();
+    }
+
+    @Override
     public List<IntegrationSyncLog> findAllByOrganizationIdAndParentSyncId(String organizationId, String parentSyncId) {
         return logs.values().stream()
                 .filter(l -> organizationId.equals(l.getOrganizationId()))

@@ -56,4 +56,10 @@ public class UserProviderAccountRepositoryImpl implements UserProviderAccountRep
         return mongoRepository.findAllByOrganizationIdAndUserIdAndActiveTrue(organizationId, userId)
                 .stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public List<UserProviderAccount> findAllByOrganizationIdAndActiveTrue(String organizationId) {
+        return mongoRepository.findAllByOrganizationIdAndActiveTrue(organizationId)
+                .stream().map(mapper::toDomain).toList();
+    }
 }

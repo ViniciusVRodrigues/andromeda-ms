@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -60,6 +61,18 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
     }
 
     @Override
+    public List<IntegrationSyncLog> findByOrganizationIdAndIntegrationAndOperationInAndStartedAtFrom(
+            String organizationId, Integration integration, Collection<SyncOperation> operations,
+            Instant startedFrom) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                        .and("integration").is(integration)
+                        .and("startedAt").gte(startedFrom)
+                        .and("operation").in(operations))
+                .with(Sort.by(Sort.Direction.DESC, "startedAt"));
+        return mongoTemplate.find(query, IntegrationSyncLogDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public List<IntegrationSyncLog> findAllByOrganizationIdAndParentSyncId(String organizationId, String parentSyncId) {
         return mongoRepository.findByOrganizationIdAndParentSyncIdOrderByStartedAtAsc(organizationId, parentSyncId)
                 .stream().map(mapper::toDomain).toList();
@@ -70,6 +83,16 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
             String organizationId, String projectId, Collection<SyncOperation> operations) {
         return mongoRepository.existsByOrganizationIdAndProjectIdAndStatusAndOperationIn(
                 organizationId, projectId, SyncStatus.RUNNING, operations);
+    }
+
+    @Override
+    public boolean existsRunningByOrganizationIdAndProjectIdInAndOperationIn(
+            String organizationId, Collection<String> projectIds, Collection<SyncOperation> operations) {
+        Criteria criteria = Criteria.where("organizationId").is(organizationId)
+                .and("status").is(SyncStatus.RUNNING)
+                .and("operation").in(operations);
+        if (projectIds != null) criteria = criteria.and("projectId").in(projectIds);
+        return mongoTemplate.exists(Query.query(criteria), IntegrationSyncLogDocument.class);
     }
 
     /**

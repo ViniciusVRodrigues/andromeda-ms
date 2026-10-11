@@ -11,5 +11,8 @@ public interface ConnectorTokenRepository {
 
     List<ConnectorToken> findActiveByOrganizationIdAndUserId(String organizationId, String userId);
 
+    /** Every token of the organization, active and revoked (the dashboards count both). */
+    List<ConnectorToken> findAllByOrganizationId(String organizationId);
+
     ConnectorToken save(ConnectorToken token);
 }
