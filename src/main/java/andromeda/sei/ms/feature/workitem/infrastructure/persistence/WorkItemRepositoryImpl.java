@@ -12,6 +12,7 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -207,6 +208,22 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
         if (externalIds == null || externalIds.isEmpty()) return List.of();
         return mongoRepository
                 .findAllByOrganizationIdAndExternalIdInAndSource(organizationId, externalIds, source)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItem> findActiveByOrganizationIdAndProjectIdAndSprintIdIn(String organizationId, String projectId,
+                                                                              Collection<String> sprintIds) {
+        if (sprintIds == null || sprintIds.isEmpty()) return List.of();
+        return mongoRepository.findAllByOrganizationIdAndProjectIdAndSprintIdInAndActiveTrue(organizationId, projectId,
+                sprintIds).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItem> findActiveByOrganizationIdAndProjectIdAndCompletedAtInRange(String organizationId,
+                                                                                      String projectId,
+                                                                                      Instant from, Instant to) {
+        return mongoRepository.findActiveCompletedInRange(organizationId, projectId, from, to)
                 .stream().map(mapper::toDomain).toList();
     }
 }

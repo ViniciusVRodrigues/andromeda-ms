@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 
 @Repository
@@ -48,6 +49,14 @@ public class WorkItemTransitionRepositoryImpl implements WorkItemTransitionRepos
     @Override
     public List<WorkItemTransition> findAllByWorkItemId(String workItemId) {
         return mongoRepository.findAllByWorkItemId(workItemId).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<WorkItemTransition> findActiveByOrganizationIdAndWorkItemIdIn(String organizationId,
+                                                                              Collection<String> workItemIds) {
+        if (workItemIds == null || workItemIds.isEmpty()) return List.of();
+        return mongoRepository.findAllByOrganizationIdAndWorkItemIdInAndActiveTrue(organizationId, workItemIds)
+                .stream().map(mapper::toDomain).toList();
     }
 
     @Override
