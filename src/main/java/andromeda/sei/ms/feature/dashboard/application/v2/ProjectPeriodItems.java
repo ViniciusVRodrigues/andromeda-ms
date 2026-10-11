@@ -88,7 +88,7 @@ public final class ProjectPeriodItems {
     }
 
     public static boolean isContainer(WorkItem item) {
-        return CONTAINERS.contains(item.getResolvedType());
+        return item.getResolvedType() != null && CONTAINERS.contains(item.getResolvedType());
     }
 
     /** Azure priority (stored as text) as a number; {@code null} when absent or not a number. */

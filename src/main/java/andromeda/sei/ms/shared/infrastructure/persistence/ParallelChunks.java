@@ -26,7 +26,9 @@ public final class ParallelChunks {
     private ParallelChunks() {}
 
     public static <T> List<T> read(Collection<String> ids, Function<List<String>, List<T>> reader) {
-        List<String> all = List.copyOf(ids);
+        /* ids nulos ou repetidos (documento malformado) não podem derrubar a leitura nem duplicar resultado */
+        List<String> all = ids.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        if (all.isEmpty()) return List.of();
         if (all.size() <= CHUNK_SIZE) return reader.apply(all);
         int chunkSize = Math.max(CHUNK_SIZE, (all.size() + MAX_PARALLEL - 1) / MAX_PARALLEL);
         List<List<String>> chunks = new ArrayList<>();

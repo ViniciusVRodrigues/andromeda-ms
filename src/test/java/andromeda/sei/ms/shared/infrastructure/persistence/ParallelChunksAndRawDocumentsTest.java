@@ -43,6 +43,23 @@ class ParallelChunksAndRawDocumentsTest {
     }
 
     @Test
+    void should_ignoreNullAndRepeatedIds_withoutCallingTheReaderForNothing() {
+        List<List<String>> calls = new ArrayList<>();
+        List<String> out = ParallelChunks.read(java.util.Arrays.asList("a", null, "b", "a"), chunk -> {
+            calls.add(chunk);
+            return chunk;
+        });
+        assertThat(out).containsExactly("a", "b");
+
+        List<String> none = ParallelChunks.read(java.util.Arrays.asList((String) null), chunk -> {
+            calls.add(chunk);
+            return chunk;
+        });
+        assertThat(none).isEmpty();
+        assertThat(calls).hasSize(1);
+    }
+
+    @Test
     void should_rethrowAChunksFailure() {
         assertThatThrownBy(() -> ParallelChunks.read(ids(5_000), chunk -> {
             if (chunk.contains("id-4999")) throw new IllegalArgumentException("boom");
