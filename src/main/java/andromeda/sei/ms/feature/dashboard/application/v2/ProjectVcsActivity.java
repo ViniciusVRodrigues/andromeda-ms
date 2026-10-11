@@ -40,6 +40,22 @@ public class ProjectVcsActivity {
     }
 
     /**
+     * Repositories, all their pull requests and the commits of {@code [from, to)}, without the review
+     * events: what a period view needs (time to first review is stored on each pull request).
+     */
+    public Snapshot loadWithoutReviews(String organizationId, String projectId, Instant from, Instant to) {
+        List<VcsRepository> repositories = vcsReadPort.repositoriesOfProject(organizationId, projectId);
+        if (repositories.isEmpty()) return Snapshot.EMPTY;
+        List<String> repositoryIds = repositories.stream().map(VcsRepository::getId).toList();
+        List<VcsPullRequest> pullRequests = repositoryIds.stream()
+                .flatMap(id -> vcsReadPort.pullRequestsOfRepository(organizationId, id).stream())
+                .toList();
+        return new Snapshot(repositories, pullRequests, commitRepository
+                .findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(organizationId, repositoryIds, from, to),
+                List.of());
+    }
+
+    /**
      * Human, non-deleted reviews submitted in {@code [from, to)} on pull requests that were open at
      * some point of the window (created before its end, not closed before its start).
      */
