@@ -180,7 +180,8 @@ public class GetTeamDashboardV2UseCase {
         ProjectAiCost aiCost = aiCostCalculator.calculate(ctx.orgId(), ctx.projectWorkItemIds(), ctx.memberIds(),
                 window.startDay(), window.endDay());
         List<VcsPullRequest> created = ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getCreatedAt())).toList();
-        BigDecimal cost = aiCost.totalAllocated();
+        boolean hasUsage = hasAiUsage(ctx, window, aiCost);
+        BigDecimal cost = hasUsage ? aiCost.totalAllocated() : null;
         Double delivered = DashboardV2Views.deliveredOf(summary.planned(), summary.delivered());
         SprintStats stats = new SprintStats(summary.planned(), delivered, summary.doneUnits().size(),
                 summary.units().size(),
@@ -191,7 +192,16 @@ public class GetTeamDashboardV2UseCase {
                 cost, perSp(cost, delivered),
                 ReviewMetricsPolicy.aggregate(created, ctx.now()).timeToFirstReview(),
                 (int) ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getMergedAt())).count());
-        return new TeamSprint(stats, aiCost, summary, items);
+        return new TeamSprint(stats, aiCost, hasUsage, summary, items);
+    }
+
+    /**
+     * Any AI usage behind the window: a member's usage record, or cost allocated to the project. Without
+     * it the AI cost is "no data" ({@code null}); with usage but nothing allocated, 0 is a real value.
+     */
+    private boolean hasAiUsage(Context ctx, SprintWindow window, ProjectAiCost aiCost) {
+        return aiCost.totalAllocated().signum() > 0 || !aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(
+                ctx.orgId(), ctx.memberIds(), window.startDay(), window.endDay()).isEmpty();
     }
 
     private static BigDecimal perSp(BigDecimal cost, Double delivered) {
@@ -208,7 +218,7 @@ public class GetTeamDashboardV2UseCase {
                 s.unassigned(), s.cycleTimeHours(), s.leadTimeHours(), s.aiCostUsd(), s.aiCostPerSp(),
                 s.timeToFirstReviewHours(), s.prsMerged(), isCurrent ? open.size() : null,
                 isCurrent ? (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now())).count() : null,
-                current.aiCost().totalUnallocated());
+                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null);
     }
 
     private List<BurndownDay> burndown(Context ctx, TeamSprint current) {
@@ -347,7 +357,7 @@ public class GetTeamDashboardV2UseCase {
         return new Ai(aiByDay(ctx, allocated), aiByModel(allocated),
                 DashboardV2Views.allocationSummary(memberUsage, validated),
                 (int) memberUsage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct().count(),
-                current.aiCost().totalUnallocated());
+                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null);
     }
 
     /** Allocated cost and the allocated share of tokens/interactions per day, up to today. */
@@ -399,7 +409,8 @@ public class GetTeamDashboardV2UseCase {
         return s.spDelivered() / s.spPlanned() * PERCENT;
     }
 
-    private record TeamSprint(SprintStats stats, ProjectAiCost aiCost, EffortSummary summary, List<WorkItem> items) {}
+    private record TeamSprint(SprintStats stats, ProjectAiCost aiCost, boolean hasAiUsage, EffortSummary summary,
+                              List<WorkItem> items) {}
 
     private record Context(String orgId, String userId, String projectId, Sprint sprint, SprintWindow window,
                            Instant now, LocalDate today, ProjectVcsActivity.Snapshot vcs,
