@@ -17,7 +17,8 @@ import java.util.List;
 /**
  * One customized dashboard view per (organization, user, viewKey) while active (design.md D6).
  * The unique index is partial on {@code active: true}, so a soft-deleted layout ("restore default")
- * does not block creating a new one.
+ * does not block creating a new one. The declarations below document the indexes; they are
+ * actually created by {@link DashboardLayoutIndexInitializer}, which must stay identical to them.
  */
 @Document(collection = "dashboard_layouts")
 @CompoundIndexes({
