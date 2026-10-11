@@ -239,6 +239,14 @@ public class InMemoryVcsStore {
     }
 
     @Override
+    public List<VcsCommit> findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+            String organizationId, Collection<String> repositoryIds, Instant from, Instant to) {
+        return commits.stream().filter(c -> c.getOrganizationId().equals(organizationId)
+                && repositoryIds.contains(c.getRepositoryId()) && halfOpen(c.getAuthoredAt(), from, to)
+                && c.isActive()).toList();
+    }
+
+    @Override
     public VcsCommit save(VcsCommit commit) {
         commits.add(commit);
         return commit;

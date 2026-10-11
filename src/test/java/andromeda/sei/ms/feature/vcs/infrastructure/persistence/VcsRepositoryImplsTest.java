@@ -143,6 +143,33 @@ class VcsRepositoryImplsTest {
     }
 
     @Test
+    void should_listActiveCommitsOfRepositories_inHalfOpenWindow_scopedByOrganization() {
+        VcsCommitRepositoryImpl repository = new VcsCommitRepositoryImpl(mongoTemplate, mapper);
+        Instant from = Instant.parse("2026-01-01T00:00:00Z");
+        Instant to = Instant.parse("2026-01-15T00:00:00Z");
+
+        assertThat(repository.findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+                ORG, List.of("repo-1", "repo-2"), from, to)).isEmpty();
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        verify(mongoTemplate).find(query.capture(), eq(VcsCommitDocument.class));
+        Document filter = query.getValue().getQueryObject();
+        assertThat(filter).containsEntry("organizationId", ORG).containsEntry("active", true);
+        assertThat((Document) filter.get("repositoryId")).containsEntry("$in", List.of("repo-1", "repo-2"));
+        assertThat((Document) filter.get("authoredAt")).containsEntry("$gte", from).containsEntry("$lt", to);
+    }
+
+    @Test
+    void should_skipCommitQuery_when_noRepository() {
+        VcsCommitRepositoryImpl repository = new VcsCommitRepositoryImpl(mongoTemplate, mapper);
+
+        assertThat(repository.findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
+                ORG, List.of(), Instant.EPOCH, Instant.EPOCH.plusSeconds(1))).isEmpty();
+
+        org.mockito.Mockito.verifyNoInteractions(mongoTemplate);
+    }
+
+    @Test
     void should_scopePullRequestById_byOrganization() {
         VcsPullRequestRepositoryImpl repository = new VcsPullRequestRepositoryImpl(mongoTemplate, mapper);
 

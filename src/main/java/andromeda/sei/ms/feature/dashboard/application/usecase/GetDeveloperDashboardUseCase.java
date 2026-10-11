@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.BurndownCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
@@ -30,7 +31,6 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -339,47 +339,11 @@ public class GetDeveloperDashboardUseCase {
         return series;
     }
 
+    /** The shared burndown rule ({@link BurndownCalculator}), up to today. */
     private List<BurndownPoint> computeBurndown(List<WorkItem> sprintItems,
                                                  EffortBearingLevelResolver.EffortScope effortScope,
                                                  LocalDate sprintStart, LocalDate sprintEnd) {
-        if (sprintStart == null || sprintEnd == null) {
-            return List.of();
-        }
-
-        Double resolvedTotal = effortScope.totalEffort(sprintItems);
-        double totalSp = resolvedTotal == null ? 0d : resolvedTotal;
-
-        LocalDate today = LocalDate.now();
-        LocalDate seriesEnd = sprintEnd.isBefore(today) ? sprintEnd : today;
-
-        long totalSprintDays = ChronoUnit.DAYS.between(sprintStart, sprintEnd);
-        if (totalSprintDays <= 0) {
-            return List.of();
-        }
-
-        List<BurndownPoint> series = new ArrayList<>();
-        LocalDate cursor = sprintStart;
-
-        while (!cursor.isAfter(seriesEnd)) {
-            final LocalDate currentDay = cursor;
-            List<WorkItem> completedByDay = sprintItems.stream()
-                    .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                    .filter(wi -> wi.getCompletedAt() != null)
-                    .filter(wi -> !toLocalDate(wi.getCompletedAt()).isAfter(currentDay))
-                    .toList();
-            Double completedResolved = effortScope.totalEffort(completedByDay);
-            double completedSp = completedResolved == null ? 0d : completedResolved;
-
-            double remainingSp = totalSp - completedSp;
-
-            long daysElapsed = ChronoUnit.DAYS.between(sprintStart, currentDay);
-            double idealSp = totalSp * (1.0 - (double) daysElapsed / totalSprintDays);
-
-            series.add(new BurndownPoint(currentDay, remainingSp, idealSp));
-            cursor = cursor.plusDays(1);
-        }
-
-        return series;
+        return BurndownCalculator.compute(sprintItems, effortScope, sprintStart, sprintEnd, LocalDate.now());
     }
 
     private AiSprintSummary computeAiSprintSummary(String orgId, String userId,
