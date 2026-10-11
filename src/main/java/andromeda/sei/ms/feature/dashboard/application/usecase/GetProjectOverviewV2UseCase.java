@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
@@ -28,6 +28,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Ou
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.ThroughputRow;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory.PeopleCoverage;
+import andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeriod;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.DayRange;
@@ -40,9 +41,12 @@ import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
 import andromeda.sei.ms.feature.metrics.application.DeliveryMetricsService;
 import andromeda.sei.ms.feature.metrics.domain.DeliveryMethod;
 import andromeda.sei.ms.feature.metrics.domain.DeliveryMetrics;
+import andromeda.sei.ms.feature.metrics.domain.DeliveryMetricsCalculator;
+import andromeda.sei.ms.feature.metrics.domain.MergedChange;
 import andromeda.sei.ms.feature.metrics.domain.PerformanceClass;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.organization.domain.RemediationRules;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundException;
@@ -54,6 +58,7 @@ import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver;
+import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
@@ -70,6 +75,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.concurrent.CompletableFuture;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +85,8 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+
+import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.join;
 
 /**
  * Project overview v2 (dashboards-customizaveis D1, {@code buildProject}) of one project and period.
@@ -159,39 +168,94 @@ public class GetProjectOverviewV2UseCase {
         DashboardPeriod period = DashboardPeriod.of(periodDays, SprintWindow.toDay(now));
         Context ctx = load(orgId, project, period, now);
         PeriodBuckets buckets = period.buckets();
+        DeliveryMetrics currentDelivery = delivery(ctx, period.current());
         return new ProjectOverviewV2Output(projectInfo(ctx), periodInfo(period, buckets),
-                stats(ctx, period.current(), ctx.currentDelivery(), true),
-                stats(ctx, period.previous(), ctx.previousDelivery(), false),
-                dora(ctx.currentDelivery()), throughput(ctx, buckets), sprintRows(ctx), flow(ctx, buckets),
+                stats(ctx, period.current(), currentDelivery, true),
+                stats(ctx, period.previous(), delivery(ctx, period.previous()), false),
+                dora(currentDelivery), throughput(ctx, buckets), sprintRows(ctx), flow(ctx, buckets),
                 quality(ctx, buckets), prFlow(ctx, buckets), repos(ctx), ai(ctx, buckets), people(ctx),
                 dataQuality(ctx), now);
     }
 
+    /**
+     * Every read of the request, run concurrently ({@link ConcurrentLoads}): the request waits for the
+     * slowest chain — work items, then the AI cost allocated to them — instead of the sum of all reads.
+     */
     private Context load(String orgId, Project project, DashboardPeriod period, Instant now) {
-        ProjectPeriodItems items = ProjectPeriodItems.of(
-                workItemRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId()),
-                sprintRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId()), effortResolver);
         DayRange current = period.current();
-        ProjectVcsActivity.Snapshot vcs = vcsActivity.loadWithoutReviews(orgId, project.getId(),
-                period.previous().from(), current.to());
-        LocalDate aiFrom = items.sprintsEndingIn(current).stream().map(f -> f.window().startDay())
-                .filter(day -> day.isBefore(period.previous().first())).min(Comparator.naturalOrder())
-                .orElse(period.previous().first());
-        List<AllocatedUsage> allocated = aiCostCalculator.allocatedUsage(orgId, items.ids(), aiFrom, current.last());
-        List<AIUsage> memberUsage = aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(orgId,
-                project.getMemberIds(), current.first(), current.last());
-        return new Context(orgId, project, period, now, items, vcs, allocated, memberUsage,
-                delivery(orgId, vcs, items, current), delivery(orgId, vcs, items, period.previous()),
-                organizationRepository.findById(orgId).orElse(null));
+        DayRange previous = period.previous();
+        List<String> memberIds = project.getMemberIds();
+        try (ConcurrentLoads loads = new ConcurrentLoads()) {
+            CompletableFuture<List<Sprint>> sprints = loads.supply(
+                    () -> sprintRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId()));
+            CompletableFuture<ProjectPeriodItems> items = loads.then(sprints, s -> ProjectPeriodItems.of(
+                    workItemRepository.findAllByOrganizationIdAndProjectId(orgId, project.getId()), s, effortResolver));
+            // The AI chain is the slowest: it starts from the ids alone, without waiting for the items.
+            CompletableFuture<Set<String>> itemIds = loads.supply(
+                    () -> workItemRepository.findActiveIdsByOrganizationIdAndProjectId(orgId, project.getId()));
+            CompletableFuture<AllocatedCost> allocated = loads.then(itemIds.thenCombine(sprints, IdsAndSprints::new),
+                    in -> AllocatedCost.of(aiCostCalculator.allocatedUsage(orgId, in.ids(), aiFrom(in.sprints(), period),
+                            current.last())));
+            CompletableFuture<ProjectVcsActivity.Snapshot> vcs = loads.supply(
+                    () -> vcsActivity.loadPullRequests(orgId, project.getId(), previous.from()));
+            // One read of the merged changes of both periods (one bug-link lookup); each calculation
+            // keeps only the merges of its own window.
+            CompletableFuture<List<MergedChange>> changes = loads.then(vcs, v -> deliveryMetricsService.mergedChangesFrom(
+                    orgId, v.repositories(), filter(v.pullRequests(), pr -> pr.getMergedAt() != null
+                            && !pr.getMergedAt().isBefore(previous.from()) && pr.getMergedAt().isBefore(current.to()))));
+            CompletableFuture<Map<String, Long>> currentCommits = loads.then(vcs,
+                    v -> vcsActivity.commitCounts(orgId, v.repositories(), current.from(), current.to()));
+            CompletableFuture<Map<String, Long>> previousCommits = loads.then(vcs,
+                    v -> vcsActivity.commitCounts(orgId, v.repositories(), previous.from(), previous.to()));
+            CompletableFuture<List<AiUsageUserDay>> memberUsage = loads.supply(
+                    () -> aiUsageRepository.summarizeByUserAndDay(orgId, memberIds, current.first(), current.last()));
+            CompletableFuture<Set<String>> validatedDays = loads.supply(() -> validatedPersonDays(orgId, memberIds, current));
+            CompletableFuture<PeopleCoverage> people = loads.supply(() -> peopleDirectory.coverage(orgId, memberIds));
+            CompletableFuture<Map<String, VcsRepoBinding>> bindings = loads.supply(() -> bindings(orgId, project.getId()));
+            CompletableFuture<RemediationRules> rules = loads.supply(() -> deliveryMetricsService.remediationRules(orgId));
+            CompletableFuture<Organization> organization = loads.supply(
+                    () -> organizationRepository.findById(orgId).orElse(null));
+            return new Context(orgId, project, period, now, join(items), join(vcs), join(allocated), join(memberUsage),
+                    join(changes), join(rules), join(organization), join(currentCommits), join(previousCommits),
+                    join(validatedDays), join(people), join(bindings));
+        }
     }
 
-    private DeliveryMetrics delivery(String orgId, ProjectVcsActivity.Snapshot vcs, ProjectPeriodItems items,
-                                     DayRange range) {
-        List<VcsPullRequest> merged = filter(vcs.pullRequests(), pr -> range.contains(pr.getMergedAt()));
-        List<WorkItem> completed = filter(items.all(), i -> range.contains(i.getCompletedAt()));
-        return deliveryMetricsService.calculate(orgId,
-                deliveryMetricsService.mergedChangesFrom(orgId, vcs.repositories(), merged),
-                DeliveryMetricsService.completedItems(completed), range.from(), range.to());
+    /** From the start of the previous period, or earlier when a past sprint of the period started before it. */
+    private static LocalDate aiFrom(List<Sprint> sprints, DashboardPeriod period) {
+        return ProjectPeriodItems.earliestStartOfPastSprintsEndingIn(sprints, period.current())
+                .filter(day -> day.isBefore(period.previous().first()))
+                .orElse(period.previous().first());
+    }
+
+    private record IdsAndSprints(Set<String> ids, List<Sprint> sprints) {}
+
+    private Set<String> validatedPersonDays(String orgId, List<String> memberIds, DayRange current) {
+        Set<String> members = Set.copyOf(memberIds);
+        return allocationRepository.findValidatedUserDays(orgId, members, current.first(), current.last()).stream()
+                .filter(d -> d.userId() != null && d.day() != null && members.contains(d.userId()))
+                .map(d -> DashboardV2Views.personDay(d.userId(), d.day()))
+                .collect(Collectors.toSet());
+    }
+
+    private Map<String, VcsRepoBinding> bindings(String orgId, String projectId) {
+        return vcsReadPort.bindingsOfProject(orgId, projectId).stream()
+                .filter(b -> b.getRepositoryId() != null)
+                .collect(Collectors.toMap(VcsRepoBinding::getRepositoryId, Function.identity(), (a, b) -> a));
+    }
+
+    /**
+     * Delivery metrics of a range ({@link DeliveryMetricsCalculator}, the rule behind
+     * {@code DeliveryMetricsService.calculate}) with the organization's rules read once per request.
+     */
+    private static DeliveryMetrics delivery(Context ctx, List<MergedChange> changes, List<WorkItem> completed,
+                                            DayRange range) {
+        return DeliveryMetricsCalculator.calculate(filter(changes, c -> range.contains(c.mergedAt())),
+                DeliveryMetricsService.completedItems(completed), ctx.rules(), range.from(), range.to());
+    }
+
+    private static DeliveryMetrics delivery(Context ctx, DayRange range) {
+        return delivery(ctx, ctx.changes(), filter(ctx.items().all(), i -> range.contains(i.getCompletedAt())), range);
     }
 
     private static ProjectInfo projectInfo(Context ctx) {
@@ -210,7 +274,7 @@ public class GetProjectOverviewV2UseCase {
         List<WorkItem> done = doneOfThroughputTypes(ctx, range);
         List<WorkItem> units = ctx.items().doneUnitsIn(range);
         Double sp = ctx.items().effort().scope().totalEffort(units);
-        BigDecimal cost = allocatedCost(ctx.allocated(), range);
+        BigDecimal cost = ctx.allocated().total(range);
         List<VcsPullRequest> merged = filter(ctx.vcs().pullRequests(), pr -> range.contains(pr.getMergedAt()));
         return new PeriodStats(done.size(), delivery.deploymentsPerWeek(), sp, predictability(ctx, range),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
@@ -218,7 +282,8 @@ public class GetProjectOverviewV2UseCase {
                 delivery.changeFailRatePercent(), bugShare(done), cost, perSp(cost, sp), merged.size(),
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()),
                 timeToFirstReview(ctx, range), current ? staleCount(ctx) : null,
-                (int) ctx.vcs().commits().stream().filter(c -> range.contains(c.getAuthoredAt())).count());
+                (int) (current ? ctx.currentCommits() : ctx.previousCommits()).values().stream()
+                        .mapToLong(Long::longValue).sum());
     }
 
     private static Double predictability(Context ctx, DayRange range) {
@@ -273,7 +338,7 @@ public class GetProjectOverviewV2UseCase {
 
     private static List<SprintRow> sprintRows(Context ctx) {
         return ctx.items().sprintsEndingIn(ctx.period().current()).stream().map(f -> {
-            BigDecimal cost = allocatedCost(ctx.allocated(), new DayRange(f.window().startDay(), f.window().endDay()));
+            BigDecimal cost = ctx.allocated().total(new DayRange(f.window().startDay(), f.window().endDay()));
             return new SprintRow(f.sprint().getId(), DashboardV2Views.historyLabel(f.sprint()), f.sprint().getName(),
                     f.planned(), f.delivered(), f.predictabilityPct(), cost, perSp(cost, f.delivered()));
         }).toList();
@@ -301,9 +366,7 @@ public class GetProjectOverviewV2UseCase {
     }
 
     private List<RepoRow> repos(Context ctx) {
-        Map<String, VcsRepoBinding> bindings = vcsReadPort.bindingsOfProject(ctx.orgId(), ctx.project().getId()).stream()
-                .filter(b -> b.getRepositoryId() != null)
-                .collect(Collectors.toMap(VcsRepoBinding::getRepositoryId, Function.identity(), (a, b) -> a));
+        Map<String, VcsRepoBinding> bindings = ctx.bindings();
         return ctx.vcs().repositories().stream().filter(r -> !r.isPendingFirstSync())
                 .sorted(Comparator.comparing(GetProjectOverviewV2UseCase::repoName, String.CASE_INSENSITIVE_ORDER))
                 .map(repo -> repoRow(ctx, repo, bindings.get(repo.getId())))
@@ -315,12 +378,10 @@ public class GetProjectOverviewV2UseCase {
         List<VcsPullRequest> prs = filter(ctx.vcs().pullRequests(), pr -> repo.getId().equals(pr.getRepositoryId()));
         List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAt()));
         List<VcsPullRequest> open = filter(prs, pr -> pr.getStatus() == PullRequestStatus.OPEN);
-        DeliveryMetrics delivery = deliveryMetricsService.calculate(ctx.orgId(),
-                deliveryMetricsService.mergedChangesFrom(ctx.orgId(), List.of(repo), merged), List.of(),
-                range.from(), range.to());
+        Set<String> repoPrIds = prs.stream().map(VcsPullRequest::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        DeliveryMetrics delivery = delivery(ctx, filter(ctx.changes(), c -> repoPrIds.contains(c.id())), List.of(), range);
         return new RepoRow(repo.getId(), repoName(repo), repo.getProvider() != null ? repo.getProvider().name() : null,
-                (int) ctx.vcs().commits().stream()
-                        .filter(c -> repo.getId().equals(c.getRepositoryId()) && range.contains(c.getAuthoredAt())).count(),
+                ctx.currentCommits().getOrDefault(repo.getId(), 0L).intValue(),
                 merged.size(), Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()),
                 ReviewMetricsPolicy.aggregate(filter(prs, pr -> range.contains(pr.getCreatedAt())), ctx.now())
                         .timeToFirstReview(),
@@ -335,29 +396,24 @@ public class GetProjectOverviewV2UseCase {
 
     private static Ai ai(Context ctx, PeriodBuckets buckets) {
         DayRange current = ctx.period().current();
-        List<AllocatedUsage> inPeriod = filter(ctx.allocated(), a -> current.containsDay(a.usage().getDay()));
-        List<String> models = inPeriod.stream().filter(a -> a.usage().getModel() != null)
-                .collect(Collectors.groupingBy(a -> a.usage().getModel(),
-                        Collectors.reducing(BigDecimal.ZERO, AllocatedUsage::allocatedCostUsd, BigDecimal::add)))
-                .entrySet().stream().sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
-                .map(Map.Entry::getKey).toList();
-        List<CostBucket> costByBucket = buckets.buckets().stream().map(b -> costBucket(inPeriod, models, b)).toList();
-        Adoption adoption = new Adoption((int) ctx.memberUsage().stream().map(AIUsage::getUserId)
+        List<String> models = ctx.allocated().modelsByCost(current);
+        List<CostBucket> costByBucket = buckets.buckets().stream()
+                .map(b -> costBucket(ctx.allocated(), models, b)).toList();
+        Adoption adoption = new Adoption((int) ctx.memberUsage().stream().map(AiUsageUserDay::userId)
                 .filter(Objects::nonNull).distinct().count(), ctx.project().getMemberIds().size());
         Double tokensPerSp = DashboardV2Views.averageOrNull(ctx.items().sprintsEndingIn(current).stream()
                 .flatMap(f -> f.summary().units().stream()).map(WorkItem::getTokensPerSp).toList());
         return new Ai(models, costByBucket, adoption, subscription(ctx), tokensPerSp);
     }
 
-    private static CostBucket costBucket(List<AllocatedUsage> allocated, List<String> models, Bucket bucket) {
+    private static CostBucket costBucket(AllocatedCost allocated, List<String> models, Bucket bucket) {
         Map<String, BigDecimal> byModel = new LinkedHashMap<>();
-        models.forEach(model -> byModel.put(model, allocatedCost(filter(allocated,
-                a -> model.equals(a.usage().getModel())), bucket.range())));
+        models.forEach(model -> byModel.put(model, allocated.ofModel(model, bucket.range())));
         return new CostBucket(bucket.start(), bucket.label(), byModel);
     }
 
     private static Subscription subscription(Context ctx) {
-        BigDecimal consumption = ctx.memberUsage().stream().map(AIUsage::getCostUsd).filter(Objects::nonNull)
+        BigDecimal consumption = ctx.memberUsage().stream().map(AiUsageUserDay::costUsd).filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal perUser = ctx.organization() != null ? ctx.organization().getSubscriptionCostPerUserUsd() : null;
         BigDecimal seats = perUser == null ? null : perUser
@@ -368,7 +424,7 @@ public class GetProjectOverviewV2UseCase {
     }
 
     private People people(Context ctx) {
-        PeopleCoverage coverage = peopleDirectory.coverage(ctx.orgId(), ctx.project().getMemberIds());
+        PeopleCoverage coverage = ctx.people();
         return new People(coverage.members(), coverage.azureLinked(), coverage.githubLinked(), coverage.aiConnected());
     }
 
@@ -385,20 +441,58 @@ public class GetProjectOverviewV2UseCase {
     }
 
     private Double aiDaysAllocated(Context ctx, DayRange current) {
-        Set<String> members = Set.copyOf(ctx.project().getMemberIds());
-        Set<String> validated = allocationRepository
-                .findValidatedByOrganizationIdAndDayBetween(ctx.orgId(), current.first(), current.last()).stream()
-                .filter(a -> a.getUserId() != null && a.getDay() != null && members.contains(a.getUserId()))
-                .map(a -> DashboardV2Views.personDay(a.getUserId(), a.getDay()))
-                .collect(Collectors.toSet());
-        AllocationSummary summary = DashboardV2Views.allocationSummary(ctx.memberUsage(), validated);
+        AllocationSummary summary = DashboardV2Views.allocationSummaryOfDays(ctx.memberUsage(), ctx.validatedPersonDays());
         long total = (long) summary.validatedDays() + summary.pendingDays() + summary.unallocatedDays();
         return Ratios.percent((long) summary.validatedDays() + summary.pendingDays(), total);
     }
 
-    private static BigDecimal allocatedCost(List<AllocatedUsage> allocated, DayRange range) {
-        return allocated.stream().filter(a -> range.containsDay(a.usage().getDay()))
-                .map(AllocatedUsage::allocatedCostUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
+    /**
+     * The project's allocated AI cost summed once per (day, model) — every range and bucket of the
+     * response is then a sum over a few hundred days instead of a pass over every usage record.
+     * The model key may be {@code null} (a record without model): it counts in totals, not in models.
+     */
+    private record AllocatedCost(Map<LocalDate, Map<String, BigDecimal>> byDayAndModel) {
+
+        static AllocatedCost of(List<AllocatedUsage> allocated) {
+            Map<LocalDate, Map<String, BigDecimal>> byDay = new HashMap<>();
+            for (AllocatedUsage usage : allocated) {
+                if (usage.usage().getDay() == null) continue;
+                byDay.computeIfAbsent(usage.usage().getDay(), d -> new HashMap<>())
+                        .merge(usage.usage().getModel(), usage.allocatedCostUsd(), BigDecimal::add);
+            }
+            return new AllocatedCost(byDay);
+        }
+
+        BigDecimal total(DayRange range) {
+            return sum(range, model -> true);
+        }
+
+        BigDecimal ofModel(String model, DayRange range) {
+            return sum(range, model::equals);
+        }
+
+        /** Models with allocated cost in the range, highest cost first. */
+        List<String> modelsByCost(DayRange range) {
+            Map<String, BigDecimal> byModel = new HashMap<>();
+            byDayAndModel.forEach((day, models) -> {
+                if (range.containsDay(day)) models.forEach((model, cost) -> {
+                    if (model != null) byModel.merge(model, cost, BigDecimal::add);
+                });
+            });
+            return byModel.entrySet().stream().sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+                    .map(Map.Entry::getKey).toList();
+        }
+
+        private BigDecimal sum(DayRange range, Predicate<String> model) {
+            BigDecimal total = BigDecimal.ZERO;
+            for (Map.Entry<LocalDate, Map<String, BigDecimal>> day : byDayAndModel.entrySet()) {
+                if (!range.containsDay(day.getKey())) continue;
+                for (Map.Entry<String, BigDecimal> cost : day.getValue().entrySet()) {
+                    if (model.test(cost.getKey())) total = total.add(cost.getValue());
+                }
+            }
+            return total;
+        }
     }
 
     private static BigDecimal perSp(BigDecimal cost, Double delivered) {
@@ -411,7 +505,9 @@ public class GetProjectOverviewV2UseCase {
     }
 
     private record Context(String orgId, Project project, DashboardPeriod period, Instant now,
-                           ProjectPeriodItems items, ProjectVcsActivity.Snapshot vcs, List<AllocatedUsage> allocated,
-                           List<AIUsage> memberUsage, DeliveryMetrics currentDelivery,
-                           DeliveryMetrics previousDelivery, Organization organization) {}
+                           ProjectPeriodItems items, ProjectVcsActivity.Snapshot vcs, AllocatedCost allocated,
+                           List<AiUsageUserDay> memberUsage, List<MergedChange> changes, RemediationRules rules,
+                           Organization organization, Map<String, Long> currentCommits,
+                           Map<String, Long> previousCommits, Set<String> validatedPersonDays, PeopleCoverage people,
+                           Map<String, VcsRepoBinding> bindings) {}
 }

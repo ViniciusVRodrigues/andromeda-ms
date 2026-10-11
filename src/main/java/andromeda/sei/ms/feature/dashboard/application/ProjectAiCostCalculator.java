@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.dashboard.application;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
@@ -64,7 +65,10 @@ public class ProjectAiCostCalculator {
     private List<AiUsageAllocation> projectAllocations(String organizationId, Set<String> projectWorkItemIds,
                                                        LocalDate from, LocalDate to) {
         if (projectWorkItemIds.isEmpty()) return List.of();
-        return allocationRepository.findValidatedByOrganizationIdAndDayBetween(organizationId, from, to).stream()
+        // Scoped by the project's work items in the query (indexed), not the whole organization's
+        // allocations of the window filtered here; the share filter below stays the source of truth.
+        return allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                        organizationId, projectWorkItemIds, from, to).stream()
                 .filter(a -> projectShare(a, projectWorkItemIds).signum() > 0)
                 .toList();
     }
@@ -74,7 +78,7 @@ public class ProjectAiCostCalculator {
                 .filter(a -> a.getAiUsageIds() != null)
                 .flatMap(a -> a.getAiUsageIds().stream())
                 .collect(Collectors.toSet());
-        return aiUsageRepository.findByOrganizationIdAndIdIn(organizationId, usageIds).stream()
+        return aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(organizationId, usageIds).stream()
                 .filter(u -> u.getId() != null)
                 .collect(Collectors.toMap(AIUsage::getId, u -> u, (first, second) -> first));
     }
@@ -101,7 +105,7 @@ public class ProjectAiCostCalculator {
                 .filter(a -> a.getAiUsageIds() != null)
                 .flatMap(a -> a.getAiUsageIds().stream())
                 .collect(Collectors.toSet());
-        return aiUsageRepository.findByOrganizationIdAndIdIn(organizationId, usageIds).stream()
+        return aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(organizationId, usageIds).stream()
                 .filter(u -> u.getId() != null && u.getCostUsd() != null)
                 .collect(Collectors.toMap(AIUsage::getId, AIUsage::getCostUsd, BigDecimal::add));
     }
@@ -116,10 +120,10 @@ public class ProjectAiCostCalculator {
 
     private Map<String, BigDecimal> unallocatedByUser(String organizationId, Collection<String> memberUserIds,
                                                       LocalDate from, LocalDate to) {
-        return aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(organizationId, memberUserIds, from, to)
-                .stream()
-                .filter(u -> u.getAllocationId() == null && u.getCostUsd() != null && u.getUserId() != null)
-                .collect(Collectors.toMap(AIUsage::getUserId, AIUsage::getCostUsd, BigDecimal::add));
+        // Summed per (user, day) in the database: only the unclaimed cost is needed, not every record.
+        return aiUsageRepository.summarizeByUserAndDay(organizationId, memberUserIds, from, to).stream()
+                .filter(d -> d.userId() != null && d.unallocatedCostUsd() != null && d.unallocatedCostUsd().signum() != 0)
+                .collect(Collectors.toMap(AiUsageUserDay::userId, AiUsageUserDay::unallocatedCostUsd, BigDecimal::add));
     }
 
     /** A usage record and the fraction of it (sum of the project's split percentages) the project carries. */

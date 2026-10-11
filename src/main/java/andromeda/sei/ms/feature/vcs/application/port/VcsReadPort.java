@@ -37,6 +37,9 @@ public interface VcsReadPort {
     List<VcsPullRequest> mergedPullRequests(String organizationId, Collection<String> repositoryIds,
                                             Instant from, Instant to);
 
+    /** Active pull requests of the repositories open now or created or merged at or after {@code since}. */
+    List<VcsPullRequest> pullRequestsTouchedSince(String organizationId, Collection<String> repositoryIds, Instant since);
+
     /** Pull requests authored by an Andromeda user, created within the window, any repository. */
     List<VcsPullRequest> pullRequestsByAuthor(String organizationId, String userId, Instant from, Instant to);
 

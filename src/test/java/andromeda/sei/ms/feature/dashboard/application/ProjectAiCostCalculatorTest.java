@@ -45,8 +45,10 @@ class ProjectAiCostCalculatorTest {
                         new AllocationSplit("wi-in-2", "t", new BigDecimal("0.25")),
                         new AllocationSplit("wi-out", "t", new BigDecimal("0.50"))),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndDayBetween(ORG, FROM, TO)).thenReturn(List.of(split));
-        when(aiUsageRepository.findByOrganizationIdAndIdIn(eq(ORG), eq(Set.of("u1", "u2"))))
+        // the query is scoped by the project's work items; the split share still decides the cost
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                ORG, Set.of("wi-in", "wi-in-2"), FROM, TO)).thenReturn(List.of(split));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), eq(Set.of("u1", "u2"))))
                 .thenReturn(List.of(usage("u1", "6.00"), usage("u2", "14.00")));
 
         var cost = calculator.calculate(ORG, Set.of("wi-in", "wi-in-2"), List.of("user-1"), FROM, TO);
@@ -61,6 +63,8 @@ class ProjectAiCostCalculatorTest {
         var cost = calculator.calculate(ORG, Set.of(), List.of("user-1"), FROM, TO);
 
         assertThat(cost.totalAllocated()).isEqualByComparingTo("0");
+        verify(allocationRepository, never()).findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                any(), any(), any(), any());
         verify(allocationRepository, never()).findValidatedByOrganizationIdAndDayBetween(any(), any(), any());
     }
 
@@ -70,8 +74,9 @@ class ProjectAiCostCalculatorTest {
                 List.of(new AllocationSplit("wi-in", "t", new BigDecimal("0.40")),
                         new AllocationSplit("wi-out", "t", new BigDecimal("0.60"))),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndDayBetween(ORG, FROM, TO)).thenReturn(List.of(split));
-        when(aiUsageRepository.findByOrganizationIdAndIdIn(eq(ORG), eq(Set.of("u1", "u2"))))
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(ORG, Set.of("wi-in"), FROM, TO))
+                .thenReturn(List.of(split));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), eq(Set.of("u1", "u2"))))
                 .thenReturn(List.of(usage("u1", "5.00"), usage("u2", "10.00")));
 
         var records = calculator.allocatedUsage(ORG, Set.of("wi-in"), FROM, TO);

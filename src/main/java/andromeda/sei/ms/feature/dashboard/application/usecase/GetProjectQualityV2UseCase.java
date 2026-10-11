@@ -10,6 +10,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectQualityV2Out
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectQualityV2Output.ReworkRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectQualityV2Output.Totals;
 import andromeda.sei.ms.feature.dashboard.application.v2.CommitKinds;
+import andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory.PersonInfo;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeriod;
@@ -37,6 +38,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.concurrent.CompletableFuture;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -101,21 +103,34 @@ public class GetProjectQualityV2UseCase {
         return new ProjectQualityV2Output(
                 new ProjectQualityV2Output.Period(periodDays, range.first().toString(), range.last().toString(),
                         buckets.granularity()),
-                kpis(ctx, range, commits), bugFlow(ctx, buckets), oldestOpen(ctx, peopleDirectory.people(orgId)),
+                kpis(ctx, range, commits), bugFlow(ctx, buckets), oldestOpen(ctx, ctx.people()),
                 rework(ctx, buckets), commitKinds(commits, buckets), commitKindTotals(commits),
                 new Totals(commits.size()), now);
     }
 
+    /** The work item chain (items, then their transitions) and the VCS chain run concurrently. */
     private Context load(String orgId, String projectId, DayRange range, Instant now) {
-        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId).stream()
-                .filter(Objects::nonNull).filter(WorkItem::isActive).toList();
-        List<WorkItem> doneInPeriod = filter(items, i -> isDone(i) && !ProjectPeriodItems.isContainer(i)
-                && range.contains(i.getCompletedAt()));
+        try (ConcurrentLoads loads = new ConcurrentLoads()) {
+            CompletableFuture<List<WorkItem>> items = loads.supply(() -> workItemRepository
+                    .findAllByOrganizationIdAndProjectId(orgId, projectId).stream()
+                    .filter(Objects::nonNull).filter(WorkItem::isActive).toList());
+            CompletableFuture<List<WorkItem>> doneInPeriod = loads.then(items, all -> filter(all,
+                    i -> isDone(i) && !ProjectPeriodItems.isContainer(i) && range.contains(i.getCompletedAt())));
+            CompletableFuture<Map<String, Integer>> reopens = loads.then(doneInPeriod, done -> reopens(orgId, done));
+            CompletableFuture<ProjectVcsActivity.Snapshot> vcs = loads.supply(
+                    () -> vcsActivity.loadWithoutReviews(orgId, projectId, range.from(), range.to()));
+            CompletableFuture<DeliveryMetrics> remediation = loads.then(vcs, v -> remediation(orgId, v, range));
+            CompletableFuture<Map<String, PersonInfo>> people = loads.supply(() -> peopleDirectory.people(orgId));
+            return new Context(now, ConcurrentLoads.join(items), ConcurrentLoads.join(doneInPeriod),
+                    ConcurrentLoads.join(reopens), ConcurrentLoads.join(vcs), ConcurrentLoads.join(remediation),
+                    ConcurrentLoads.join(people));
+        }
+    }
+
+    private Map<String, Integer> reopens(String orgId, List<WorkItem> doneInPeriod) {
         Set<String> ids = doneInPeriod.stream().map(WorkItem::getId).filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<String, Integer> reopens = ids.isEmpty() ? Map.of()
+        return ids.isEmpty() ? Map.of()
                 : WorkItemReopens.byWorkItem(transitionRepository.findActiveByOrganizationIdAndWorkItemIdIn(orgId, ids));
-        ProjectVcsActivity.Snapshot vcs = vcsActivity.loadWithoutReviews(orgId, projectId, range.from(), range.to());
-        return new Context(now, items, doneInPeriod, reopens, vcs, remediation(orgId, vcs, range));
     }
 
     private DeliveryMetrics remediation(String orgId, ProjectVcsActivity.Snapshot vcs, DayRange range) {
@@ -213,5 +228,6 @@ public class GetProjectQualityV2UseCase {
     }
 
     private record Context(Instant now, List<WorkItem> items, List<WorkItem> doneInPeriod,
-                           Map<String, Integer> reopens, ProjectVcsActivity.Snapshot vcs, DeliveryMetrics remediation) {}
+                           Map<String, Integer> reopens, ProjectVcsActivity.Snapshot vcs, DeliveryMetrics remediation,
+                           Map<String, PersonInfo> people) {}
 }
