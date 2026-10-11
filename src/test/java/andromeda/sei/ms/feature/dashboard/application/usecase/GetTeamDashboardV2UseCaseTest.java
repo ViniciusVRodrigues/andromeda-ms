@@ -229,6 +229,42 @@ class GetTeamDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_returnNullAiCost_inKpisPreviousAndHistory_when_noMemberHasUsageInTheWindow() {
+        sprintItems("s1", done("a1", 3.0, 10.0));
+        sprintItems("s2", done("b1", 5.0, 8.0));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.kpis().aiCostUsd()).isNull();
+        assertThat(out.kpis().aiCostPerSp()).isNull();
+        assertThat(out.kpis().unallocatedAiCostUsd()).isNull();
+        assertThat(out.previous().aiCostUsd()).isNull();
+        assertThat(out.previous().aiCostPerSp()).isNull();
+        assertThat(out.history()).allSatisfy(h -> {
+            assertThat(h.aiCostUsd()).isNull();
+            assertThat(h.aiCostPerSp()).isNull();
+        });
+        assertThat(out.ai().unallocatedCostUsd()).isNull();
+    }
+
+    @Test
+    void should_keepZeroAllocatedCost_when_membersHaveUsageButNothingIsAllocatedToTheProject() {
+        sprintItems("s2", done("b1", 5.0, 8.0));
+        AIUsage unallocated = usage("u9", ME, "2026-10-03", null, "7.00", "gpt-5");
+        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
+                .thenReturn(List.of(unallocated));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
+        assertThat(out.kpis().aiCostPerSp()).isEqualByComparingTo("0");
+        assertThat(out.kpis().unallocatedAiCostUsd()).isEqualByComparingTo("7.00");
+        assertThat(out.history().get(1).aiCostUsd()).isEqualByComparingTo("0");
+        assertThat(out.history().get(0).aiCostUsd()).isNull();
+        assertThat(out.ai().unallocatedCostUsd()).isEqualByComparingTo("7.00");
+    }
+
+    @Test
     void should_labelStalePrOfUnlinkedAuthorByLogin_andNotCreditAnyMember() {
         VcsPullRequest unlinked = pr("pr-7", null, "2026-10-02T10:00:00Z");
         unlinked.setAuthorLogin("ghost");

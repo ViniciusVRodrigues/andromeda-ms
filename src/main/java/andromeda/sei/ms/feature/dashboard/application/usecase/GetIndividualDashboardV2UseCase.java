@@ -185,7 +185,9 @@ public class GetIndividualDashboardV2UseCase {
                 units.size(), dev.cycleTime(), dev.leadTime(), prs.merged(), prs.review(),
                 hasUsage ? dev.sprintCostUsd() : null, hasUsage ? dev.aiSprintSummary().totalTokens() : null,
                 dev.avgTokensPerSp(),
-                (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count());
+                DashboardV2Views.isCurrent(ctx.sprint())
+                        ? (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count()
+                        : null);
     }
 
     /** Delivery of {@code sprint} for the person, with the rules the developer dashboard uses. */

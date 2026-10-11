@@ -194,6 +194,21 @@ class GetIndividualDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_returnNullPrsOpen_when_sprintIsPast_likeTheTeamView() {
+        when(sprintRepository.findByIdAndOrganizationIdAndActiveTrue("s1", ORG)).thenReturn(Optional.of(S1));
+        when(developerDashboard.execute(ORG, ME, PROJECT, "s1", null, null, null))
+                .thenAnswer(inv -> devOutput(5.0, 5.0, null));
+        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO))
+                .thenReturn(List.of(pr("pr-1", ME, PullRequestStatus.OPEN, "2026-09-01T10:00:00Z")));
+
+        IndividualDashboardV2Output past = useCase.execute(ORG, ME, PROJECT, "s1");
+        IndividualDashboardV2Output current = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(past.kpis().prsOpen()).isNull();
+        assertThat(current.kpis().prsOpen()).isEqualTo(1);
+    }
+
+    @Test
     void should_reuseDeveloperKpis_countOpenPrsOfAnyAge_andKeepAiCostNull_withoutUsage() {
         VcsPullRequest oldOpen = pr("pr-1", ME, PullRequestStatus.OPEN, "2026-09-01T10:00:00Z");
         VcsPullRequest mergedInSprint = pr("pr-2", ME, PullRequestStatus.MERGED, "2026-10-02T10:00:00Z");

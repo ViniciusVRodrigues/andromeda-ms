@@ -56,11 +56,14 @@ public record IndividualDashboardV2Output(
                               DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
                               Double avgTokensPerSp) {}
 
-    /** {@link SprintStats} of the selected sprint plus the person's open pull requests (any age). */
+    /**
+     * {@link SprintStats} of the selected sprint plus the person's open pull requests (any age) — a
+     * current state, so {@code null} for a past sprint (like the team view's {@code openPrs}).
+     */
     public record Kpis(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
                        DurationStat cycleTimeHours, DurationStat leadTimeHours, int prsMerged,
                        DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
-                       Double avgTokensPerSp, int prsOpen) {}
+                       Double avgTokensPerSp, Integer prsOpen) {}
 
     /** Reviews the person submitted on the project's pull requests in the sprint (bots excluded). */
     public record ReviewsGiven(int total, int approved, int changesRequested, int commented, int rejected) {
