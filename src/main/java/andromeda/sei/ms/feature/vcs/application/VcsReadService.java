@@ -96,4 +96,10 @@ public class VcsReadService implements VcsReadPort {
     public List<VcsReviewEvent> reviewEvents(String organizationId, Collection<String> pullRequestIds) {
         return reviewEventRepository.findAllByOrganizationIdAndPullRequestIdIn(organizationId, pullRequestIds);
     }
+
+    @Override
+    public List<VcsPullRequest> pullRequestMetricFieldsTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                                   Instant since) {
+        return pullRequestRepository.findMetricFieldsTouchedSince(organizationId, repositoryIds, since);
+    }
 }

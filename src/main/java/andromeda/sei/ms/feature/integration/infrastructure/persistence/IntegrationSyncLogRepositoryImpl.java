@@ -110,4 +110,29 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
                 .set("errorMessage", errorMessage);
         return mongoTemplate.updateMulti(query, update, IntegrationSyncLogDocument.class).getModifiedCount();
     }
+
+    /** Grouped in the database (index {@code {organizationId, integration, startedAt}}). */
+    @Override
+    public List<andromeda.sei.ms.feature.integration.domain.SyncRunCount> countByProjectDayAndStatus(
+            String organizationId, Collection<SyncOperation> operations, Instant startedFrom) {
+        org.bson.Document match = new org.bson.Document("organizationId", organizationId)
+                .append("integration", new org.bson.Document("$in",
+                        List.of(Integration.AZURE_DEVOPS.name(), Integration.GITHUB.name())))
+                .append("startedAt", new org.bson.Document("$gte", java.util.Date.from(startedFrom)))
+                .append("operation", new org.bson.Document("$in", operations.stream().map(Enum::name).toList()));
+        org.bson.Document key = new org.bson.Document("projectId", "$projectId").append("status", "$status")
+                .append("day", new org.bson.Document("$dateToString", new org.bson.Document("format", "%Y-%m-%d")
+                        .append("date", "$startedAt").append("timezone", "UTC")));
+        List<org.bson.Document> pipeline = List.of(new org.bson.Document("$match", match),
+                new org.bson.Document("$group", new org.bson.Document("_id", key)
+                        .append("n", new org.bson.Document("$sum", 1))));
+        List<andromeda.sei.ms.feature.integration.domain.SyncRunCount> rows = new java.util.ArrayList<>();
+        for (org.bson.Document row : mongoTemplate.getCollection("integration_sync_logs").aggregate(pipeline)) {
+            org.bson.Document id = row.get("_id", org.bson.Document.class);
+            SyncStatus status = id.getString("status") == null ? null : SyncStatus.valueOf(id.getString("status"));
+            rows.add(new andromeda.sei.ms.feature.integration.domain.SyncRunCount(id.getString("projectId"),
+                    java.time.LocalDate.parse(id.getString("day")), status, ((Number) row.get("n")).longValue()));
+        }
+        return rows;
+    }
 }

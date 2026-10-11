@@ -229,7 +229,7 @@ public class GetIntegrationsDashboardV2UseCase {
         if (userIds.isEmpty()) return Map.of();
         LocalDate today = SprintWindow.toDay(now);
         Map<String, Instant> byUser = new HashMap<>();
-        for (AIUsage usage : aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(orgId, userIds,
+        for (AIUsage usage : aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(orgId, userIds,
                 today.minusDays(UPLOAD_WINDOW_DAYS - 1L), today)) {
             if (usage.getUserId() == null || usage.getUploadedAt() == null) continue;
             byUser.merge(usage.getUserId(), usage.getUploadedAt(), (a, b) -> a.isAfter(b) ? a : b);

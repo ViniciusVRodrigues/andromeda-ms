@@ -131,7 +131,7 @@ class GetIntegrationsDashboardV2UseCaseTest {
         when(t.connectorTokenRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(
                 token("t1", "u-ana", "notebook", true), token("t2", "u-ana", "antigo", false),
                 token("t3", "u-carla", "desktop", true)));
-        when(t.aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), any(), any())).thenReturn(List.of(
+        when(t.aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), any(), any())).thenReturn(List.of(
                 usage("u-ana", NOW.minus(Duration.ofHours(5))), usage("u-carla", NOW.minus(Duration.ofDays(5)))));
         AzureConnection azure = new AzureConnection("c1", ORG, "https://dev.azure.com/orbital", ACCESS, REFRESH,
                 NOW.plus(Duration.ofMinutes(47)), "u-ana", AzureConnectionStatus.CONNECTED,

@@ -6,13 +6,13 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiModel;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AllocationSummary;
-import andromeda.sei.ms.feature.dashboard.application.dto.v2.IntegrationsDashboardV2Output.LastError;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ActivityRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Adoption;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Ai;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.AiConnectorCard;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ConnectionCard;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ConnectionError;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.CostBucket;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Coverage;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.CurrentSprint;
@@ -34,6 +34,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboa
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ThroughputByProjectRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Tokens;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.TypeCount;
+import andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeriod;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.DayRange;
@@ -46,7 +47,7 @@ import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems.SprintFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
 import andromeda.sei.ms.feature.dashboard.application.v2.SyncRunsSummary;
-import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
+import andromeda.sei.ms.feature.integration.domain.SyncRunCount;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.metrics.application.DeliveryMetricsService;
 import andromeda.sei.ms.feature.metrics.domain.CompletedWorkItem;
@@ -60,7 +61,6 @@ import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.vcs.domain.ReviewMetricsPolicy;
 import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
-import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
@@ -77,6 +77,7 @@ import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -90,6 +91,8 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.join;
+
 /**
  * Organization overview v2 (dashboards-customizaveis D1, {@code buildOrganization}) over the
  * projects where the caller holds {@code DASHBOARD_STRATEGIC} — never the others: every figure is
@@ -98,6 +101,11 @@ import java.util.stream.Collectors;
  * ({@link GetProjectOverviewV2UseCase}): velocity by the effort resolver, durations by
  * {@link Percentiles}, time to first review by {@link ReviewMetricsPolicy}, stalled pull requests by
  * {@link StalePullRequestPolicy}, change failure rate by {@link DeliveryMetricsCalculator}.
+ *
+ * <p><b>Cost:</b> everything is indexed once ({@link Indexed}) — items by project, pull requests and
+ * merged changes by repository, allocated cost by project through a {@code workItemId → projectId}
+ * map — so the work is linear in the data (allocations × splits, items, pull requests), never a
+ * product of two of them.
  */
 @Service
 public class GetOrganizationDashboardV2UseCase {
@@ -110,6 +118,7 @@ public class GetOrganizationDashboardV2UseCase {
     private static final List<Integer> FLUENCY_STAGES = List.of(1, 2, 3, 4);
     private static final LocalDate EPOCH = LocalDate.of(1970, 1, 1);
     private static final String PROJECT_SEPARATOR = ", ";
+    private static final String DISCONNECTED = "DISCONNECTED";
     private static final List<WorkItem.ResolvedType> THROUGHPUT_TYPES =
             List.of(WorkItem.ResolvedType.STORY, WorkItem.ResolvedType.BUG, WorkItem.ResolvedType.TASK);
 
@@ -138,10 +147,19 @@ public class GetOrganizationDashboardV2UseCase {
         DashboardPeriod period = DashboardPeriod.of(periodDays, today);
         Snapshot snapshot = data.load(orgId, Set.copyOf(visibleProjectIds), period, today);
         Context ctx = new Context(snapshot, period, period.buckets(), now, today, rules(snapshot.organization()),
-                allocatedByProject(snapshot));
-        return new OrganizationDashboardV2Output(periodInfo(ctx), stats(ctx, period.current(), true),
-                stats(ctx, period.previous(), false), portfolio(ctx), delivery(ctx), engineering(ctx), ai(ctx),
-                integrations(ctx), now);
+                Indexed.of(snapshot, period));
+        // The sections are pure functions of the (immutable) snapshot: computed concurrently.
+        try (ConcurrentLoads sections = new ConcurrentLoads()) {
+            var kpis = sections.supply(() -> stats(ctx, period.current(), true));
+            var previous = sections.supply(() -> stats(ctx, period.previous(), false));
+            var portfolio = sections.supply(() -> portfolio(ctx));
+            var delivery = sections.supply(() -> delivery(ctx));
+            var engineering = sections.supply(() -> engineering(ctx));
+            var ai = sections.supply(() -> ai(ctx));
+            var integrations = sections.supply(() -> integrations(ctx));
+            return new OrganizationDashboardV2Output(periodInfo(ctx), join(kpis), join(previous), join(portfolio),
+                    join(delivery), join(engineering), join(ai), join(integrations), now);
+        }
     }
 
     private static RemediationRules rules(Organization organization) {
@@ -159,40 +177,44 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static OrgStats stats(Context ctx, DayRange range, boolean current) {
         Snapshot s = ctx.snapshot();
-        List<WorkItem> units = units(ctx, range);
-        Double sp = spDelivered(ctx, range);
-        List<AIUsage> usage = usageIn(ctx, range);
-        BigDecimal cost = cost(usage);
+        Indexed ix = ctx.indexed();
+        List<WorkItem> units = ix.unitsIn(range);
+        Double sp = spDelivered(ix, range);
+        AiFigures ai = current ? AiFigures.of(usageIn(ctx, range)) : AiFigures.ofTotals(s.ai().previous());
+        // the cost allocated (validated) to the visible projects, for every caller (coordinator's decision)
+        BigDecimal cost = sum(ix.allocatedIn(current).values());
         return new OrgStats(current ? s.projects().size() : null, current ? s.people().size() : null,
-                s.items().values().stream().mapToInt(i -> doneOfThroughputTypes(i, range).size()).sum(), sp,
+                ix.projects().values().stream().mapToInt(p -> count(p.doneThroughput(), range)).sum(), sp,
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
-                cfr(ctx, s.vcs().changes(), completedItems(s.items().values()), range),
+                cfr(ctx, s.vcs().changes(), ix.completed(), range),
                 (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAt())).count(),
-                (int) s.vcs().commits().stream().filter(c -> range.contains(c.getAuthoredAt())).count(),
-                timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
-                usage.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(), perSp(cost, sp),
-                (int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct().count());
+                (int) s.vcs().commitsIn(range), timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
+                ai.tokens(), perSp(cost, sp), ai.activeUsers());
     }
 
-    private static List<WorkItem> units(Context ctx, DayRange range) {
-        return ctx.snapshot().items().values().stream().flatMap(i -> i.doneUnitsIn(range).stream()).toList();
+    /** The people's AI cost, tokens and active users of one period. */
+    private record AiFigures(BigDecimal cost, long tokens, int activeUsers) {
+
+        static AiFigures of(List<AIUsage> usage) {
+            return new AiFigures(GetOrganizationDashboardV2UseCase.cost(usage),
+                    usage.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
+                    (int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct().count());
+        }
+
+        static AiFigures ofTotals(List<andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals> totals) {
+            return new AiFigures(sum(totals.stream().map(t -> t.costUsd()).toList()),
+                    totals.stream().mapToLong(t -> t.inputTokens() + t.outputTokens()).sum(),
+                    (int) totals.stream().map(t -> t.userId()).filter(Objects::nonNull).distinct().count());
+        }
     }
 
     /** Sum of each project's delivered effort (each by its own effort level); {@code null} when none carries effort. */
-    private static Double spDelivered(Context ctx, DayRange range) {
-        List<Double> perProject = ctx.snapshot().items().values().stream()
-                .map(i -> i.effort().scope().totalEffort(i.doneUnitsIn(range))).filter(Objects::nonNull).toList();
+    private static Double spDelivered(Indexed ix, DayRange range) {
+        List<Double> perProject = ix.projects().values().stream()
+                .map(p -> p.items().effort().scope().totalEffort(within(p.units(), range))).filter(Objects::nonNull)
+                .toList();
         return perProject.isEmpty() ? null : perProject.stream().mapToDouble(Double::doubleValue).sum();
-    }
-
-    private static List<WorkItem> doneOfThroughputTypes(ProjectPeriodItems items, DayRange range) {
-        return items.all().stream().filter(i -> i.getResolvedStatus() == WorkItem.ResolvedStatus.DONE
-                && THROUGHPUT_TYPES.contains(i.getResolvedType()) && range.contains(i.getCompletedAt())).toList();
-    }
-
-    private static List<CompletedWorkItem> completedItems(Collection<ProjectPeriodItems> items) {
-        return DeliveryMetricsService.completedItems(items.stream().flatMap(i -> i.all().stream()).toList());
     }
 
     private static Double cfr(Context ctx, List<MergedChange> changes, List<CompletedWorkItem> completed, DayRange range) {
@@ -212,29 +234,28 @@ public class GetOrganizationDashboardV2UseCase {
     }
 
     private static PortfolioRow portfolioRow(Context ctx, Project project) {
-        ProjectPeriodItems items = ctx.snapshot().items().get(project.getId());
+        ProjectView view = ctx.indexed().projects().get(project.getId());
+        ProjectPeriodItems items = view.items();
         DayRange range = ctx.period().current();
-        ProjectVcs vcs = projectVcs(ctx, project.getId());
-        List<WorkItem> units = items.doneUnitsIn(range);
+        List<WorkItem> units = within(view.units(), range);
         Double sp = items.effort().scope().totalEffort(units);
-        BigDecimal cost = ctx.allocatedByProject().getOrDefault(project.getId(), BigDecimal.ZERO);
+        BigDecimal cost = ctx.indexed().allocatedIn(true).getOrDefault(project.getId(), BigDecimal.ZERO);
         CurrentSprint current = currentSprint(items, ctx.today());
         Double gap = current == null || current.elapsedPct() == null || current.progressPct() == null ? null
                 : current.elapsedPct() - current.progressPct();
         Double lastPredictability = lastPastSprint(items, ctx.today()).map(SprintFigures::predictabilityPct).orElse(null);
-        Double cfr = cfr(ctx, vcs.changes(), DeliveryMetricsService.completedItems(items.all()), range);
-        int stale = staleCount(ctx, vcs.pullRequests());
-        List<VcsPullRequest> merged = filter(vcs.pullRequests(), pr -> range.contains(pr.getMergedAt()));
+        Double cfr = cfr(ctx, view.changes(), view.completed(), range);
+        int stale = staleCount(ctx, view.pullRequests());
+        List<VcsPullRequest> merged = filter(view.pullRequests(), pr -> range.contains(pr.getMergedAt()));
         return new PortfolioRow(project.getId(), project.getName(),
                 items.latestSprint().map(Sprint::getTeamName).orElse(null),
                 project.getMemberIds() == null ? 0 : project.getMemberIds().size(), current, gap, lastPredictability,
                 DashboardV2Views.averageOrNull(items.sprintsEndingIn(range).stream()
                         .map(SprintFigures::predictabilityPct).toList()),
-                doneOfThroughputTypes(items, range).size(), sp,
+                count(view.doneThroughput(), range), sp,
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()), cfr,
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()), stale, cost,
-                perSp(cost, sp), ctx.buckets().buckets().stream()
-                .map(b -> doneOfThroughputTypes(items, b.range()).size()).toList(),
+                perSp(cost, sp), bucketCounts(ctx, view.doneThroughput()),
                 PortfolioHealth.of(lastPredictability, stale, cfr, gap));
     }
 
@@ -264,30 +285,77 @@ public class GetOrganizationDashboardV2UseCase {
                 && StalePullRequestPolicy.isStale(pr, ctx.now())).count();
     }
 
-    private static ProjectVcs projectVcs(Context ctx, String projectId) {
-        Set<String> repositoryIds = ctx.snapshot().vcs().repositoryIdsOf(projectId);
-        List<VcsPullRequest> prs = filter(ctx.snapshot().vcs().pullRequests(),
-                pr -> repositoryIds.contains(pr.getRepositoryId()));
-        Set<String> prIds = prs.stream().map(VcsPullRequest::getId).collect(Collectors.toSet());
-        return new ProjectVcs(prs, filter(ctx.snapshot().vcs().changes(), c -> prIds.contains(c.id())));
+    /** Items completed per bucket, in one pass over the items (buckets are contiguous and ordered). */
+    private static List<Integer> bucketCounts(Context ctx, List<WorkItem> done) {
+        List<Bucket> buckets = ctx.buckets().buckets();
+        int[] counts = new int[buckets.size()];
+        for (WorkItem item : done) {
+            int index = bucketOf(buckets, item.getCompletedAt());
+            if (index >= 0) counts[index]++;
+        }
+        List<Integer> result = new ArrayList<>(counts.length);
+        for (int c : counts) result.add(c);
+        return result;
+    }
+
+    private static int bucketOf(List<Bucket> buckets, Instant at) {
+        return at == null ? -1 : bucketOfDay(buckets, SprintWindow.toDay(at));
+    }
+
+    /** The bucket holding {@code day} (buckets are contiguous and ordered): binary search, -1 outside. */
+    private static int bucketOfDay(List<Bucket> buckets, LocalDate day) {
+        if (day == null || buckets.isEmpty() || day.isBefore(buckets.getFirst().range().first())
+                || day.isAfter(buckets.getLast().range().last())) return -1;
+        int low = 0;
+        int high = buckets.size() - 1;
+        while (low <= high) {
+            int mid = (low + high) >>> 1;
+            DayRange range = buckets.get(mid).range();
+            if (day.isBefore(range.first())) high = mid - 1;
+            else if (day.isAfter(range.last())) low = mid + 1;
+            else return mid;
+        }
+        return -1;
+    }
+
+    /** Values grouped by bucket in one pass ({@code at} gives each value's instant). */
+    private static <T> List<List<T>> byBucket(Context ctx, Collection<T> values, Function<T, Instant> at) {
+        List<Bucket> buckets = ctx.buckets().buckets();
+        List<List<T>> groups = new ArrayList<>(buckets.size());
+        for (int i = 0; i < buckets.size(); i++) groups.add(new ArrayList<>());
+        for (T value : values) {
+            int index = bucketOf(buckets, at.apply(value));
+            if (index >= 0) groups.get(index).add(value);
+        }
+        return groups;
     }
 
     // ── delivery / engineering ──
 
     private static Delivery delivery(Context ctx) {
-        Snapshot s = ctx.snapshot();
-        List<ThroughputByProjectRow> byProject = ctx.buckets().buckets().stream().map(b -> {
+        Indexed ix = ctx.indexed();
+        Map<String, List<Integer>> perProject = new LinkedHashMap<>();
+        ix.projects().forEach((id, view) -> perProject.put(id, bucketCounts(ctx, view.doneThroughput())));
+        List<Bucket> buckets = ctx.buckets().buckets();
+        List<ThroughputByProjectRow> byProject = new ArrayList<>();
+        for (int i = 0; i < buckets.size(); i++) {
             Map<String, Integer> counts = new LinkedHashMap<>();
-            s.items().forEach((id, items) -> counts.put(id, doneOfThroughputTypes(items, b.range()).size()));
-            return new ThroughputByProjectRow(b.start(), b.label(), counts);
-        }).toList();
-        List<FlowRow> flow = ctx.buckets().buckets().stream().map(b -> {
-            List<WorkItem> units = units(ctx, b.range());
-            return new FlowRow(b.start(), b.label(), Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
-                    Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()));
-        }).toList();
-        List<WorkItem> done = s.items().values().stream()
-                .flatMap(i -> doneOfThroughputTypes(i, ctx.period().current()).stream()).toList();
+            int index = i;
+            perProject.forEach((id, list) -> counts.put(id, list.get(index)));
+            byProject.add(new ThroughputByProjectRow(buckets.get(i).start(), buckets.get(i).label(), counts));
+        }
+        List<List<WorkItem>> unitsByBucket = byBucket(ctx,
+                ix.projects().values().stream().flatMap(p -> p.units().stream()).toList(), WorkItem::getCompletedAt);
+        List<FlowRow> flow = new ArrayList<>();
+        for (int i = 0; i < buckets.size(); i++) {
+            List<WorkItem> units = unitsByBucket.get(i);
+            flow.add(new FlowRow(buckets.get(i).start(), buckets.get(i).label(),
+                    Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
+                    Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList())));
+        }
+        DayRange current = ctx.period().current();
+        List<WorkItem> done = ix.projects().values().stream()
+                .flatMap(p -> within(p.doneThroughput(), current).stream()).toList();
         List<TypeCount> typeMix = THROUGHPUT_TYPES.stream().map(t -> new TypeCount(t.name(),
                 (int) done.stream().filter(i -> i.getResolvedType() == t).count())).toList();
         return new Delivery(byProject, flow, typeMix);
@@ -295,12 +363,16 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static Engineering engineering(Context ctx) {
         List<VcsPullRequest> prs = ctx.snapshot().vcs().pullRequests();
-        List<VcsCommit> commits = ctx.snapshot().vcs().commits();
-        List<ActivityRow> activity = ctx.buckets().buckets().stream().map(b -> new ActivityRow(b.start(), b.label(),
-                (int) commits.stream().filter(c -> b.range().contains(c.getAuthoredAt())).count(),
-                (int) prs.stream().filter(pr -> b.range().contains(pr.getCreatedAt())).count(),
-                (int) prs.stream().filter(pr -> b.range().contains(pr.getMergedAt())).count(),
-                timeToFirstReview(ctx, prs, b.range()))).toList();
+        List<Bucket> buckets = ctx.buckets().buckets();
+        List<List<VcsPullRequest>> created = byBucket(ctx, prs, VcsPullRequest::getCreatedAt);
+        List<List<VcsPullRequest>> merged = byBucket(ctx, prs, VcsPullRequest::getMergedAt);
+        List<ActivityRow> activity = new ArrayList<>();
+        for (int i = 0; i < buckets.size(); i++) {
+            Bucket b = buckets.get(i);
+            activity.add(new ActivityRow(b.start(), b.label(), (int) ctx.snapshot().vcs().commitsIn(b.range()),
+                    created.get(i).size(), merged.get(i).size(),
+                    ReviewMetricsPolicy.aggregate(created.get(i), ctx.now()).timeToFirstReview()));
+        }
         List<RepoRow> repos = ctx.snapshot().vcs().repositories().stream().filter(r -> !r.isPendingFirstSync())
                 .map(r -> repoRow(ctx, r))
                 .sorted(Comparator.comparing(RepoRow::cfrPct, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -311,23 +383,14 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static RepoRow repoRow(Context ctx, VcsRepository repo) {
         DayRange range = ctx.period().current();
-        List<VcsPullRequest> prs = filter(ctx.snapshot().vcs().pullRequests(), pr -> repo.getId().equals(pr.getRepositoryId()));
-        Set<String> prIds = prs.stream().map(VcsPullRequest::getId).collect(Collectors.toSet());
+        List<VcsPullRequest> prs = ctx.indexed().prsByRepo().getOrDefault(repo.getId(), List.of());
         List<VcsPullRequest> open = filter(prs, pr -> pr.getStatus() == PullRequestStatus.OPEN);
         List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAt()));
         return new RepoRow(repo.getId(), repoName(repo), repo.getProvider() != null ? repo.getProvider().name() : null,
-                projectNamesOf(ctx, repo.getId()),
-                cfr(ctx, filter(ctx.snapshot().vcs().changes(), c -> prIds.contains(c.id())), List.of(), range),
+                ctx.indexed().projectNamesByRepo().getOrDefault(repo.getId(), ""),
+                cfr(ctx, ctx.indexed().changesByRepo().getOrDefault(repo.getId(), List.of()), List.of(), range),
                 open.size(), staleCount(ctx, open),
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()));
-    }
-
-    private static String projectNamesOf(Context ctx, String repositoryId) {
-        Set<String> projectIds = ctx.snapshot().vcs().bindings().stream()
-                .filter(b -> repositoryId.equals(b.getRepositoryId())).map(VcsRepoBinding::getProjectId)
-                .collect(Collectors.toSet());
-        return ctx.snapshot().projects().stream().filter(p -> projectIds.contains(p.getId())).map(Project::getName)
-                .collect(Collectors.joining(PROJECT_SEPARATOR));
     }
 
     private static String repoName(VcsRepository repo) {
@@ -336,41 +399,16 @@ public class GetOrganizationDashboardV2UseCase {
 
     // ── AI ──
 
-    /**
-     * Cost of the current period allocated to each visible project: for every validated allocation,
-     * the cost of the records it covers × the sum of its split percentages pointing to the project's
-     * work items (the basis of {@code ProjectAiCostCalculator}).
-     */
-    private static Map<String, BigDecimal> allocatedByProject(Snapshot s) {
-        Map<String, BigDecimal> byProject = new HashMap<>();
-        for (AiUsageAllocation allocation : s.ai().allocations()) {
-            BigDecimal basis = allocation.getAiUsageIds() == null ? BigDecimal.ZERO : allocation.getAiUsageIds().stream()
-                    .map(id -> s.ai().usageById().get(id)).filter(u -> u != null && u.getCostUsd() != null)
-                    .map(AIUsage::getCostUsd).reduce(BigDecimal.ZERO, BigDecimal::add);
-            s.items().forEach((projectId, items) -> {
-                BigDecimal share = share(allocation, items.ids());
-                if (share.signum() > 0) byProject.merge(projectId, basis.multiply(share), BigDecimal::add);
-            });
-        }
-        return byProject;
-    }
-
-    private static BigDecimal share(AiUsageAllocation allocation, Set<String> workItemIds) {
-        if (allocation.getSplits() == null) return BigDecimal.ZERO;
-        return allocation.getSplits().stream()
-                .filter(split -> split.getPercentage() != null && workItemIds.contains(split.getWorkItemId()))
-                .map(AllocationSplit::getPercentage).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
     private static Ai ai(Context ctx) {
         Snapshot s = ctx.snapshot();
         List<AIUsage> usage = usageIn(ctx, ctx.period().current());
-        List<String> models = byKey(usage, AIUsage::getModel).entrySet().stream()
-                .sorted(Map.Entry.<String, List<AIUsage>>comparingByValue(Comparator.comparing(GetOrganizationDashboardV2UseCase::cost)).reversed())
+        Map<String, List<AIUsage>> byModelRecords = byKey(usage, AIUsage::getModel);
+        List<String> models = byModelRecords.entrySet().stream()
+                .sorted(Map.Entry.<String, List<AIUsage>>comparingByValue(
+                        Comparator.comparing(GetOrganizationDashboardV2UseCase::cost)).reversed())
                 .map(Map.Entry::getKey).toList();
-        List<CostBucket> costByBucket = ctx.buckets().buckets().stream().map(b -> costBucket(usage, models, b)).toList();
         List<AiModel> byModel = models.stream().map(m -> {
-            List<AIUsage> of = filter(usage, u -> m.equals(u.getModel()));
+            List<AIUsage> of = byModelRecords.get(m);
             return new AiModel(m, of.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(), cost(of),
                     of.stream().mapToLong(AIUsage::getInteractions).sum());
         }).toList();
@@ -381,24 +419,43 @@ public class GetOrganizationDashboardV2UseCase {
                 usage.stream().mapToLong(AIUsage::getOutputTokens).sum());
         Adoption adoption = new Adoption((int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct()
                 .count(), s.people().size(), connectedPeople(s));
-        return new Ai(models, costByBucket, byModel, costByProject(ctx, usage), byEditor, tokens, adoption,
-                fluency(s), subscription(ctx, usage));
+        return new Ai(models, costByBucket(ctx, usage, models), byModel, costByProject(ctx, usage), byEditor, tokens,
+                adoption, fluency(s), subscription(ctx, usage));
     }
 
-    private static CostBucket costBucket(List<AIUsage> usage, List<String> models, Bucket bucket) {
-        Map<String, BigDecimal> byModel = new LinkedHashMap<>();
-        models.forEach(m -> byModel.put(m, cost(filter(usage,
-                u -> m.equals(u.getModel()) && bucket.range().containsDay(u.getDay())))));
-        return new CostBucket(bucket.start(), bucket.label(), byModel);
+    /** Cost per model and bucket, in one pass over the records. */
+    private static List<CostBucket> costByBucket(Context ctx, List<AIUsage> usage, List<String> models) {
+        List<Bucket> buckets = ctx.buckets().buckets();
+        List<Map<String, BigDecimal>> rows = new ArrayList<>();
+        for (int i = 0; i < buckets.size(); i++) {
+            Map<String, BigDecimal> row = new LinkedHashMap<>();
+            models.forEach(m -> row.put(m, BigDecimal.ZERO));
+            rows.add(row);
+        }
+        for (AIUsage u : usage) {
+            if (u.getModel() == null || u.getCostUsd() == null) continue;
+            int index = bucketOfDay(buckets, u.getDay());
+            if (index >= 0) rows.get(index).merge(u.getModel(), u.getCostUsd(), BigDecimal::add);
+        }
+        List<CostBucket> result = new ArrayList<>();
+        for (int i = 0; i < buckets.size(); i++) {
+            result.add(new CostBucket(buckets.get(i).start(), buckets.get(i).label(), rows.get(i)));
+        }
+        return result;
     }
 
-    /** Allocated to each visible project, then the people's cost no allocation claimed ({@code allocationId} absent). */
+    /**
+     * Allocated to each visible project, then the people's cost no allocation claimed
+     * ({@code allocationId} absent) — {@code null} for a partial caller, so that no subtraction
+     * isolates what the people spent on projects the caller does not see.
+     */
     private static List<ProjectCost> costByProject(Context ctx, List<AIUsage> usage) {
-        List<ProjectCost> rows = new java.util.ArrayList<>(ctx.snapshot().projects().stream()
-                .map(p -> new ProjectCost(p.getId(), p.getName(),
-                        ctx.allocatedByProject().getOrDefault(p.getId(), BigDecimal.ZERO)))
+        Map<String, BigDecimal> allocated = ctx.indexed().allocatedIn(true);
+        List<ProjectCost> rows = new ArrayList<>(ctx.snapshot().projects().stream()
+                .map(p -> new ProjectCost(p.getId(), p.getName(), allocated.getOrDefault(p.getId(), BigDecimal.ZERO)))
                 .toList());
-        rows.add(new ProjectCost(null, UNALLOCATED_NAME, cost(filter(usage, u -> u.getAllocationId() == null))));
+        rows.add(new ProjectCost(null, UNALLOCATED_NAME, ctx.snapshot().seesAll()
+                ? cost(filter(usage, u -> u.getAllocationId() == null)) : null));
         return rows;
     }
 
@@ -430,8 +487,9 @@ public class GetOrganizationDashboardV2UseCase {
         return new Subscription(consumption, seats, perUser, above);
     }
 
+    /** The people's usage of the current period (the read is already bounded to it). */
     private static List<AIUsage> usageIn(Context ctx, DayRange range) {
-        return filter(ctx.snapshot().ai().usage(), u -> range.containsDay(u.getDay()));
+        return ctx.snapshot().ai().usage();
     }
 
     // ── integrations ──
@@ -440,37 +498,45 @@ public class GetOrganizationDashboardV2UseCase {
         Snapshot s = ctx.snapshot();
         ConnectionCard azure = s.azureConnection().map(c -> new ConnectionCard(
                 c.getStatus() != null ? c.getStatus().name() : null, c.getLastSuccessAt(), c.getConsecutiveFailures(),
-                lastError(c.getLastErrorCode(), c.getLastErrorMessage()))).orElse(disconnected());
+                error(c.getLastErrorCode()))).orElse(disconnected());
         ConnectionCard github = s.githubConnection().map(c -> new ConnectionCard(
                 c.getStatus() != null ? c.getStatus().name() : null, c.getLastSuccessAt(), c.getConsecutiveFailures(),
-                lastError(c.getLastErrorCode(), c.getLastErrorMessage()))).orElse(disconnected());
-        AiConnectorCard aiConnector = new AiConnectorCard(
-                (int) s.connectorTokens().stream().filter(ConnectorToken::isActive).count(),
+                error(c.getLastErrorCode()))).orElse(disconnected());
+        AiConnectorCard aiConnector = new AiConnectorCard(activeTokens(s),
                 s.ai().usage().stream().map(AIUsage::getUploadedAt).filter(Objects::nonNull)
                         .max(Comparator.naturalOrder()).orElse(null));
-        return new Integrations(azure, github, aiConnector, syncByDay(s.syncLogs(), ctx.today()), coverage(ctx),
-                sources(s));
+        return new Integrations(azure, github, aiConnector, syncByDay(s.syncRuns(), ctx.today()), coverage(ctx),
+                sources(ctx));
+    }
+
+    /** Active tokens of the organization for a caller who sees everything; of the people otherwise. */
+    private static int activeTokens(Snapshot s) {
+        return (int) s.connectorTokens().stream().filter(ConnectorToken::isActive)
+                .filter(t -> s.seesAll() || (t.getUserId() != null && s.people().contains(t.getUserId())))
+                .count();
     }
 
     private static ConnectionCard disconnected() {
-        return new ConnectionCard("DISCONNECTED", null, null, null);
+        return new ConnectionCard(DISCONNECTED, null, null, null);
     }
 
-    private static LastError lastError(String code, String message) {
-        return code == null ? null : new LastError(code, message, null);
+    private static ConnectionError error(String code) {
+        return code == null ? null : new ConnectionError(code, null);
     }
 
-    private static List<SyncOutcomeDay> syncByDay(List<IntegrationSyncLog> logs, LocalDate today) {
-        List<IntegrationSyncLog> runs = filter(logs, SyncRunsSummary::isRun);
+    /** Leaf runs per day and result (the read already kept leaf operations only; RUNNING is no result). */
+    private static List<SyncOutcomeDay> syncByDay(List<SyncRunCount> runs, LocalDate today) {
+        Map<LocalDate, List<SyncRunCount>> byDay = runs.stream().filter(r -> r.day() != null)
+                .collect(Collectors.groupingBy(SyncRunCount::day));
         return SyncRunsSummary.days(today).stream().map(day -> {
-            List<IntegrationSyncLog> ofDay = filter(runs, l -> SyncRunsSummary.dayOf(l).equals(day));
+            List<SyncRunCount> ofDay = byDay.getOrDefault(day, List.of());
             return new SyncOutcomeDay(day.toString(), DashboardV2Views.label(day), countStatus(ofDay, SyncStatus.SUCCESS),
                     countStatus(ofDay, SyncStatus.PARTIAL), countStatus(ofDay, SyncStatus.FAILED));
         }).toList();
     }
 
-    private static int countStatus(List<IntegrationSyncLog> logs, SyncStatus status) {
-        return (int) logs.stream().filter(l -> l.getStatus() == status).count();
+    private static int countStatus(List<SyncRunCount> runs, SyncStatus status) {
+        return (int) runs.stream().filter(r -> r.status() == status).mapToLong(SyncRunCount::count).sum();
     }
 
     private static Coverage coverage(Context ctx) {
@@ -500,20 +566,26 @@ public class GetOrganizationDashboardV2UseCase {
      */
     private static Double aiDaysAllocated(Context ctx) {
         Snapshot s = ctx.snapshot();
+        DayRange current = ctx.period().current();
         Set<String> validated = s.ai().allocations().stream()
-                .filter(a -> a.getUserId() != null && a.getDay() != null && s.people().contains(a.getUserId()))
+                .filter(a -> a.getUserId() != null && current.containsDay(a.getDay()) && s.people().contains(a.getUserId()))
                 .map(a -> DashboardV2Views.personDay(a.getUserId(), a.getDay())).collect(Collectors.toSet());
-        AllocationSummary summary = DashboardV2Views.allocationSummary(usageIn(ctx, ctx.period().current()), validated);
+        AllocationSummary summary = DashboardV2Views.allocationSummary(usageIn(ctx, current), validated);
         long total = (long) summary.validatedDays() + summary.pendingDays() + summary.unallocatedDays();
         return Ratios.percent((long) summary.validatedDays() + summary.pendingDays(), total);
     }
 
-    private static List<ProjectSources> sources(Snapshot s) {
+    private static List<ProjectSources> sources(Context ctx) {
+        Snapshot s = ctx.snapshot();
         Map<String, VcsRepository> repositories = s.vcs().repositories().stream().filter(r -> r.getId() != null)
                 .collect(Collectors.toMap(VcsRepository::getId, Function.identity(), (a, b) -> a));
+        Map<String, List<VcsRepoBinding>> bindings = s.vcs().bindings().stream()
+                .collect(Collectors.groupingBy(VcsRepoBinding::getProjectId));
+        Map<String, andromeda.sei.ms.feature.azure.domain.AzureProjectBinding> azureByProject = s.azureBindings().stream()
+                .collect(Collectors.toMap(b -> b.getProjectId(), Function.identity(), (a, b) -> a));
         return s.projects().stream().map(p -> {
-            var azure = s.azureBindings().stream().filter(b -> p.getId().equals(b.getProjectId())).findFirst();
-            List<RepoSource> repos = s.vcs().bindings().stream().filter(b -> p.getId().equals(b.getProjectId()))
+            var azure = Optional.ofNullable(azureByProject.get(p.getId()));
+            List<RepoSource> repos = bindings.getOrDefault(p.getId(), List.of()).stream()
                     .map(b -> {
                         VcsRepository repo = repositories.get(b.getRepositoryId());
                         return new RepoSource(b.getRepositoryId(), repo != null ? repoName(repo) : b.getRepositoryId(),
@@ -532,9 +604,21 @@ public class GetOrganizationDashboardV2UseCase {
         return usage.stream().map(AIUsage::getCostUsd).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private static BigDecimal sum(Collection<BigDecimal> values) {
+        return values.stream().filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private static BigDecimal perSp(BigDecimal cost, Double delivered) {
         if (cost == null || delivered == null || delivered <= 0) return null;
         return cost.divide(BigDecimal.valueOf(delivered), MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private static int count(List<WorkItem> items, DayRange range) {
+        return (int) items.stream().filter(i -> range.contains(i.getCompletedAt())).count();
+    }
+
+    private static List<WorkItem> within(List<WorkItem> items, DayRange range) {
+        return filter(items, i -> range.contains(i.getCompletedAt()));
     }
 
     /** Records grouped by a key, nulls left out, in first-seen order. */
@@ -551,8 +635,101 @@ public class GetOrganizationDashboardV2UseCase {
         return values.stream().filter(predicate).toList();
     }
 
-    private record ProjectVcs(List<VcsPullRequest> pullRequests, List<MergedChange> changes) {}
+    /**
+     * One visible project, sliced once: its throughput-type items done (with a completion date), its
+     * deliverable units done (epics and features out), its completed items for the delivery metrics,
+     * and the pull requests and merged changes of its repositories.
+     */
+    record ProjectView(ProjectPeriodItems items, List<WorkItem> doneThroughput, List<WorkItem> units,
+                       List<CompletedWorkItem> completed, List<VcsPullRequest> pullRequests, List<MergedChange> changes) {}
+
+    /**
+     * Everything the figures look up, built once in linear time: the project views, the pull requests
+     * and merged changes by repository, the names of the visible projects bound to each repository,
+     * all completed items, and the cost allocated to each project in each period.
+     */
+    record Indexed(Map<String, ProjectView> projects, Map<String, List<VcsPullRequest>> prsByRepo,
+                   Map<String, List<MergedChange>> changesByRepo, Map<String, String> projectNamesByRepo,
+                   List<CompletedWorkItem> completed, Map<String, BigDecimal> allocatedCurrent,
+                   Map<String, BigDecimal> allocatedPrevious) {
+
+        static Indexed of(Snapshot s, DashboardPeriod period) {
+            Map<String, List<VcsPullRequest>> prsByRepo = s.vcs().pullRequests().stream()
+                    .filter(pr -> pr.getRepositoryId() != null)
+                    .collect(Collectors.groupingBy(VcsPullRequest::getRepositoryId));
+            Map<String, String> repoOfPr = new HashMap<>();
+            s.vcs().pullRequests().forEach(pr -> repoOfPr.put(pr.getId(), pr.getRepositoryId()));
+            Map<String, List<MergedChange>> changesByRepo = s.vcs().changes().stream()
+                    .filter(c -> repoOfPr.get(c.id()) != null)
+                    .collect(Collectors.groupingBy(c -> repoOfPr.get(c.id())));
+            Map<String, ProjectView> projects = new LinkedHashMap<>();
+            s.items().forEach((projectId, items) -> projects.put(projectId,
+                    view(items, s.vcs().repositoryIdsOf(projectId), prsByRepo, changesByRepo)));
+            Map<String, String> names = s.projects().stream().collect(Collectors.toMap(Project::getId,
+                    p -> p.getName() == null ? "" : p.getName(), (a, b) -> a));
+            Map<String, String> projectNamesByRepo = s.vcs().bindings().stream()
+                    .collect(Collectors.groupingBy(VcsRepoBinding::getRepositoryId, Collectors.mapping(
+                            b -> names.getOrDefault(b.getProjectId(), ""),
+                            Collectors.collectingAndThen(Collectors.toCollection(java.util.TreeSet::new),
+                                    set -> String.join(PROJECT_SEPARATOR, set)))));
+            List<CompletedWorkItem> completed = projects.values().stream().flatMap(p -> p.completed().stream()).toList();
+            return new Indexed(projects, prsByRepo, changesByRepo, projectNamesByRepo, completed,
+                    allocated(s, period.current()), allocated(s, period.previous()));
+        }
+
+        private static ProjectView view(ProjectPeriodItems items, Set<String> repositoryIds,
+                                        Map<String, List<VcsPullRequest>> prsByRepo,
+                                        Map<String, List<MergedChange>> changesByRepo) {
+            List<WorkItem> doneThroughput = items.all().stream().filter(i -> i.getResolvedStatus() == WorkItem.ResolvedStatus.DONE
+                    && THROUGHPUT_TYPES.contains(i.getResolvedType()) && i.getCompletedAt() != null).toList();
+            List<WorkItem> units = items.effort().doneUnits().stream()
+                    .filter(u -> !ProjectPeriodItems.isContainer(u) && u.getCompletedAt() != null).toList();
+            List<VcsPullRequest> prs = repositoryIds.stream().flatMap(r -> prsByRepo.getOrDefault(r, List.of()).stream())
+                    .toList();
+            List<MergedChange> changes = repositoryIds.stream()
+                    .flatMap(r -> changesByRepo.getOrDefault(r, List.of()).stream()).toList();
+            return new ProjectView(items, doneThroughput, units, DeliveryMetricsService.completedItems(items.all()), prs,
+                    changes);
+        }
+
+        /**
+         * Cost of the range allocated to each visible project: for every validated allocation of the
+         * range, the cost of the records it covers × each split percentage, added to the project that
+         * owns the split's work item ({@code workItemId → projectId}, built once). Linear in
+         * allocations × splits.
+         */
+        static Map<String, BigDecimal> allocated(Snapshot s, DayRange range) {
+            Map<String, BigDecimal> byProject = new HashMap<>();
+            Map<String, BigDecimal> costs = s.ai().coveredCosts();
+            for (AiUsageAllocation allocation : s.ai().allocations()) {
+                if (!range.containsDay(allocation.getDay()) || allocation.getSplits() == null) continue;
+                BigDecimal basis = BigDecimal.ZERO;
+                if (allocation.getAiUsageIds() != null) {
+                    for (String id : allocation.getAiUsageIds()) {
+                        BigDecimal cost = costs.get(id);
+                        if (cost != null) basis = basis.add(cost);
+                    }
+                }
+                if (basis.signum() == 0) continue;
+                for (AllocationSplit split : allocation.getSplits()) {
+                    String projectId = split.getWorkItemId() == null ? null : s.itemProject().get(split.getWorkItemId());
+                    if (projectId != null && split.getPercentage() != null) {
+                        byProject.merge(projectId, basis.multiply(split.getPercentage()), BigDecimal::add);
+                    }
+                }
+            }
+            return byProject;
+        }
+
+        Map<String, BigDecimal> allocatedIn(boolean current) {
+            return current ? allocatedCurrent : allocatedPrevious;
+        }
+
+        List<WorkItem> unitsIn(DayRange range) {
+            return projects.values().stream().flatMap(p -> within(p.units(), range).stream()).toList();
+        }
+    }
 
     private record Context(Snapshot snapshot, DashboardPeriod period, PeriodBuckets buckets, Instant now,
-                           LocalDate today, RemediationRules rules, Map<String, BigDecimal> allocatedByProject) {}
+                           LocalDate today, RemediationRules rules, Indexed indexed) {}
 }

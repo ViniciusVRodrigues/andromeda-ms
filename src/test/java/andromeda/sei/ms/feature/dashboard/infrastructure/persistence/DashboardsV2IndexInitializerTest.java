@@ -1,7 +1,7 @@
 package andromeda.sei.ms.feature.dashboard.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.integration.infrastructure.persistence.IntegrationSyncLogDocument;
-import andromeda.sei.ms.feature.workitem.infrastructure.persistence.WorkItemDocument;
+import andromeda.sei.ms.feature.workitem.infrastructure.persistence.SprintDocument;
 import org.bson.Document;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +47,7 @@ class DashboardsV2IndexInitializerTest {
             assertThat(index.getIndexKeys().keySet().iterator().next()).isEqualTo("organizationId");
             assertThat(index.getIndexOptions().containsKey("unique")).isFalse();
         }
-        verify(mongoTemplate, atLeastOnce()).indexOps(WorkItemDocument.class);
+        verify(mongoTemplate, atLeastOnce()).indexOps(SprintDocument.class);
         assertThat(captor.getAllValues()).extracting(IndexDefinition::getIndexKeys).contains(
                 new Document("organizationId", 1).append("integration", 1).append("startedAt", -1));
     }

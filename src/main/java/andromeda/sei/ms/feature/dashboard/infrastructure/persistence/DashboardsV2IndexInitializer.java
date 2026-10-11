@@ -1,12 +1,9 @@
 package andromeda.sei.ms.feature.dashboard.infrastructure.persistence;
 
-import andromeda.sei.ms.feature.aiusage.infrastructure.persistence.AiUsageDocument;
 import andromeda.sei.ms.feature.connector.infrastructure.persistence.ConnectorTokenDocument;
 import andromeda.sei.ms.feature.integration.infrastructure.persistence.IntegrationSyncLogDocument;
 import andromeda.sei.ms.feature.vcs.infrastructure.persistence.VcsCommitDocument;
-import andromeda.sei.ms.feature.vcs.infrastructure.persistence.VcsPullRequestDocument;
 import andromeda.sei.ms.feature.workitem.infrastructure.persistence.SprintDocument;
-import andromeda.sei.ms.feature.workitem.infrastructure.persistence.WorkItemDocument;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -21,7 +18,8 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Creates the indexes the organization and integrations dashboards v2 read through
+ * Creates the indexes the organization and integrations dashboards v2 read through that
+ * {@code DashboardQueryIndexInitializer} (the project dashboards' ones) does not already create
  * (dashboards-customizaveis 1.11/1.12, task 1.14). This application does not apply the
  * {@code @CompoundIndex} declarations, so each one here has the keys of a declaration that already
  * exists on the document, non-unique and without a name (MongoDB derives the same default name the
@@ -42,11 +40,8 @@ public class DashboardsV2IndexInitializer implements ApplicationRunner {
 
     /** Collection document class and keys (ascending unless {@code -startedAt}). */
     static final List<IndexSpec> INDEXES = List.of(
-            new IndexSpec(WorkItemDocument.class, List.of(ORGANIZATION_ID, "projectId")),
             new IndexSpec(SprintDocument.class, List.of(ORGANIZATION_ID, "projectId")),
-            new IndexSpec(VcsCommitDocument.class, List.of(ORGANIZATION_ID, "repositoryId", "authoredAt")),
-            new IndexSpec(VcsPullRequestDocument.class, List.of(ORGANIZATION_ID, "repositoryId", "status", "mergedAt")),
-            new IndexSpec(AiUsageDocument.class, List.of(ORGANIZATION_ID, "userId", "day")),
+            new IndexSpec(VcsCommitDocument.class, List.of(ORGANIZATION_ID, "repositoryId", "active", "authoredAt")),
             new IndexSpec(IntegrationSyncLogDocument.class, List.of(ORGANIZATION_ID, "integration", "-startedAt")),
             new IndexSpec(IntegrationSyncLogDocument.class, List.of(ORGANIZATION_ID, "projectId", "status", "operation")),
             new IndexSpec(ConnectorTokenDocument.class, List.of(ORGANIZATION_ID, "active")));

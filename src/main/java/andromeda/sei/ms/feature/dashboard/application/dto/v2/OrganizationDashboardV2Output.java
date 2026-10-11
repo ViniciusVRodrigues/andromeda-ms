@@ -16,9 +16,16 @@ import java.util.Map;
  * organization when the caller sees all of its active projects. The AI blocks ({@code kpis.aiCostUsd},
  * {@code aiTokens}, {@code activeAiUsers}, {@code ai.*}) and the people coverage are the usage and
  * links of those people. {@code ai.costByProject} has the cost allocated (validated) to each visible
- * project plus a row ({@code projectId null}) with the people's cost no allocation claimed yet; the
- * rows may add up to less than {@code kpis.aiCostUsd} when part of it went to projects the caller
- * does not see.
+ * project plus a row ({@code projectId null}) with the people's cost no allocation claimed yet.
+ *
+ * <p><b>AI cost:</b> {@code kpis.aiCostUsd} (and {@code previous}) is, for every caller, the cost
+ * allocated (validated) to the visible projects — one meaning, so {@code aiCostPerSp} is comparable.
+ * <b>Partial caller</b> (one who does not see every active project): the unallocated row's
+ * {@code costUsd} is {@code null}, so no subtraction isolates what the people spent on hidden
+ * projects, and {@code integrations.aiConnector.activeTokens} counts only the people's tokens. The
+ * usage figures ({@code ai.costByBucket}, {@code byModel}, {@code tokens},
+ * {@code subscription.consumptionUsd}, {@code kpis.aiTokens}) stay the people's whole usage for every
+ * caller, as the project overview's consumption does.
  *
  * <p>Series have one row per bucket of {@code period.granularity}, even without data: counts 0,
  * ratios and durations {@code null}.
@@ -95,7 +102,7 @@ public record OrganizationDashboardV2Output(
     /** The people's AI cost per model in the bucket. */
     public record CostBucket(String start, String label, Map<String, BigDecimal> byModel) {}
 
-    /** {@code projectId null}: "Não alocado a work items". */
+    /** {@code projectId null}: "Não alocado a work items" ({@code costUsd null} for a partial caller). */
     public record ProjectCost(String projectId, String name, BigDecimal costUsd) {}
 
     public record EditorUse(String editor, long interactions) {}
@@ -124,11 +131,20 @@ public record OrganizationDashboardV2Output(
     public record Integrations(ConnectionCard azure, ConnectionCard github, AiConnectorCard aiConnector,
                                List<SyncOutcomeDay> syncByDay, Coverage coverage, List<ProjectSources> projects) {}
 
-    /** {@code status} {@code DISCONNECTED} when there is no connection; {@code lastError.at} is {@code null}. */
+    /**
+     * {@code status} {@code DISCONNECTED} when there is no connection. The last error carries only its
+     * code here — the message stays in {@code /integrations}, which requires the configuration codes.
+     */
     public record ConnectionCard(String status, Instant lastSuccessAt, Integer consecutiveFailures,
-                                 IntegrationsDashboardV2Output.LastError lastError) {}
+                                 ConnectionError lastError) {}
 
-    /** Active connector tokens of the whole organization; the people's latest upload in the current or previous period. */
+    /** {@code at} is {@code null}: the connection keeps the last error, not when it happened. */
+    public record ConnectionError(String code, Instant at) {}
+
+    /**
+     * Active connector tokens — of the whole organization for a caller who sees every active project,
+     * of the people only otherwise; the people's latest upload in the current period.
+     */
     public record AiConnectorCard(int activeTokens, Instant lastUploadAt) {}
 
     public record SyncOutcomeDay(String date, String label, int success, int partial, int failed) {}

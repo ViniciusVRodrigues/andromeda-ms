@@ -101,4 +101,28 @@ public class VcsCommitRepositoryImpl implements VcsCommitRepository {
         return findByOrganizationIdAndRepositoryIdAndSha(commit.getOrganizationId(), commit.getRepositoryId(),
                 commit.getSha()).orElseThrow();
     }
+
+    /** Grouped in the database: one row per UTC day instead of every commit. */
+    @Override
+    public java.util.Map<java.time.LocalDate, Long> countByDay(String organizationId, Collection<String> repositoryIds,
+                                                              Instant from, Instant to) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return java.util.Map.of();
+        org.bson.Document match = new org.bson.Document(ORGANIZATION_ID, organizationId)
+                .append(REPOSITORY_ID, new org.bson.Document("$in", List.copyOf(repositoryIds)))
+                .append("authoredAt", new org.bson.Document("$gte", java.util.Date.from(from))
+                        .append("$lt", java.util.Date.from(to)))
+                .append("active", true);
+        org.bson.Document day = new org.bson.Document("$dateToString", new org.bson.Document("format", DAY_FORMAT)
+                .append("date", "$authoredAt").append("timezone", "UTC"));
+        List<org.bson.Document> pipeline = List.of(new org.bson.Document("$match", match),
+                new org.bson.Document("$group", new org.bson.Document("_id", day)
+                        .append("n", new org.bson.Document("$sum", 1))));
+        java.util.Map<java.time.LocalDate, Long> counts = new java.util.HashMap<>();
+        for (org.bson.Document row : mongoTemplate.getCollection(VcsCommitDocument.COLLECTION).aggregate(pipeline)) {
+            counts.put(java.time.LocalDate.parse(row.getString("_id")), ((Number) row.get("n")).longValue());
+        }
+        return counts;
+    }
+
+    static final String DAY_FORMAT = "%Y-%m-%d";
 }

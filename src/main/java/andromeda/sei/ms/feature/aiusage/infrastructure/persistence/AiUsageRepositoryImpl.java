@@ -407,4 +407,53 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         if (value instanceof java.util.Date d) return d.toInstant().atZone(java.time.ZoneOffset.UTC).toLocalDate();
         return null;
     }
+
+    @Override
+    public List<AIUsage> findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        Document filter = new Document("organizationId", organizationId)
+                .append("userId", new Document("$in", List.copyOf(userIds)))
+                .append("active", true)
+                .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
+                        .append("$lte", RawDocuments.storedDay(mongoTemplate, to)));
+        Document projection = new Document("userId", 1).append("day", 1).append("model", 1).append("editor", 1)
+                .append("inputTokens", 1).append("outputTokens", 1).append("interactions", 1).append("costUsd", 1)
+                .append("allocationId", 1).append("uploadedAt", 1);
+        List<AIUsage> usages = new ArrayList<>();
+        for (Document d : usageCollection().find(filter).projection(projection)) {
+            Object uploaded = d.get("uploadedAt");
+            usages.add(new AIUsage(RawDocuments.id(d), organizationId, d.getString("userId"), null, null,
+                    RawDocuments.day(mongoTemplate, d.get("day")), d.getString("model"), null, null, null, null,
+                    RawDocuments.longValue(d.get("inputTokens")), RawDocuments.longValue(d.get("outputTokens")),
+                    (int) RawDocuments.longValue(d.get("interactions")), d.getString("editor"),
+                    d.getString("allocationId"), RawDocuments.decimal(d.get("costUsd")),
+                    uploaded instanceof java.util.Date date ? date.toInstant() : null, true, null, null, null));
+        }
+        return usages;
+    }
+
+    /** Raw aggregation (see {@link RawDocuments}): one row per user. Index {@code {organizationId, userId, day}}. */
+    @Override
+    public List<andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals> summarizeTotalsByUser(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        List<Document> pipeline = List.of(
+                new Document("$match", new Document("organizationId", organizationId)
+                        .append("userId", new Document("$in", List.copyOf(userIds)))
+                        .append("active", true)
+                        .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
+                                .append("$lte", RawDocuments.storedDay(mongoTemplate, to)))),
+                new Document("$group", new Document("_id", "$userId")
+                        .append("cost", new Document("$sum", new Document("$ifNull", Arrays.asList("$costUsd", 0))))
+                        .append("input", new Document("$sum", "$inputTokens"))
+                        .append("output", new Document("$sum", "$outputTokens"))));
+        List<andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals> rows = new ArrayList<>();
+        for (Document row : usageCollection().aggregate(pipeline)) {
+            rows.add(new andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals(row.getString("_id"),
+                    RawDocuments.decimal(row.get("cost")), RawDocuments.longValue(row.get("input")),
+                    RawDocuments.longValue(row.get("output"))));
+        }
+        return rows;
+    }
 }

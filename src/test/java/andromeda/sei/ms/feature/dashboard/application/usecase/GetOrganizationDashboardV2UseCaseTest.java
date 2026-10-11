@@ -138,15 +138,41 @@ class GetOrganizationDashboardV2UseCaseTest {
                 user("u-loner", null, null)));
         for (String p : List.of(A, B, C)) {
             itemsByProject.put(p, new ArrayList<>());
-            when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, p)).thenReturn(itemsByProject.get(p));
+            when(workItemRepository.findMetricFieldsByOrganizationIdAndProjectId(ORG, p)).thenReturn(itemsByProject.get(p));
+            when(workItemRepository.findActiveIdsByOrganizationIdAndProjectId(ORG, p)).thenAnswer(inv -> itemsByProject
+                    .get(p).stream().map(WorkItem::getId).collect(java.util.stream.Collectors.toSet()));
         }
         when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(sprints);
-        when(aiUsageRepository.findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), any(), any()))
+        when(aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), any(), any()))
                 .thenAnswer(inv -> {
                     Collection<String> users = inv.getArgument(1);
-                    return usage.stream().filter(u -> users.contains(u.getUserId())).toList();
+                    LocalDate from = inv.getArgument(2);
+                    LocalDate to = inv.getArgument(3);
+                    return usage.stream().filter(u -> users.contains(u.getUserId()) && !u.getDay().isBefore(from)
+                            && !u.getDay().isAfter(to)).toList();
                 });
-        when(vcsReadPort.pullRequestsCreatedIn(eq(ORG), anyCollection(), any(), any())).thenReturn(prs);
+        when(vcsReadPort.pullRequestMetricFieldsTouchedSince(eq(ORG), anyCollection(), any())).thenAnswer(inv -> {
+            Collection<String> repositories = inv.getArgument(1);
+            return prs.stream().filter(pr -> repositories.contains(pr.getRepositoryId())).toList();
+        });
+        when(syncLogRepository.countByProjectDayAndStatus(eq(ORG), anyCollection(), any())).thenCallRealMethod();
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenAnswer(inv -> {
+            Collection<String> ids = inv.getArgument(1);
+            return usage.stream().filter(u -> ids.contains(u.getId())).toList();
+        });
+        when(aiUsageRepository.summarizeTotalsByUser(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv -> {
+            Collection<String> users = inv.getArgument(1);
+            LocalDate from = inv.getArgument(2);
+            LocalDate to = inv.getArgument(3);
+            return usage.stream().filter(u -> users.contains(u.getUserId()) && !u.getDay().isBefore(from)
+                            && !u.getDay().isAfter(to))
+                    .collect(java.util.stream.Collectors.groupingBy(AIUsage::getUserId)).entrySet().stream()
+                    .map(e -> new andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals(e.getKey(),
+                            e.getValue().stream().map(AIUsage::getCostUsd).reduce(BigDecimal.ZERO, BigDecimal::add),
+                            e.getValue().stream().mapToLong(AIUsage::getInputTokens).sum(),
+                            e.getValue().stream().mapToLong(AIUsage::getOutputTokens).sum()))
+                    .toList();
+        });
         when(organizationRepository.findById(ORG)).thenReturn(Optional.empty());
     }
 
@@ -172,15 +198,20 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.kpis().itemsDone()).isEqualTo(2);
         assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
         assertThat(out.kpis().people()).as("members of A ∪ B").isEqualTo(3);
-        assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("2.00");
+        // partial caller: the cost allocated to A and B (none here), never the people's whole usage
+        assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
+        assertThat(out.ai().subscription().consumptionUsd()).isEqualByComparingTo("2.00");
         assertThat(out.delivery().throughputByProject().get(2).byProject()).containsOnlyKeys(A, B);
         assertThat(out.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, null);
         assertThat(out.integrations().projects()).extracting("projectId").containsExactly(A, B);
-        verify(workItemRepository, never()).findAllByOrganizationIdAndProjectId(ORG, C);
+        verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(ORG, C);
+        verify(workItemRepository, never()).findActiveIdsByOrganizationIdAndProjectId(ORG, C);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<String>> people = ArgumentCaptor.forClass(Collection.class);
-        verify(aiUsageRepository).findByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), people.capture(), any(), any());
-        assertThat(people.getValue()).containsExactlyInAnyOrder("u-a", "u-b", "u-shared");
+        verify(aiUsageRepository, org.mockito.Mockito.atLeastOnce())
+                .findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), people.capture(), any(), any());
+        assertThat(people.getAllValues().stream().flatMap(Collection::stream).distinct().toList())
+                .containsExactlyInAnyOrder("u-a", "u-b", "u-shared");
     }
 
     @Test
@@ -203,8 +234,8 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.kpis().aiCostPerSp()).isNull();
         assertThat(out.delivery().flow()).hasSize(12);
         assertThat(out.ai().costByProject()).singleElement().extracting(ProjectCost::projectId).isNull();
-        verify(workItemRepository, never()).findAllByOrganizationIdAndProjectId(anyString(), anyString());
-        verify(aiUsageRepository, never()).findByOrganizationIdAndUserIdInAndDayBetween(any(), anyCollection(), any(), any());
+        verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(anyString(), anyString());
+        verify(aiUsageRepository, never()).findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(any(), anyCollection(), any(), any());
     }
 
     @Test
@@ -306,25 +337,62 @@ class GetOrganizationDashboardV2UseCaseTest {
     }
 
     @Test
-    void should_splitTheAllocatedCostByProject_andReportTheUnclaimedCostApart() {
+    void should_splitTheAllocatedCostByProject_andReportTheUnclaimedCostApart_toACallerWhoSeesEverything() {
         itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 4.0, "2026-08-04T10:00:00Z"));
         itemsByProject.get(B).add(done("b1", B, WorkItem.ResolvedType.STORY, 1.0, "2026-08-04T10:00:00Z"));
         usage.add(usage("au1", "u-a", "2026-08-04", "al1", "10.00", "claude"));
         usage.add(usage("au2", "u-b", "2026-08-05", null, "3.00", "claude"));
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(eq(ORG), anyCollection())).thenReturn(List.of(
-                new AiUsageAllocation("al1", ORG, "u-a", LocalDate.parse("2026-08-04"), List.of("au1"),
-                        List.of(new AllocationSplit("a1", "x", new BigDecimal("0.75")),
-                                new AllocationSplit("b1", "y", new BigDecimal("0.25"))),
-                        AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW)));
+        allocations(allocation("al1", "u-a", "2026-08-04", "au1", split("a1", "0.75"), split("b1", "0.25")));
 
-        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A, B), 90);
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A, B, C), 90);
 
         assertThat(out.ai().costByProject()).extracting(ProjectCost::costUsd).usingComparatorForType(
                 BigDecimal::compareTo, BigDecimal.class).containsExactly(new BigDecimal("7.50"), new BigDecimal("2.50"),
-                new BigDecimal("3.00"));
+                BigDecimal.ZERO, new BigDecimal("3.00"));
+        assertThat(out.kpis().aiCostUsd()).as("allocated to the visible projects").isEqualByComparingTo("10.00");
+        assertThat(out.ai().subscription().consumptionUsd()).as("the people's whole usage").isEqualByComparingTo("13.00");
         assertThat(out.portfolio().getFirst().aiCostPerSp()).isEqualByComparingTo("1.875");
         assertThat(out.ai().costByProject().getLast().name()).isEqualTo("Não alocado a work items");
         assertThat(out.integrations().coverage().aiDaysAllocatedPct()).isEqualTo(50.0);
+    }
+
+    /**
+     * Privacy of a partial caller (coordinator's decision, orquestrador option A): u-shared works on A
+     * (visible) and C (hidden). The partial caller's aiCostUsd is what was allocated to A and B, the
+     * unallocated row is null, so the whole usage minus aiCostUsd only gives "hidden + unallocated"
+     * mixed — nothing isolates C. A caller who sees everything keeps the previous answer.
+     */
+    @Test
+    void should_neverIsolateTheCostOfHiddenProjects_forAPartialCaller() {
+        itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 2.0, "2026-08-04T10:00:00Z"));
+        itemsByProject.get(C).add(done("c1", C, WorkItem.ResolvedType.STORY, 2.0, "2026-08-04T10:00:00Z"));
+        usage.add(usage("au1", "u-shared", "2026-08-04", "al1", "10.00", "claude"));
+        usage.add(usage("au2", "u-shared", "2026-08-05", "al2", "40.00", "claude"));
+        usage.add(usage("au3", "u-shared", "2026-08-06", null, "5.00", "claude"));
+        usage.add(usage("au0", "u-shared", "2026-05-06", "al0", "8.00", "claude"));
+        allocations(allocation("al1", "u-shared", "2026-08-04", "au1", split("a1", "1.0")),
+                allocation("al2", "u-shared", "2026-08-05", "au2", split("c1", "1.0")),
+                allocation("al0", "u-shared", "2026-05-06", "au0", split("a1", "1.0")));
+
+        OrganizationDashboardV2Output partial = useCase.execute(ORG, Set.of(A, B), 90);
+
+        assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo("10.00");
+        assertThat(partial.previous().aiCostUsd()).as("previous period, allocated to A").isEqualByComparingTo("8.00");
+        assertThat(partial.kpis().aiCostPerSp()).isEqualByComparingTo("5.00");
+        assertThat(partial.ai().costByProject().getLast().projectId()).isNull();
+        assertThat(partial.ai().costByProject().getLast().costUsd()).isNull();
+        BigDecimal visibleRows = partial.ai().costByProject().stream().map(ProjectCost::costUsd)
+                .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo(visibleRows);
+        assertThat(partial.ai().subscription().consumptionUsd().subtract(partial.kpis().aiCostUsd()))
+                .as("hidden (40) and unallocated (5) only mixed").isEqualByComparingTo("45.00");
+
+        OrganizationDashboardV2Output full = useCase.execute(ORG, Set.of(A, B, C), 90);
+
+        assertThat(full.kpis().aiCostUsd()).as("allocated to A and C").isEqualByComparingTo("50.00");
+        assertThat(full.previous().aiCostUsd()).isEqualByComparingTo("8.00");
+        assertThat(full.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, C, null);
+        assertThat(full.ai().costByProject().getLast().costUsd()).isEqualByComparingTo("5.00");
     }
 
     @Test
@@ -335,12 +403,52 @@ class GetOrganizationDashboardV2UseCaseTest {
                 log("l3", C, SyncOperation.SYNC_WORK_ITEMS, SyncStatus.FAILED, "2026-10-10T09:00:00Z"),
                 log("l4", A, SyncOperation.PROJECT_REFRESH, SyncStatus.PARTIAL, "2026-10-10T09:00:00Z"));
         when(syncLogRepository.findByOrganizationIdAndIntegrationAndOperationInAndStartedAtFrom(eq(ORG), eq(Integration.AZURE_DEVOPS), any(),
-                any())).thenReturn(logs);
+                any())).thenAnswer(inv -> {
+                    Collection<SyncOperation> operations = inv.getArgument(2);
+                    return logs.stream().filter(l -> operations.contains(l.getOperation())).toList();
+                });
 
         List<SyncOutcomeDay> days = useCase.execute(ORG, Set.of(A), 90).integrations().syncByDay();
 
         assertThat(days).hasSize(14);
         assertThat(days.get(12)).isEqualTo(new SyncOutcomeDay("2026-10-10", "10/10", 1, 0, 1));
+    }
+
+    /** Coordinator's decision: aiCostUsd means "allocated to the visible projects" for every caller. */
+    @Test
+    void should_answerTheSameAiCost_toAPartialAndAFullCaller_whenTheCostWentToTheProjectsBothSee() {
+        itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 2.0, "2026-08-04T10:00:00Z"));
+        usage.add(usage("au1", "u-shared", "2026-08-04", "al1", "10.00", "claude"));
+        usage.add(usage("au3", "u-shared", "2026-08-06", null, "5.00", "claude"));
+        usage.add(usage("au0", "u-shared", "2026-05-06", "al0", "8.00", "claude"));
+        allocations(allocation("al1", "u-shared", "2026-08-04", "au1", split("a1", "1.0")),
+                allocation("al0", "u-shared", "2026-05-06", "au0", split("a1", "1.0")));
+
+        OrganizationDashboardV2Output partial = useCase.execute(ORG, Set.of(A, B), 90);
+        OrganizationDashboardV2Output full = useCase.execute(ORG, Set.of(A, B, C), 90);
+
+        assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo("10.00").isEqualByComparingTo(full.kpis().aiCostUsd());
+        assertThat(partial.previous().aiCostUsd()).isEqualByComparingTo("8.00")
+                .isEqualByComparingTo(full.previous().aiCostUsd());
+        assertThat(partial.kpis().aiCostPerSp()).isEqualByComparingTo(full.kpis().aiCostPerSp());
+        assertThat(partial.ai().costByProject().getLast().costUsd()).as("partial: unallocated hidden").isNull();
+        assertThat(full.ai().costByProject().getLast().costUsd()).as("full: unallocated shown").isEqualByComparingTo("5.00");
+    }
+
+    @Test
+    void should_carryOnlyTheErrorCodeOfTheConnections_forEveryCaller() {
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue(ORG)).thenReturn(Optional.of(
+                new andromeda.sei.ms.feature.azure.domain.AzureConnection("c1", ORG, "https://dev.azure.com/x", "acc",
+                        "ref", NOW, "u-a", andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus.ERROR, NOW, 2,
+                        "AZURE_RATE", "Rate limit message", true, NOW, NOW, 0L,
+                        andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.PAT, "pat")));
+
+        for (Set<String> visible : List.of(Set.of(A), Set.of(A, B, C))) {
+            var azure = useCase.execute(ORG, visible, 90).integrations().azure();
+            assertThat(azure.status()).isEqualTo("ERROR");
+            assertThat(azure.lastError().code()).isEqualTo("AZURE_RATE");
+            assertThat(azure.toString()).doesNotContain("Rate limit message");
+        }
     }
 
     @Test
@@ -356,9 +464,26 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(integrations.coverage().azureLinkedPct()).isEqualTo(33.33);
         assertThat(integrations.coverage().githubLinkedPct()).isEqualTo(66.67);
         assertThat(integrations.coverage().aiConnectedPct()).isEqualTo(33.33);
-        assertThat(integrations.aiConnector().activeTokens()).as("organization-wide").isEqualTo(2);
+        assertThat(integrations.aiConnector().activeTokens()).as("partial caller: the people's tokens only").isEqualTo(1);
+        assertThat(useCase.execute(ORG, Set.of(A, B, C), 90).integrations().aiConnector().activeTokens())
+                .as("a caller who sees everything: the organization's tokens").isEqualTo(2);
         assertThat(integrations.azure().status()).isEqualTo("DISCONNECTED");
         assertThat(integrations.projects().getFirst().azureProject()).isEqualTo("Orion Azure");
+    }
+
+    private void allocations(AiUsageAllocation... allocations) {
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                any(), any())).thenReturn(List.of(allocations));
+    }
+
+    private static AiUsageAllocation allocation(String id, String userId, String day, String usageId,
+                                                AllocationSplit... splits) {
+        return new AiUsageAllocation(id, ORG, userId, LocalDate.parse(day), List.of(usageId), List.of(splits),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+    }
+
+    private static AllocationSplit split(String workItemId, String percentage) {
+        return new AllocationSplit(workItemId, "x", new BigDecimal(percentage));
     }
 
     private void bind(String repositoryId, String projectId) {

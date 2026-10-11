@@ -97,6 +97,7 @@ class DashboardsV2NoSecretsResponseTest {
                 .andReturn().getResponse().getContentAsString();
 
         assertThat(body).contains("CONNECTED", "ana-gh", "notebook", "ana@azure.example.com");
+        assertThat(body).contains("Access token expired");
         assertThat(body).doesNotContain(SECRETS.toArray(String[]::new));
         assertThat(body).doesNotContain(SECRET_KEYS.toArray(String[]::new));
         assertThat(body).doesNotContain("stack detail with url", "upstream failed");
@@ -113,5 +114,7 @@ class DashboardsV2NoSecretsResponseTest {
         assertThat(body).doesNotContain(SECRETS.toArray(String[]::new));
         assertThat(body).doesNotContain(SECRET_KEYS.toArray(String[]::new));
         assertThat(body).doesNotContain("@azure.example.com", "@example.com");
+        // the connection error message stays in /integrations; here only its code
+        assertThat(body).contains("TOKEN_EXPIRED").doesNotContain("Access token expired");
     }
 }
