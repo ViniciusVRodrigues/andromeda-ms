@@ -224,6 +224,49 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .stream().map(mapper::toDomain).toList();
     }
 
+    /** Raw projection read (no document mapping), by the {@code {organizationId, projectId}} index. */
+    @Override
+    public List<WorkItem> findMetricFieldsByOrganizationIdAndProjectId(String organizationId, String projectId) {
+        org.bson.Document filter = new org.bson.Document("organizationId", organizationId)
+                .append("projectId", projectId).append("active", true);
+        org.bson.Document projection = new org.bson.Document("externalId", 1).append("parentExternalId", 1)
+                .append("sprintId", 1).append("resolvedType", 1).append("resolvedStatus", 1).append("effort", 1)
+                .append("complexity", 1).append("completedAt", 1).append("leadTimeHours", 1)
+                .append("cycleTimeHours", 1);
+        List<WorkItem> items = new java.util.ArrayList<>();
+        for (org.bson.Document d : mongoTemplate.getCollection(mongoTemplate.getCollectionName(WorkItemDocument.class))
+                .find(filter).projection(projection)) {
+            items.add(leanItem(d, organizationId, projectId));
+        }
+        return items;
+    }
+
+    static WorkItem leanItem(org.bson.Document d, String organizationId, String projectId) {
+        return new WorkItem(d.get("_id").toString(), organizationId, projectId, null, d.getString("externalId"), null,
+                null, null, enumOf(WorkItem.ResolvedType.class, d.getString("resolvedType")), null,
+                enumOf(WorkItem.ResolvedStatus.class, d.getString("resolvedStatus")), null, null, null,
+                d.getString("sprintId"), null, null, null, d.getString("parentExternalId"), null, null,
+                instant(d.get("completedAt")), number(d.get("cycleTimeHours")), number(d.get("leadTimeHours")), null,
+                true, null, null, number(d.get("complexity")), null, null, null, number(d.get("effort")), null, null, null);
+    }
+
+    private static <E extends Enum<E>> E enumOf(Class<E> type, String name) {
+        if (name == null) return null;
+        try {
+            return Enum.valueOf(type, name);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Instant instant(Object value) {
+        return value instanceof java.util.Date date ? date.toInstant() : null;
+    }
+
+    private static Double number(Object value) {
+        return value instanceof Number n ? n.doubleValue() : null;
+    }
+
     @Override
     public List<WorkItem> findActiveByOrganizationIdAndProjectIdAndSprintIdIn(String organizationId, String projectId,
                                                                               Collection<String> sprintIds) {

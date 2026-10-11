@@ -74,4 +74,14 @@ public interface WorkItemRepository {
 
     /** Ids of the project's active work items only — a lean read when the items themselves are not needed. */
     java.util.Set<String> findActiveIdsByOrganizationIdAndProjectId(String organizationId, String projectId);
+
+    /**
+     * Active work items of the project with only the fields period metrics read: id, external and
+     * parent ids, sprint, resolved type and status, effort, complexity, completion, lead and cycle
+     * time. Every other field is {@code null}. A lean read for organization-wide views over tens of
+     * thousands of items; the default delegates, the Mongo adapter reads raw documents.
+     */
+    default List<WorkItem> findMetricFieldsByOrganizationIdAndProjectId(String organizationId, String projectId) {
+        return findAllByOrganizationIdAndProjectId(organizationId, projectId).stream().filter(WorkItem::isActive).toList();
+    }
 }

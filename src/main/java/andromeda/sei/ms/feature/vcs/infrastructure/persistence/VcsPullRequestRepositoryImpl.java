@@ -190,4 +190,72 @@ public class VcsPullRequestRepositoryImpl implements VcsPullRequestRepository {
         return mongoTemplate.find(Query.query(criteria), VcsPullRequestDocument.class).stream()
                 .map(mapper::toDomain).toList();
     }
+
+    /** Raw projection read (no document mapping): created or merged since {@code since}, or open. */
+    @Override
+    public List<VcsPullRequest> findMetricFieldsTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                             Instant since) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        java.util.Date from = java.util.Date.from(since);
+        List<String> repositories = List.copyOf(repositoryIds);
+        org.bson.Document filter = new org.bson.Document("$or", List.of(
+                inRepositoriesRaw(organizationId, repositories).append(CREATED_AT, new org.bson.Document("$gte", from)),
+                inRepositoriesRaw(organizationId, repositories).append(MERGED_AT, new org.bson.Document("$gte", from)),
+                inRepositoriesRaw(organizationId, repositories).append(STATUS, PullRequestStatus.OPEN.name())));
+        org.bson.Document projection = new org.bson.Document(REPOSITORY_ID, 1).append("provider", 1).append(STATUS, 1)
+                .append("title", 1).append("authorLogin", 1).append("authorExternalId", 1).append("authorUserId", 1)
+                .append(CREATED_AT, 1).append(MERGED_AT, 1).append("closedAt", 1).append("cycleTimeHours", 1)
+                .append("timeToFirstReviewHours", 1).append("linkedWorkItemExternalId", 1).append("draft", 1)
+                .append("baseBranch", 1).append("sourceBranch", 1).append("earliestCommitAt", 1).append(ACTIVE, 1);
+        List<VcsPullRequest> pullRequests = new java.util.ArrayList<>();
+        for (org.bson.Document d : mongoTemplate.getCollection(mongoTemplate.getCollectionName(VcsPullRequestDocument.class))
+                .find(filter).projection(projection)) {
+            if (!Boolean.TRUE.equals(d.getBoolean(ACTIVE, true))) continue;
+            pullRequests.add(leanPullRequest(d, organizationId));
+        }
+        return pullRequests;
+    }
+
+    private static org.bson.Document inRepositoriesRaw(String organizationId, List<String> repositoryIds) {
+        return new org.bson.Document(ORGANIZATION_ID, organizationId)
+                .append(REPOSITORY_ID, new org.bson.Document("$in", repositoryIds));
+    }
+
+    static VcsPullRequest leanPullRequest(org.bson.Document d, String organizationId) {
+        VcsPullRequest pr = new VcsPullRequest(d.get("_id").toString(), organizationId, d.getString(REPOSITORY_ID),
+                enumOf(andromeda.sei.ms.feature.vcs.domain.VcsProvider.class, d.getString("provider")), null, null,
+                d.getString("title"), enumOf(PullRequestStatus.class, d.getString(STATUS)));
+        pr.setAuthorLogin(d.getString("authorLogin"));
+        pr.setAuthorExternalId(d.getString("authorExternalId"));
+        pr.setAuthorUserId(d.getString("authorUserId"));
+        pr.setCreatedAt(instant(d.get(CREATED_AT)));
+        pr.setMergedAt(instant(d.get(MERGED_AT)));
+        pr.setClosedAt(instant(d.get("closedAt")));
+        pr.setCycleTimeHours(number(d.get("cycleTimeHours")));
+        pr.setTimeToFirstReviewHours(number(d.get("timeToFirstReviewHours")));
+        pr.setLinkedWorkItemExternalId(d.getString("linkedWorkItemExternalId"));
+        pr.setDraft(d.getBoolean("draft"));
+        pr.setBaseBranch(d.getString("baseBranch"));
+        pr.setSourceBranch(d.getString("sourceBranch"));
+        pr.setEarliestCommitAt(instant(d.get("earliestCommitAt")));
+        pr.setActive(true);
+        return pr;
+    }
+
+    private static <E extends Enum<E>> E enumOf(Class<E> type, String name) {
+        if (name == null) return null;
+        try {
+            return Enum.valueOf(type, name);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static Instant instant(Object value) {
+        return value instanceof java.util.Date date ? date.toInstant() : null;
+    }
+
+    private static Double number(Object value) {
+        return value instanceof Number n ? n.doubleValue() : null;
+    }
 }

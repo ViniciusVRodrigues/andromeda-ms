@@ -16,7 +16,9 @@ import java.time.Instant;
 @Document(collection = VcsCommitDocument.COLLECTION)
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'sha': 1}", unique = true),
-        @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'authoredAt': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'authoredAt': 1}"),
+        // covers the per-day commit counts of the organization dashboard (no document fetch)
+        @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'active': 1, 'authoredAt': 1}")
 })
 @Data
 @Builder

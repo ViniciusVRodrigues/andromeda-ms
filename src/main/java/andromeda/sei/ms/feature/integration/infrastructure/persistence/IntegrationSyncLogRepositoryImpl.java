@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
@@ -60,6 +61,18 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
     }
 
     @Override
+    public List<IntegrationSyncLog> findByOrganizationIdAndIntegrationAndOperationInAndStartedAtFrom(
+            String organizationId, Integration integration, Collection<SyncOperation> operations,
+            Instant startedFrom) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                        .and("integration").is(integration)
+                        .and("startedAt").gte(startedFrom)
+                        .and("operation").in(operations))
+                .with(Sort.by(Sort.Direction.DESC, "startedAt"));
+        return mongoTemplate.find(query, IntegrationSyncLogDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public List<IntegrationSyncLog> findAllByOrganizationIdAndParentSyncId(String organizationId, String parentSyncId) {
         return mongoRepository.findByOrganizationIdAndParentSyncIdOrderByStartedAtAsc(organizationId, parentSyncId)
                 .stream().map(mapper::toDomain).toList();
@@ -70,6 +83,16 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
             String organizationId, String projectId, Collection<SyncOperation> operations) {
         return mongoRepository.existsByOrganizationIdAndProjectIdAndStatusAndOperationIn(
                 organizationId, projectId, SyncStatus.RUNNING, operations);
+    }
+
+    @Override
+    public boolean existsRunningByOrganizationIdAndProjectIdInAndOperationIn(
+            String organizationId, Collection<String> projectIds, Collection<SyncOperation> operations) {
+        Criteria criteria = Criteria.where("organizationId").is(organizationId)
+                .and("status").is(SyncStatus.RUNNING)
+                .and("operation").in(operations);
+        if (projectIds != null) criteria = criteria.and("projectId").in(projectIds);
+        return mongoTemplate.exists(Query.query(criteria), IntegrationSyncLogDocument.class);
     }
 
     /**
@@ -86,5 +109,30 @@ public class IntegrationSyncLogRepositoryImpl implements IntegrationSyncLogRepos
                 .set("errorCode", errorCode)
                 .set("errorMessage", errorMessage);
         return mongoTemplate.updateMulti(query, update, IntegrationSyncLogDocument.class).getModifiedCount();
+    }
+
+    /** Grouped in the database (index {@code {organizationId, integration, startedAt}}). */
+    @Override
+    public List<andromeda.sei.ms.feature.integration.domain.SyncRunCount> countByProjectDayAndStatus(
+            String organizationId, Collection<SyncOperation> operations, Instant startedFrom) {
+        org.bson.Document match = new org.bson.Document("organizationId", organizationId)
+                .append("integration", new org.bson.Document("$in",
+                        List.of(Integration.AZURE_DEVOPS.name(), Integration.GITHUB.name())))
+                .append("startedAt", new org.bson.Document("$gte", java.util.Date.from(startedFrom)))
+                .append("operation", new org.bson.Document("$in", operations.stream().map(Enum::name).toList()));
+        org.bson.Document key = new org.bson.Document("projectId", "$projectId").append("status", "$status")
+                .append("day", new org.bson.Document("$dateToString", new org.bson.Document("format", "%Y-%m-%d")
+                        .append("date", "$startedAt").append("timezone", "UTC")));
+        List<org.bson.Document> pipeline = List.of(new org.bson.Document("$match", match),
+                new org.bson.Document("$group", new org.bson.Document("_id", key)
+                        .append("n", new org.bson.Document("$sum", 1))));
+        List<andromeda.sei.ms.feature.integration.domain.SyncRunCount> rows = new java.util.ArrayList<>();
+        for (org.bson.Document row : mongoTemplate.getCollection("integration_sync_logs").aggregate(pipeline)) {
+            org.bson.Document id = row.get("_id", org.bson.Document.class);
+            SyncStatus status = id.getString("status") == null ? null : SyncStatus.valueOf(id.getString("status"));
+            rows.add(new andromeda.sei.ms.feature.integration.domain.SyncRunCount(id.getString("projectId"),
+                    java.time.LocalDate.parse(id.getString("day")), status, ((Number) row.get("n")).longValue()));
+        }
+        return rows;
     }
 }

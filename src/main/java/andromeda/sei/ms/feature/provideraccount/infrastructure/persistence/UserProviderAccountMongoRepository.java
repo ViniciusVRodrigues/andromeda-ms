@@ -19,4 +19,6 @@ public interface UserProviderAccountMongoRepository extends MongoRepository<User
 
     List<UserProviderAccountDocument> findAllByOrganizationIdAndUserIdAndActiveTrue(
             String organizationId, String userId);
+
+    List<UserProviderAccountDocument> findAllByOrganizationIdAndActiveTrue(String organizationId);
 }

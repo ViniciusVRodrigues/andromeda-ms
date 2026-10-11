@@ -26,4 +26,7 @@ public interface UserProviderAccountRepository {
 
     List<UserProviderAccount> findAllByOrganizationIdAndUserIdAndActiveTrue(
             String organizationId, String userId);
+
+    /** Every active linked account of the organization (all users, all providers). */
+    List<UserProviderAccount> findAllByOrganizationIdAndActiveTrue(String organizationId);
 }

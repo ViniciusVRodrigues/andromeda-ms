@@ -46,6 +46,18 @@ public interface VcsPullRequestRepository {
                 .toList();
     }
 
+    /**
+     * Same pull requests as {@link #findActiveTouchedSince} with only the fields period metrics read:
+     * id, repository, provider, status, title, author (login, external id, user), creation, merge and
+     * close times, cycle time, time to first review, linked work item, draft, base and source
+     * branches, earliest commit. Every other field is {@code null}. The default delegates; the Mongo
+     * adapter reads raw documents.
+     */
+    default List<VcsPullRequest> findMetricFieldsTouchedSince(String organizationId, Collection<String> repositoryIds,
+                                                              Instant since) {
+        return findActiveTouchedSince(organizationId, repositoryIds, since);
+    }
+
     /** Pull requests authored by an Andromeda user, created within {@code [from, to)}. */
     List<VcsPullRequest> findAllByOrganizationIdAndAuthorUserIdAndCreatedAtBetween(
             String organizationId, String authorUserId, Instant from, Instant to);

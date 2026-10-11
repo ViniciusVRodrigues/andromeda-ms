@@ -66,4 +66,33 @@ public interface AIUsageRepository {
      * for large id sets — use {@link #findByOrganizationIdAndIdIn} when the whole record is needed.
      */
     List<AIUsage> findCostFieldsByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids);
+
+    /**
+     * Active usage of these users with {@code day} within {@code [from, to]}, with the fields an
+     * aggregate dashboard reads: id, userId, day, model, editor, tokens, interactions, cost,
+     * allocationId and uploadedAt; every other field {@code null}. Empty without users. The default
+     * delegates; the Mongo adapter reads raw documents (index {@code {organizationId, userId, day}}).
+     */
+    /**
+     * Usage of these users in {@code [from, to]} summed per user in the database (cost and tokens);
+     * users without usage are absent. Empty without users. The default sums
+     * {@link #findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween} in memory.
+     */
+    default List<AiUsageUserTotals> summarizeTotalsByUser(String organizationId, java.util.Collection<String> userIds,
+                                                         LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        java.util.Map<String, List<AIUsage>> byUser = findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(
+                organizationId, userIds, from, to).stream().filter(u -> u.getUserId() != null)
+                .collect(java.util.stream.Collectors.groupingBy(AIUsage::getUserId));
+        return byUser.entrySet().stream().map(e -> new AiUsageUserTotals(e.getKey(),
+                e.getValue().stream().map(AIUsage::getCostUsd).filter(java.util.Objects::nonNull)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add),
+                e.getValue().stream().mapToLong(AIUsage::getInputTokens).sum(),
+                e.getValue().stream().mapToLong(AIUsage::getOutputTokens).sum())).toList();
+    }
+
+    default List<AIUsage> findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(
+            String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        return findByOrganizationIdAndUserIdInAndDayBetween(organizationId, userIds, from, to);
+    }
 }

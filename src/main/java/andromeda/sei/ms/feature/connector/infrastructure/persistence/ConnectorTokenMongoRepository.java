@@ -12,4 +12,6 @@ public interface ConnectorTokenMongoRepository extends MongoRepository<Connector
     Optional<ConnectorTokenDocument> findByOrganizationIdAndTokenHash(String organizationId, String tokenHash);
 
     List<ConnectorTokenDocument> findAllByOrganizationIdAndUserIdAndActiveTrue(String organizationId, String userId);
+
+    List<ConnectorTokenDocument> findAllByOrganizationId(String organizationId);
 }
