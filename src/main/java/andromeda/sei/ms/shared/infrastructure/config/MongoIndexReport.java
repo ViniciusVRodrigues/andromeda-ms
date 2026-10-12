@@ -11,21 +11,22 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Registra no startup quantos índices cada coleção tem, logo depois de o Spring Data ter
- * aplicado os {@code @CompoundIndex}/{@code @Indexed} declarados nos documentos.
+ * Registra no startup quantos índices cada coleção tem, logo depois de o
+ * {@link DeclaredIndexInitializer} (ordem 9) ter criado os {@code @CompoundIndex}/{@code @Indexed}
+ * declarados nos documentos.
  *
- * <p>Existe porque a criação desses índices é silenciosa nos dois sentidos: enquanto
- * {@code auto-index-creation} esteve desligado (o padrão do Spring Data desde a 3.0),
- * todas as declarações do projeto foram decorativas — nenhuma virou índice de verdade — e
- * nada no log indicava isso. Uma coleção com apenas {@code _id_} depois deste relatório é
- * sinal de que suas declarações não foram aplicadas.
+ * <p>Existe porque a ausência de índices é silenciosa: por muito tempo nenhuma declaração do
+ * projeto virou índice de verdade ({@code MongoConfig} estende
+ * {@code AbstractMongoClientConfiguration}, cujo mapping context não cria índices) e nada no log
+ * indicava isso. Uma coleção com apenas {@code _id_} depois deste relatório é sinal de que suas
+ * declarações não foram aplicadas.
  *
- * <p>Não cria nem altera nada: só observa. A criação em si continua a cargo do Spring Data,
- * e uma falha ali (tipicamente um índice {@code unique} sobre dados que já têm duplicatas)
- * aparece como exceção no startup, não aqui.
+ * <p>Não cria nem altera nada: só observa. Uma falha de criação (tipicamente um índice
+ * {@code unique} sobre dados que já têm duplicatas) aparece como WARN do
+ * {@code DeclaredIndexInitializer}, não aqui, e não interrompe o startup. Os índices dos
+ * initializers explícitos (ordem 11/12) ainda não entram nesta contagem.
  *
- * <p>Ordem 10: antes das migrations de dados (20+), que podem gravar volume e se beneficiam
- * dos índices já existentes.
+ * <p>Ordem 10: antes das migrations de dados (20+).
  */
 @Slf4j
 @Component

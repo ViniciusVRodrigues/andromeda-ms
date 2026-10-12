@@ -14,8 +14,9 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates the {@code dashboard_layouts} indexes (design.md D6). The {@code @CompoundIndex}
- * declarations on {@link DashboardLayoutDocument} are not applied by this application, and the
+ * Creates the {@code dashboard_layouts} indexes (design.md D6). {@code DeclaredIndexInitializer} also
+ * creates the {@code @CompoundIndex} declarations of {@link DashboardLayoutDocument}, but logs and
+ * moves on when one fails; this initializer is kept because the
  * partial unique index is what guarantees at most one active layout per (organization, user,
  * viewKey) under concurrent creates. Same names, keys and options as the declarations, so it never
  * conflicts with them. Idempotent; runs with the other index initializers, before the data

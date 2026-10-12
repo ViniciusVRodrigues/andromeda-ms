@@ -17,7 +17,13 @@ import java.util.List;
 @Document(collection = "users")
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId': 1, 'active': 1}"),
-        @CompoundIndex(def = "{'organizationId': 1, 'azureId': 1}", unique = true, sparse = true, name = "uq_user_org_azureId"),
+        /* Único só entre usuários com azureId. Não pode ser sparse: um índice composto esparso
+         * indexa o documento quando QUALQUER chave existe, e organizationId sempre existe — os
+         * usuários sem azureId entrariam como null e colidiriam entre si. O filtro $type string
+         * exclui tanto o campo ausente (o que o mapper grava hoje, já que o conversor omite nulos)
+         * quanto um null explícito. */
+        @CompoundIndex(def = "{'organizationId': 1, 'azureId': 1}", unique = true, name = "uq_user_org_azureId",
+                partialFilter = "{'azureId': {'$type': 'string'}}"),
         /* E-mail é único entre usuários ATIVOS, não globalmente — que é exatamente a regra
          * que o código sempre aplicou (UserRepositoryImpl usa existsByEmailAndActiveTrue).
          * O índice global anterior era mais restritivo que o sistema: como a remoção é

@@ -20,10 +20,11 @@ import java.util.List;
 /**
  * Creates the indexes the organization and integrations dashboards v2 read through that
  * {@code DashboardQueryIndexInitializer} (the project dashboards' ones) does not already create
- * (dashboards-customizaveis 1.11/1.12, task 1.14). This application does not apply the
- * {@code @CompoundIndex} declarations, so each one here has the keys of a declaration that already
+ * (dashboards-customizaveis 1.11/1.12, task 1.14). Each one has the keys of a declaration that already
  * exists on the document, non-unique and without a name (MongoDB derives the same default name the
- * declaration would get). Idempotent: an identical index is a no-op.
+ * declaration gets), so since fix/mongo-index-creation, where {@code DeclaredIndexInitializer} creates
+ * every declaration, these are no-ops kept as a belt-and-braces for the dashboards' read budget;
+ * {@code ExplicitIndexInitializersConsistencyTest} keeps them identical. Idempotent.
  *
  * <p>A failure (an index with the same keys but other options already exists) is logged and does not
  * stop the startup: these indexes are about speed, never about correctness.
