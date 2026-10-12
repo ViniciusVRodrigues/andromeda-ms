@@ -60,6 +60,15 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void shouldReturn409WithoutTheKeyValue_whenAUniqueIndexRejectsARacingWrite() throws Exception {
+        mockMvc.perform(get("/stub").param("ex", "duplicate"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("RESOURCE_CONFLICT"))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("ana@example.test"))));
+    }
+
+    @Test
     void shouldReturn500ForUnexpectedException() throws Exception {
         mockMvc.perform(get("/stub").param("ex", "unexpected"))
                 .andExpect(status().isInternalServerError())
@@ -87,6 +96,8 @@ class GlobalExceptionHandlerTest {
                 case "business"    -> throw new BusinessRuleException("STUB_RULE", "stub rule");
                 case "forbidden"   -> throw new ForbiddenOperationException("STUB_FORBIDDEN", "stub forbidden");
                 case "unexpected"  -> throw new RuntimeException("unexpected internal failure");
+                case "duplicate"   -> throw new org.springframework.dao.DuplicateKeyException(
+                        "E11000 duplicate key error dup key: { email: \"ana@example.test\" }");
                 default            -> { /* ok */ }
             }
         }

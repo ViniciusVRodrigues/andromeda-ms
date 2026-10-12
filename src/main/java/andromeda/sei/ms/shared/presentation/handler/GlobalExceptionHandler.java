@@ -101,6 +101,16 @@ public class GlobalExceptionHandler {
      * this it fell through to the catch-all and reported INTERNAL_ERROR/500 -- which is exactly
      * how a partial PATCH body omitting a primitive-typed flag looked like a backend crash.
      */
+    /* Corrida entre duas escritas que o índice único barrou (a pré-checagem do caso de uso
+     * não viu a outra): é conflito do cliente, não erro do servidor. */
+    @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateKey(org.springframework.dao.DuplicateKeyException ex) {
+        /* sem a mensagem do driver: ela traz o valor da chave (pode ser um e-mail) */
+        log.warn("Duplicate key rejected by a unique index");
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.of("RESOURCE_CONFLICT", "O recurso já existe ou foi alterado ao mesmo tempo"));
+    }
+
     @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableBody(
             org.springframework.http.converter.HttpMessageNotReadableException ex) {

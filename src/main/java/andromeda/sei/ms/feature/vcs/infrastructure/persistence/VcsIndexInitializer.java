@@ -15,9 +15,10 @@ import org.springframework.stereotype.Component;
 /**
  * Creates the partial unique identity index of {@code vcs_repositories} (design D2):
  * {@code {organizationId, provider, externalRepoId}} unique only where {@code externalRepoId}
- * exists, so any number of repositories pending first sync can coexist. {@code @CompoundIndex}
- * cannot declare a partial filter. Idempotent ({@code createIndex} on an identical index is a
- * no-op). Runs before the data migrations (order 20+).
+ * exists, so any number of repositories pending first sync can coexist. Not declared on
+ * {@link VcsRepositoryDocument}, so {@code DeclaredIndexInitializer} does not create it; a failure here
+ * stops the startup on purpose (running without it would allow duplicate repositories). Idempotent
+ * ({@code createIndex} on an identical index is a no-op). Runs before the data migrations (order 20+).
  */
 @Slf4j
 @Component

@@ -17,10 +17,11 @@ import org.springframework.data.mongodb.core.index.Index;
 import org.springframework.stereotype.Component;
 
 /**
- * Creates the indexes the v2 dashboards query by (dashboards-customizaveis, QA finding B1). This
- * application does not apply the {@code @CompoundIndex} declarations ({@code MongoConfig} extends
- * {@code AbstractMongoClientConfiguration}, whose mapping context has auto index creation off), so
- * without this every dashboard read scanned its collection.
+ * Creates the indexes the v2 dashboards query by (dashboards-customizaveis, QA finding B1). Written
+ * while no {@code @CompoundIndex} declaration was applied; since fix/mongo-index-creation the
+ * {@code DeclaredIndexInitializer} creates the declared ones too, so the ones repeated here are
+ * no-ops, and this class still owns the two indexes no document declares
+ * ({@link #PULL_REQUEST_ORG_REPO_MERGED}, {@link #ALLOCATION_ORG_SPLIT_WORK_ITEM_DAY}).
  *
  * <ul>
  *   <li>Only <b>non-unique</b> indexes: they cannot fail on duplicated data already stored.</li>
@@ -30,7 +31,7 @@ import org.springframework.stereotype.Component;
  *   <li>Each index is created on its own; a failure is logged and the next one still runs. These
  *       indexes are for speed only, so a failure must not stop the startup.</li>
  * </ul>
- * The general fix (creating every declared index) is a separate delivery.
+ * {@code ExplicitIndexInitializersConsistencyTest} keeps names and options identical to the declarations.
  */
 @Slf4j
 @Component
