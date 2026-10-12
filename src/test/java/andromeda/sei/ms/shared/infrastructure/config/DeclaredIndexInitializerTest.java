@@ -131,7 +131,7 @@ class DeclaredIndexInitializerTest {
         assertThat(azureId.getIndexOptions().getBoolean("unique")).isTrue();
         assertThat(azureId.getIndexOptions().containsKey("sparse")).isFalse();
         assertThat(azureId.getIndexOptions().get("partialFilterExpression"))
-                .isEqualTo(new Document("azureId", new Document("$type", "string")));
+                .isEqualTo(new Document("azureId", new Document("$type", "string")).append("active", true));
     }
 
     @Test

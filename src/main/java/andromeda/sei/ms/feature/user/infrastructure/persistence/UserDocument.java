@@ -23,7 +23,7 @@ import java.util.List;
          * exclui tanto o campo ausente (o que o mapper grava hoje, já que o conversor omite nulos)
          * quanto um null explícito. */
         @CompoundIndex(def = "{'organizationId': 1, 'azureId': 1}", unique = true, name = "uq_user_org_azureId",
-                partialFilter = "{'azureId': {'$type': 'string'}}"),
+                partialFilter = "{'azureId': {'$type': 'string'}, 'active': true}"),
         /* E-mail é único entre usuários ATIVOS, não globalmente — que é exatamente a regra
          * que o código sempre aplicou (UserRepositoryImpl usa existsByEmailAndActiveTrue).
          * O índice global anterior era mais restritivo que o sistema: como a remoção é
