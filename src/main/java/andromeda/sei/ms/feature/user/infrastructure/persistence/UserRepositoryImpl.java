@@ -38,6 +38,11 @@ public class UserRepositoryImpl implements UserRepository {
     }
 
     @Override
+    public List<User> findAllByOrganizationIdIncludingInactive(String organizationId) {
+        return mongoRepository.findByOrganizationId(organizationId).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public boolean existsByEmail(String email) {
         return mongoRepository.existsByEmailAndActiveTrue(email);
     }

@@ -11,6 +11,8 @@ public interface UserMongoRepository extends MongoRepository<UserDocument, Strin
 
     List<UserDocument> findByOrganizationIdAndActiveTrue(String organizationId);
 
+    List<UserDocument> findByOrganizationId(String organizationId);
+
     boolean existsByEmailAndActiveTrue(String email);
 
     Optional<UserDocument> findByEmailAndActiveTrue(String email);

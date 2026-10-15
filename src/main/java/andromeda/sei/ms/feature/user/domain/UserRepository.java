@@ -9,6 +9,9 @@ public interface UserRepository {
 
     List<User> findAllByOrganizationId(String organizationId);
 
+    /** Active AND inactive users of the organization (read-only joins such as the usage export). */
+    List<User> findAllByOrganizationIdIncludingInactive(String organizationId);
+
     boolean existsByEmail(String email);
 
     Optional<User> findByEmail(String email);

@@ -120,6 +120,33 @@ public final class UsageEvent {
         return new UsageEvent(b);
     }
 
+    /** Rebuilds a stored event (read side of the export). */
+    public static UsageEvent restore(String organizationId, String userId, UsageEventType type, String screen,
+                                     String viewId, String sessionId, Long visibleMs, String element, String label,
+                                     String area, String action, String value, String viewport, String origin,
+                                     Integer status, String code, Instant occurredAt, Instant createdAt) {
+        Builder b = new Builder();
+        b.organizationId = organizationId;
+        b.userId = userId;
+        b.type = type;
+        b.screen = screen;
+        b.viewId = viewId;
+        b.sessionId = sessionId;
+        b.visibleMs = visibleMs;
+        b.element = element;
+        b.label = label;
+        b.area = area;
+        b.action = action;
+        b.value = value;
+        b.viewport = viewport;
+        b.origin = origin;
+        b.status = status;
+        b.code = code;
+        b.occurredAt = occurredAt;
+        b.createdAt = createdAt;
+        return new UsageEvent(b);
+    }
+
     private static Instant withinWindow(Instant occurredAt, Instant receivedAt) {
         if (occurredAt == null
                 || occurredAt.isBefore(receivedAt.minus(UsageEventRules.CLOCK_PAST_TOLERANCE))
