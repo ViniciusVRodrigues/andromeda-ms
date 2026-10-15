@@ -38,6 +38,8 @@ class OnboardOrganizationUseCaseTest {
     @Mock private UserRepository userRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private PasswordHasher passwordHasher;
+    @Mock private andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase recordLoginUseCase;
+    @Mock private andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase linkFunnelUseCase;
 
     @InjectMocks
     private OnboardOrganizationUseCase useCase;
@@ -51,7 +53,8 @@ class OnboardOrganizationUseCaseTest {
                 new OnboardOrganizationInput.ProjectData("Orion Core", "Main platform."),
                 List.of("Junior", "Pleno", "Sênior"),
                 List.of(new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor", List.of("DASHBOARD_INDIVIDUAL"))),
-                invites
+                invites,
+                null
         );
     }
 
@@ -111,7 +114,8 @@ class OnboardOrganizationUseCaseTest {
                 List.of(new OnboardOrganizationInput.RoleData("Coordenador", "Coordenador", List.of("USER_MANAGE")),
                         new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor",
                                 List.of("DASHBOARD_INDIVIDUAL"))),
-                List.of());
+                List.of(),
+                null);
 
         useCase.execute(input);
 
@@ -204,5 +208,88 @@ class OnboardOrganizationUseCaseTest {
         assertThat(output.inviteCount()).isEqualTo(2);
         // 1 admin + 2 invites = 3 saves
         verify(userRepository, times(3)).save(any(User.class));
+    }
+
+    private void stubHappyPath() {
+        var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
+                List.of("Junior"), null, null, true, 0L, NOW, NOW);
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
+                List.of("USER_MANAGE"), true, 0L, NOW, NOW);
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(false);
+        when(organizationRepository.save(any())).thenReturn(savedOrg);
+        when(roleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(roleRepository.findGlobalByName("ADMIN")).thenReturn(Optional.of(adminRole));
+        when(passwordHasher.hash("Secure@1")).thenReturn("hashed");
+        when(userRepository.save(any())).thenReturn(new User("user-1", "org-1", "admin@acme.com", "hashed",
+                "Maria Admin", "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW));
+        when(projectRepository.save(any())).thenReturn(new Project("proj-1", "org-1", "Orion Core", "orion-core",
+                "Main platform.", true, null, 0L, NOW, NOW));
+    }
+
+    @Test
+    void should_recordASignupLoginForTheNewAdmin_inTheNewOrganization() {
+        stubHappyPath();
+
+        useCase.execute(buildInput(List.of()));
+
+        verify(recordLoginUseCase).execute("user-1", "org-1", andromeda.sei.ms.feature.usage.domain.LoginMethod.SIGNUP);
+    }
+
+    @Test
+    void should_notRecordLogin_when_theSignupFails() {
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(true);
+
+        assertThatThrownBy(() -> useCase.execute(buildInput(List.of())))
+                .isInstanceOf(OrganizationSlugConflictException.class);
+        org.mockito.Mockito.verifyNoInteractions(recordLoginUseCase);
+    }
+
+    @Test
+    void should_returnTheOutput_evenWhenTheRecorderThrows() {
+        stubHappyPath();
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(recordLoginUseCase)
+                .execute(any(), any(), any());
+
+        OnboardOrganizationOutput output = useCase.execute(buildInput(List.of()));
+
+        assertThat(output.orgId()).isEqualTo("org-1");
+    }
+
+    private static final String FUNNEL = "3f2b1c4e-5a6d-4e7f-8a9b-0c1d2e3f4a5b";
+
+    private OnboardOrganizationInput withFunnel(String funnelId) {
+        var in = buildInput(List.of());
+        return new OnboardOrganizationInput(in.org(), in.admin(), in.project(), in.seniorities(), in.roles(),
+                in.invites(), funnelId);
+    }
+
+    @Test
+    void should_linkTheSignupFunnelToTheNewOrgAndAdmin_afterSuccess() {
+        stubHappyPath();
+
+        useCase.execute(withFunnel(FUNNEL));
+
+        verify(linkFunnelUseCase).execute(FUNNEL, andromeda.sei.ms.feature.usage.domain.FunnelFlow.SIGNUP,
+                "org-1", "user-1");
+    }
+
+    @Test
+    void should_notLinkAnything_when_theSignupFails() {
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(true);
+
+        assertThatThrownBy(() -> useCase.execute(withFunnel(FUNNEL)))
+                .isInstanceOf(OrganizationSlugConflictException.class);
+        org.mockito.Mockito.verifyNoInteractions(linkFunnelUseCase);
+    }
+
+    @Test
+    void should_returnTheOutput_evenWhenTheFunnelLinkThrows() {
+        stubHappyPath();
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(linkFunnelUseCase)
+                .execute(any(), any(), any(), any());
+
+        OnboardOrganizationOutput output = useCase.execute(withFunnel(FUNNEL));
+
+        assertThat(output.orgId()).isEqualTo("org-1");
     }
 }

@@ -37,4 +37,21 @@ class RateLimiterTest {
                     limiter.check("k", 1, Duration.ofMillis(1));
                 });
     }
+
+    @Test
+    void tryAcquire_returnsFalseInsteadOfThrowing_andDoesNotCountRefusedCalls() {
+        RateLimiter limiter = new RateLimiter();
+        assertThat(limiter.tryAcquire("k", 2, Duration.ofMinutes(1))).isTrue();
+        assertThat(limiter.tryAcquire("k", 2, Duration.ofMinutes(1))).isTrue();
+        assertThat(limiter.tryAcquire("k", 2, Duration.ofMinutes(1))).isFalse();
+        assertThat(limiter.tryAcquire("other", 2, Duration.ofMinutes(1))).isTrue();
+    }
+
+    @Test
+    void retryAfterSeconds_isBetweenOneAndTheWindow() {
+        RateLimiter limiter = new RateLimiter();
+        assertThat(limiter.retryAfterSeconds("none", Duration.ofMinutes(10))).isEqualTo(1);
+        limiter.tryAcquire("k", 1, Duration.ofMinutes(10));
+        assertThat(limiter.retryAfterSeconds("k", Duration.ofMinutes(10))).isBetween(590L, 600L);
+    }
 }

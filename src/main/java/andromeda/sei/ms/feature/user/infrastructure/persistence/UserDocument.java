@@ -66,6 +66,9 @@ public class UserDocument {
     private Instant createdAt;
     private Instant updatedAt;
 
+    /** Last successful login; written by an atomic $set, carried by the mapper both ways. */
+    private Instant lastLoginAt;
+
     /** Per-user overrides on top of the role preset; empty by default (project-scoped-permissions D2). */
     @Builder.Default
     private List<PermissionOverrideDocument> permissionOverrides = new ArrayList<>();

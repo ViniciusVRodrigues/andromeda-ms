@@ -10,6 +10,10 @@ import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
+import andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase;
+import andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase;
+import andromeda.sei.ms.feature.usage.domain.FunnelFlow;
+import andromeda.sei.ms.feature.usage.domain.LoginMethod;
 import andromeda.sei.ms.shared.domain.security.PermissionCatalog;
 import andromeda.sei.ms.feature.user.application.port.PasswordHasher;
 import andromeda.sei.ms.feature.user.domain.User;
@@ -44,6 +48,8 @@ public class OnboardOrganizationUseCase {
     private final PasswordHasher passwordHasher;
     private final EmailService emailService;
     private final FrontendUrlResolver frontendUrlResolver;
+    private final RecordLoginUseCase recordLoginUseCase;
+    private final LinkFunnelUseCase linkFunnelUseCase;
 
     public OnboardOrganizationOutput execute(OnboardOrganizationInput input) {
         String slug = SlugUtils.toSlug(input.org().name());
@@ -184,6 +190,18 @@ public class OnboardOrganizationUseCase {
                     log.warn("Failed to send invite email to {}: {}", invite.email(), e.getMessage());
                 }
             }
+        }
+
+        /* The wizard hands the new admin a JWT right away: that is a login (best-effort). */
+        try {
+            recordLoginUseCase.execute(savedAdmin.getId(), savedOrg.getId(), LoginMethod.SIGNUP);
+        } catch (RuntimeException e) {
+            log.warn("Signup-login telemetry failed: {}", e.getClass().getSimpleName());
+        }
+        try {
+            linkFunnelUseCase.execute(input.funnelId(), FunnelFlow.SIGNUP, savedOrg.getId(), savedAdmin.getId());
+        } catch (RuntimeException e) {
+            log.warn("Signup-funnel link failed: {}", e.getClass().getSimpleName());
         }
 
         return new OnboardOrganizationOutput(

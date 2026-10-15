@@ -44,6 +44,10 @@ security:
     secret: ${JWT_SECRET}  # Obrigatório — defina em .env (local) ou na env da plataforma (dev/prod)
     expiration-ms: 86400000  # 24h
 
+andromeda:
+  telemetry:
+    enabled: ${TELEMETRY_ENABLED:true}  # chave de desligar a coleta de uso (usage_events); lastLoginAt grava sempre
+
 azure:
   encryption-key: ${AZURE_ENCRYPTION_KEY}
   client-id: ${AZURE_CLIENT_ID:disabled}

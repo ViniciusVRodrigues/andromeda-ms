@@ -9,6 +9,9 @@ public interface UserRepository {
 
     List<User> findAllByOrganizationId(String organizationId);
 
+    /** Active AND inactive users of the organization (read-only joins such as the usage export). */
+    List<User> findAllByOrganizationIdIncludingInactive(String organizationId);
+
     boolean existsByEmail(String email);
 
     Optional<User> findByEmail(String email);
@@ -28,4 +31,11 @@ public interface UserRepository {
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);
 
     User save(User user);
+
+    /**
+     * Stamps lastLoginAt with an atomic $set filtered by id, organization and active.
+     * Deliberately not save(): it must not touch version or updatedAt, so a concurrent edit never
+     * turns a login into a conflict.
+     */
+    void recordLogin(String userId, String organizationId, java.time.Instant at);
 }

@@ -24,6 +24,8 @@ public class User {
     private Long version;
     private Instant createdAt;
     private Instant updatedAt;
+    /** Last successful login, written only by UserRepository.recordLogin ($set); null until the first one. */
+    private Instant lastLoginAt;
     /** Per-user overrides on top of the role preset (project-scoped-permissions D1/D2). */
     private List<PermissionOverride> permissionOverrides = new ArrayList<>();
 
@@ -98,6 +100,9 @@ public class User {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    public Instant getLastLoginAt() { return lastLoginAt; }
+    public void setLastLoginAt(Instant lastLoginAt) { this.lastLoginAt = lastLoginAt; }
 
     public List<PermissionOverride> getPermissionOverrides() { return permissionOverrides; }
     public void setPermissionOverrides(List<PermissionOverride> permissionOverrides) {
