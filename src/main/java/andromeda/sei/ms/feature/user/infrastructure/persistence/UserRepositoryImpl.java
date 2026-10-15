@@ -5,6 +5,10 @@ import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserConflictException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
@@ -17,6 +21,7 @@ public class UserRepositoryImpl implements UserRepository {
 
     private final UserMongoRepository mongoRepository;
     private final UserDocumentMapper mapper;
+    private final MongoTemplate mongoTemplate;
 
     @Override
     public Optional<User> findByIdAndOrganizationId(String id, String organizationId) {
@@ -86,5 +91,13 @@ public class UserRepositoryImpl implements UserRepository {
             // Concurrent write on the same version (e.g. two admins replacing overrides).
             throw new UserConflictException(user.getId());
         }
+    }
+
+    @Override
+    public void recordLogin(String userId, String organizationId, Instant at) {
+        Query query = Query.query(Criteria.where("_id").is(userId)
+                .and("organizationId").is(organizationId)
+                .and("active").is(true));
+        mongoTemplate.updateFirst(query, new Update().set("lastLoginAt", at), UserDocument.class);
     }
 }

@@ -31,6 +31,7 @@ public class UserDocumentMapper {
                 doc.getUpdatedAt()
         );
         user.setPermissionOverrides(toDomainOverrides(doc.getPermissionOverrides()));
+        user.setLastLoginAt(doc.getLastLoginAt());
         return user;
     }
 
@@ -50,6 +51,7 @@ public class UserDocumentMapper {
                 .active(user.isActive())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .lastLoginAt(user.getLastLoginAt())
                 .permissionOverrides(toDocumentOverrides(user.getPermissionOverrides()));
 
         if (user.getId() != null) {

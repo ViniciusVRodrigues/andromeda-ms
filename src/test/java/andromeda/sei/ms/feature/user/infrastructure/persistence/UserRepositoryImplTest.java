@@ -24,7 +24,7 @@ class UserRepositoryImplTest {
 
     @BeforeEach
     void setUp() {
-        repository = new UserRepositoryImpl(mongoRepository, new UserDocumentMapper());
+        repository = new UserRepositoryImpl(mongoRepository, new UserDocumentMapper(), null);
         mongoRepository.deleteAll();
     }
 

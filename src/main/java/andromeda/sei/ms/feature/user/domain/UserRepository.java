@@ -28,4 +28,11 @@ public interface UserRepository {
     boolean existsByOrganizationIdAndRoleIdAndActiveTrue(String organizationId, String roleId);
 
     User save(User user);
+
+    /**
+     * Stamps lastLoginAt with an atomic $set filtered by id, organization and active.
+     * Deliberately not save(): it must not touch version or updatedAt, so a concurrent edit never
+     * turns a login into a conflict.
+     */
+    void recordLogin(String userId, String organizationId, java.time.Instant at);
 }

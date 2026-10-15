@@ -39,10 +39,10 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class DeclaredIndexInitializerTest {
 
-    /* Pinned inventory: 28 @Document classes declaring 62 indexes (fix/mongo-index-creation report).
+    /* Pinned inventory: 29 @Document classes declaring 64 indexes (usage_events: ix_usage_org_occurred + TTL) (fix/mongo-index-creation report).
      * Adding or removing a declaration changes these numbers on purpose. */
-    private static final int DOCUMENT_COLLECTIONS = 28;
-    private static final int DECLARED_INDEXES = 62;
+    private static final int DOCUMENT_COLLECTIONS = 29;
+    private static final int DECLARED_INDEXES = 64;
 
     private static final String USERS = "users";
     private static final String WORK_ITEMS = "work_items";
@@ -71,7 +71,7 @@ class DeclaredIndexInitializerTest {
                 .map(DeclaredIndexCatalog.DeclaredIndex::collection).collect(Collectors.toSet());
 
         assertThat(collections).hasSize(DOCUMENT_COLLECTIONS)
-                .contains(USERS, WORK_ITEMS, "email_verifications", "password_resets", "vcs_review_events");
+                .contains(USERS, WORK_ITEMS, "email_verifications", "password_resets", "vcs_review_events", "usage_events");
         assertThat(catalog).hasSize(DECLARED_INDEXES);
     }
 

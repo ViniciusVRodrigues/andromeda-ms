@@ -38,6 +38,7 @@ class OnboardOrganizationUseCaseTest {
     @Mock private UserRepository userRepository;
     @Mock private ProjectRepository projectRepository;
     @Mock private PasswordHasher passwordHasher;
+    @Mock private andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase recordLoginUseCase;
 
     @InjectMocks
     private OnboardOrganizationUseCase useCase;
@@ -204,5 +205,50 @@ class OnboardOrganizationUseCaseTest {
         assertThat(output.inviteCount()).isEqualTo(2);
         // 1 admin + 2 invites = 3 saves
         verify(userRepository, times(3)).save(any(User.class));
+    }
+
+    private void stubHappyPath() {
+        var savedOrg = new Organization("org-1", "Acme Corp", "acme-corp", "Tecnologia", "Brasil",
+                List.of("Junior"), null, null, true, 0L, NOW, NOW);
+        var adminRole = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
+                List.of("USER_MANAGE"), true, 0L, NOW, NOW);
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(false);
+        when(organizationRepository.save(any())).thenReturn(savedOrg);
+        when(roleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(roleRepository.findGlobalByName("ADMIN")).thenReturn(Optional.of(adminRole));
+        when(passwordHasher.hash("Secure@1")).thenReturn("hashed");
+        when(userRepository.save(any())).thenReturn(new User("user-1", "org-1", "admin@acme.com", "hashed",
+                "Maria Admin", "role-admin", null, null, null, null, null, true, true, 0L, NOW, NOW));
+        when(projectRepository.save(any())).thenReturn(new Project("proj-1", "org-1", "Orion Core", "orion-core",
+                "Main platform.", true, null, 0L, NOW, NOW));
+    }
+
+    @Test
+    void should_recordASignupLoginForTheNewAdmin_inTheNewOrganization() {
+        stubHappyPath();
+
+        useCase.execute(buildInput(List.of()));
+
+        verify(recordLoginUseCase).execute("user-1", "org-1", andromeda.sei.ms.feature.usage.domain.LoginMethod.SIGNUP);
+    }
+
+    @Test
+    void should_notRecordLogin_when_theSignupFails() {
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(true);
+
+        assertThatThrownBy(() -> useCase.execute(buildInput(List.of())))
+                .isInstanceOf(OrganizationSlugConflictException.class);
+        org.mockito.Mockito.verifyNoInteractions(recordLoginUseCase);
+    }
+
+    @Test
+    void should_returnTheOutput_evenWhenTheRecorderThrows() {
+        stubHappyPath();
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(recordLoginUseCase)
+                .execute(any(), any(), any());
+
+        OnboardOrganizationOutput output = useCase.execute(buildInput(List.of()));
+
+        assertThat(output.orgId()).isEqualTo("org-1");
     }
 }

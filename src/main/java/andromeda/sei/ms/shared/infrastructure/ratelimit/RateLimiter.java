@@ -32,18 +32,30 @@ public class RateLimiter {
      * @throws TooManyAttemptsException quando o limite e ultrapassado
      */
     public void check(String key, int limit, Duration window) {
+        if (!tryAcquire(key, limit, window)) {
+            throw new TooManyAttemptsException();
+        }
+    }
+
+    /**
+     * Como {@link #check}, mas devolve {@code false} em vez de lancar quando o limite estoura,
+     * para quem precisa de uma excecao propria (ex.: 429 com Retry-After). Tentativas recusadas nao
+     * entram na contagem.
+     */
+    public boolean tryAcquire(String key, int limit, Duration window) {
         Instant now = Instant.now();
         Instant cutoff = now.minus(window);
 
         Deque<Instant> timestamps = hits.computeIfAbsent(key, k -> new ConcurrentLinkedDeque<>());
+        boolean acquired;
         synchronized (timestamps) {
             while (!timestamps.isEmpty() && timestamps.peekFirst().isBefore(cutoff)) {
                 timestamps.pollFirst();
             }
-            if (timestamps.size() >= limit) {
-                throw new TooManyAttemptsException();
+            acquired = timestamps.size() < limit;
+            if (acquired) {
+                timestamps.addLast(now);
             }
-            timestamps.addLast(now);
         }
 
         /* Sem isso o mapa cresceria indefinidamente com chaves ociosas. */
@@ -54,6 +66,19 @@ public class RateLimiter {
                             || e.getValue().peekLast().isBefore(cutoff);
                 }
             });
+        }
+        return acquired;
+    }
+
+    /** Segundos ate a tentativa mais antiga sair da janela (entre 1 e a janela inteira). */
+    public long retryAfterSeconds(String key, Duration window) {
+        Deque<Instant> timestamps = hits.get(key);
+        if (timestamps == null) return 1;
+        synchronized (timestamps) {
+            Instant oldest = timestamps.peekFirst();
+            if (oldest == null) return 1;
+            long seconds = Duration.between(Instant.now(), oldest.plus(window)).toSeconds() + 1;
+            return Math.max(1, Math.min(seconds, window.toSeconds()));
         }
     }
 
