@@ -14,7 +14,9 @@ public record OnboardOrganizationRequest(
         @Valid @NotNull ProjectData project,
         @NotEmpty List<@NotBlank String> seniorities,
         List<@Valid RoleData> roles,
-        List<@Valid InviteData> invites
+        List<@Valid InviteData> invites,
+        /* optional; a malformed value is ignored by LinkFunnelUseCase, never an error */
+        String funnelId
 ) {
     public record OrgData(
             @NotBlank String name,

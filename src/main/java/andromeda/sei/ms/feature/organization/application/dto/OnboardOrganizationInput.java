@@ -8,7 +8,8 @@ public record OnboardOrganizationInput(
         ProjectData project,
         List<String> seniorities,
         List<RoleData> roles,
-        List<InviteData> invites
+        List<InviteData> invites,
+        String funnelId
 ) {
     public record OrgData(String name, String sector, String country) {}
     public record AdminData(String email, String name, String password) {}

@@ -34,7 +34,7 @@ public class SecurityConfig {
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
     private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
 
-    private static final String[] PUBLIC_ENDPOINTS = {
+    static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/login",
             "/api/v1/auth/invite/complete",
             "/api/v1/auth/github",
@@ -47,6 +47,7 @@ public class SecurityConfig {
             "/api/v1/organizations",    // onboarding — cria org + primeiro admin
             "/api/v1/organizations/name-availability", // checagem durante o wizard — pre-auth
             "/api/v1/users/email-availability",        // checagem durante o wizard — pre-auth
+            "/api/v1/usage-events/public",             // funil anônimo do cadastro/convite — pre-auth, só JSON
             "/actuator/health",
             "/v3/api-docs/**",
             "/swagger-ui/**",

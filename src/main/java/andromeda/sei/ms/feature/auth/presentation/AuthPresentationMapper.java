@@ -24,7 +24,7 @@ public class AuthPresentationMapper {
     }
 
     public CompleteAccountInput toCompleteInput(CompleteAccountRequest request) {
-        return new CompleteAccountInput(request.token(), request.name(), request.password());
+        return new CompleteAccountInput(request.token(), request.name(), request.password(), request.funnelId());
     }
 
     public CompleteAccountResponse toCompleteResponse(CompleteAccountOutput output, String token) {

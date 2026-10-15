@@ -39,6 +39,7 @@ class OnboardOrganizationUseCaseTest {
     @Mock private ProjectRepository projectRepository;
     @Mock private PasswordHasher passwordHasher;
     @Mock private andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase recordLoginUseCase;
+    @Mock private andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase linkFunnelUseCase;
 
     @InjectMocks
     private OnboardOrganizationUseCase useCase;
@@ -52,7 +53,8 @@ class OnboardOrganizationUseCaseTest {
                 new OnboardOrganizationInput.ProjectData("Orion Core", "Main platform."),
                 List.of("Junior", "Pleno", "Sênior"),
                 List.of(new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor", List.of("DASHBOARD_INDIVIDUAL"))),
-                invites
+                invites,
+                null
         );
     }
 
@@ -112,7 +114,8 @@ class OnboardOrganizationUseCaseTest {
                 List.of(new OnboardOrganizationInput.RoleData("Coordenador", "Coordenador", List.of("USER_MANAGE")),
                         new OnboardOrganizationInput.RoleData("Desenvolvedor", "Desenvolvedor",
                                 List.of("DASHBOARD_INDIVIDUAL"))),
-                List.of());
+                List.of(),
+                null);
 
         useCase.execute(input);
 
@@ -248,6 +251,44 @@ class OnboardOrganizationUseCaseTest {
                 .execute(any(), any(), any());
 
         OnboardOrganizationOutput output = useCase.execute(buildInput(List.of()));
+
+        assertThat(output.orgId()).isEqualTo("org-1");
+    }
+
+    private static final String FUNNEL = "3f2b1c4e-5a6d-4e7f-8a9b-0c1d2e3f4a5b";
+
+    private OnboardOrganizationInput withFunnel(String funnelId) {
+        var in = buildInput(List.of());
+        return new OnboardOrganizationInput(in.org(), in.admin(), in.project(), in.seniorities(), in.roles(),
+                in.invites(), funnelId);
+    }
+
+    @Test
+    void should_linkTheSignupFunnelToTheNewOrgAndAdmin_afterSuccess() {
+        stubHappyPath();
+
+        useCase.execute(withFunnel(FUNNEL));
+
+        verify(linkFunnelUseCase).execute(FUNNEL, andromeda.sei.ms.feature.usage.domain.FunnelFlow.SIGNUP,
+                "org-1", "user-1");
+    }
+
+    @Test
+    void should_notLinkAnything_when_theSignupFails() {
+        when(organizationRepository.existsBySlug("acme-corp")).thenReturn(true);
+
+        assertThatThrownBy(() -> useCase.execute(withFunnel(FUNNEL)))
+                .isInstanceOf(OrganizationSlugConflictException.class);
+        org.mockito.Mockito.verifyNoInteractions(linkFunnelUseCase);
+    }
+
+    @Test
+    void should_returnTheOutput_evenWhenTheFunnelLinkThrows() {
+        stubHappyPath();
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom")).when(linkFunnelUseCase)
+                .execute(any(), any(), any(), any());
+
+        OnboardOrganizationOutput output = useCase.execute(withFunnel(FUNNEL));
 
         assertThat(output.orgId()).isEqualTo("org-1");
     }

@@ -31,7 +31,8 @@ public class OrganizationPresentationMapper {
                 new OnboardOrganizationInput.ProjectData(request.project().name(), request.project().description()),
                 request.seniorities(),
                 roles,
-                invites
+                invites,
+                request.funnelId()
         );
     }
 
