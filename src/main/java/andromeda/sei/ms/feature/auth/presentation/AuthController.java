@@ -73,13 +73,19 @@ public class AuthController {
     }
 
     @PostMapping("/email-verification")
-    public ResponseEntity<Void> sendEmailVerification(@Valid @RequestBody SendEmailVerificationRequest request) {
+    public ResponseEntity<Void> sendEmailVerification(@Valid @RequestBody SendEmailVerificationRequest request,
+                                                      HttpServletRequest http) {
+        rateLimiter.check("email-verify:ip:" + clientIpResolver.resolve(http), 10, Duration.ofMinutes(15));
+        rateLimiter.check("email-verify:email:" + request.email().trim().toLowerCase(), 5, Duration.ofMinutes(15));
         sendEmailVerificationUseCase.execute(request.email());
         return ResponseEntity.ok().build();
     }
 
     @PostMapping("/email-verification/confirm")
-    public ResponseEntity<Map<String, Boolean>> confirmEmailVerification(@Valid @RequestBody ConfirmEmailVerificationRequest request) {
+    public ResponseEntity<Map<String, Boolean>> confirmEmailVerification(@Valid @RequestBody ConfirmEmailVerificationRequest request,
+                                                                          HttpServletRequest http) {
+        rateLimiter.check("email-verify-confirm:ip:" + clientIpResolver.resolve(http), 20, Duration.ofMinutes(15));
+        rateLimiter.check("email-verify-confirm:email:" + request.email().trim().toLowerCase(), 10, Duration.ofMinutes(15));
         confirmEmailVerificationUseCase.execute(request.email(), request.code());
         return ResponseEntity.ok(Map.of("verified", true));
     }
