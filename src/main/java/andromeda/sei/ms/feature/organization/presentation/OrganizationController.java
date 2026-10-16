@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.organization.presentation;
 
+import andromeda.sei.ms.shared.infrastructure.web.ClientIpResolver;
 import andromeda.sei.ms.feature.organization.application.dto.UpdateAiPricesInput;
 import andromeda.sei.ms.feature.organization.application.usecase.GetOrganizationUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.OnboardOrganizationUseCase;
@@ -46,6 +47,7 @@ public class OrganizationController {
     private final JwtService jwtService;
     private final andromeda.sei.ms.feature.organization.domain.OrganizationRepository organizationRepository;
     private final RateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     @PostMapping
     public ResponseEntity<OnboardOrganizationResponse> onboard(
@@ -63,16 +65,10 @@ public class OrganizationController {
     @GetMapping("/name-availability")
     public ResponseEntity<Map<String, Object>> nameAvailability(@RequestParam String name,
                                                                 HttpServletRequest http) {
-        rateLimiter.check("org-availability:" + clientIp(http), 60, Duration.ofMinutes(5));
+        rateLimiter.check("org-availability:" + clientIpResolver.resolve(http), 60, Duration.ofMinutes(5));
         String slug = SlugUtils.toSlug(name == null ? "" : name.trim());
         boolean available = !slug.isBlank() && !organizationRepository.existsBySlug(slug);
         return ResponseEntity.ok(Map.of("slug", slug, "available", available));
-    }
-
-    private String clientIp(HttpServletRequest http) {
-        String forwarded = http.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
-        return http.getRemoteAddr();
     }
 
     @GetMapping("/me")

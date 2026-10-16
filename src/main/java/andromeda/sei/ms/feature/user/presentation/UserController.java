@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.user.presentation;
 
+import andromeda.sei.ms.shared.infrastructure.web.ClientIpResolver;
 import andromeda.sei.ms.feature.user.application.dto.CreateUserInput;
 import andromeda.sei.ms.feature.user.application.dto.UpdateUserInput;
 import andromeda.sei.ms.feature.user.application.dto.InviteUserInput;
@@ -48,6 +49,7 @@ public class UserController {
     private final CreateUserUseCase createUserUseCase;
     private final InviteUserUseCase inviteUserUseCase;
     private final RateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
     private final andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
     private final ListUsersUseCase listUsersUseCase;
     private final UpdateUserUseCase updateUserUseCase;
@@ -72,16 +74,10 @@ public class UserController {
     @GetMapping("/email-availability")
     public ResponseEntity<Map<String, Boolean>> emailAvailability(@RequestParam String email,
                                                                   HttpServletRequest http) {
-        rateLimiter.check("email-availability:" + clientIp(http), 60, java.time.Duration.ofMinutes(5));
+        rateLimiter.check("email-availability:" + clientIpResolver.resolve(http), 60, java.time.Duration.ofMinutes(5));
         String normalized = email == null ? "" : email.trim().toLowerCase();
         boolean available = !normalized.isBlank() && !userRepository.existsByEmail(normalized);
         return ResponseEntity.ok(Map.of("available", available));
-    }
-
-    private String clientIp(HttpServletRequest http) {
-        String forwarded = http.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
-        return http.getRemoteAddr();
     }
 
     @PostMapping("/invite")

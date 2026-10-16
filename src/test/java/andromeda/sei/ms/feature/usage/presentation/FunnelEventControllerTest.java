@@ -158,14 +158,14 @@ class FunnelEventControllerTest {
     }
 
     @Test
-    void should_countTheLimitPerIp_usingTheFirstForwardedValue() throws Exception {
+    void should_countTheLimitPerIp_usingTheClientEntryOfTheForwardedChain() throws Exception {
         for (int i = 0; i < 120; i++) {
             mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).header("X-Forwarded-For", "1.1.1.1")
                     .content(body("signup", ev("OPEN", null)))).andExpect(status().isAccepted());
         }
         mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).header("X-Forwarded-For", "2.2.2.2")
                 .content(body("signup", ev("OPEN", null)))).andExpect(status().isAccepted());
-        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).header("X-Forwarded-For", "1.1.1.1, 9.9.9.9")
+        mockMvc.perform(post(URL).contentType(MediaType.APPLICATION_JSON).header("X-Forwarded-For", "9.9.9.9, 1.1.1.1")
                 .content(body("signup", ev("OPEN", null)))).andExpect(status().isTooManyRequests());
     }
 
