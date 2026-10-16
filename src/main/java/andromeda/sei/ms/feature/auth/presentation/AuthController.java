@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.auth.presentation;
 
+import andromeda.sei.ms.shared.infrastructure.web.ClientIpResolver;
 import andromeda.sei.ms.feature.auth.application.dto.CompleteAccountOutput;
 import andromeda.sei.ms.feature.auth.application.dto.GetCurrentUserInput;
 import andromeda.sei.ms.feature.auth.application.dto.GetCurrentUserOutput;
@@ -47,6 +48,7 @@ public class AuthController {
     private final RequestPasswordResetUseCase requestPasswordResetUseCase;
     private final ConfirmPasswordResetUseCase confirmPasswordResetUseCase;
     private final RateLimiter rateLimiter;
+    private final ClientIpResolver clientIpResolver;
 
     private final LoginUseCase loginUseCase;
     private final CompleteAccountUseCase completeAccountUseCase;
@@ -88,7 +90,7 @@ public class AuthController {
     @PostMapping("/password-reset")
     public ResponseEntity<Void> requestPasswordReset(@Valid @RequestBody RequestPasswordResetRequest request,
                                                      HttpServletRequest http) {
-        rateLimiter.check("pwd-reset:ip:" + clientIp(http), 10, Duration.ofMinutes(15));
+        rateLimiter.check("pwd-reset:ip:" + clientIpResolver.resolve(http), 10, Duration.ofMinutes(15));
         rateLimiter.check("pwd-reset:email:" + request.email().trim().toLowerCase(), 5, Duration.ofMinutes(15));
         requestPasswordResetUseCase.execute(request.email());
         return ResponseEntity.accepted().build();
@@ -100,18 +102,9 @@ public class AuthController {
     @PostMapping("/password-reset/confirm")
     public ResponseEntity<Void> confirmPasswordReset(@Valid @RequestBody ConfirmPasswordResetRequest request,
                                                      HttpServletRequest http) {
-        rateLimiter.check("pwd-reset-confirm:ip:" + clientIp(http), 20, Duration.ofMinutes(15));
+        rateLimiter.check("pwd-reset-confirm:ip:" + clientIpResolver.resolve(http), 20, Duration.ofMinutes(15));
         confirmPasswordResetUseCase.execute(request.token(), request.password());
         return ResponseEntity.noContent().build();
-    }
-
-    /** Respeita X-Forwarded-For: a aplicacao roda atras de nginx/Cloudflare. */
-    private String clientIp(HttpServletRequest http) {
-        String forwarded = http.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return http.getRemoteAddr();
     }
 
     @GetMapping("/me")
