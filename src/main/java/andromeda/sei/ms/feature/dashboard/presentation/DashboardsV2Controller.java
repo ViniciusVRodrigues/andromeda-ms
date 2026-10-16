@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Data endpoints of the v2 dashboards (dashboards-customizaveis D1): one payload per view. The
  * tenant and, for the individual view, the person always come from the JWT — no {@code userId}
- * parameter exists. The legacy {@code /api/v1/dashboard/*} endpoints stay untouched.
+ * parameter exists.
  */
 @RestController
 @RequestMapping("/api/v1/dashboards")

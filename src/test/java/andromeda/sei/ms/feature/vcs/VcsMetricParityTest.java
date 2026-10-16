@@ -2,21 +2,14 @@ package andromeda.sei.ms.feature.vcs;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
-import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
-import andromeda.sei.ms.feature.dashboard.application.dto.StrategicDashboardOutput;
-import andromeda.sei.ms.feature.dashboard.application.dto.TeamDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.usecase.GetDeveloperDashboardUseCase;
-import andromeda.sei.ms.feature.dashboard.application.usecase.GetStrategicDashboardUseCase;
-import andromeda.sei.ms.feature.dashboard.application.usecase.GetTeamDashboardUseCase;
 import andromeda.sei.ms.feature.metrics.application.DeliveryMetricsService;
 import andromeda.sei.ms.feature.metrics.domain.DeliveryMethod;
 import andromeda.sei.ms.feature.metrics.domain.DeliveryMetrics;
 import andromeda.sei.ms.feature.metrics.domain.MergedChange;
 import andromeda.sei.ms.feature.metrics.domain.PerformanceClass;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
-import andromeda.sei.ms.feature.project.domain.Project;
-import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.vcs.application.VcsReadService;
 import andromeda.sei.ms.feature.vcs.application.dto.CommitActivityPointOutput;
@@ -115,8 +108,6 @@ class VcsMetricParityTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
     @Mock private UserRepository userRepository;
-    @Mock private ProjectRepository projectRepository;
-    @Mock private GetDeveloperDashboardUseCase unusedDeveloperDashboard;
 
     private final InMemoryVcsStore store = new InMemoryVcsStore();
     private final Map<String, String> prIdByName = new LinkedHashMap<>();
@@ -140,8 +131,6 @@ class VcsMetricParityTest {
         when(sprintRepository.findCurrentSprintByOrganizationIdAndProjectId(any(), any())).thenReturn(Optional.empty());
         when(userRepository.findAllByOrganizationId(anyString())).thenReturn(List.of());
         when(aiUsageRepository.findTotalCostByUserIdsAndDateRange(any(), any(), any(), any())).thenReturn(Map.of());
-        when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(
-                new Project(PROJECT, ORG, "Parity", "parity", "d", true, List.of(), 1L, T, T)));
     }
 
     @AfterEach
@@ -263,40 +252,6 @@ class VcsMetricParityTest {
     // ------------------------------------------------------------------
     // 3. Dashboards
     // ------------------------------------------------------------------
-
-    @Test
-    void should_produceTeamDashboardReviewMetricsAndStalePrs_asBefore() {
-        GetTeamDashboardUseCase team = new GetTeamDashboardUseCase(sprintRepository, workItemRepository,
-                new EffortBearingLevelResolver(), aiUsageRepository, userRepository, read,
-                new ProjectAiCostCalculator(allocationRepository, aiUsageRepository));
-
-        TeamDashboardOutput output = team.execute(ORG, "auth", PROJECT, null, START, END);
-
-        assertThat(output.review()).isEqualTo(new ReviewMetrics(new DurationStat(2.0, 5.0, 4),
-                new DurationStat(4.0, 8.0, 3), 80.0, 5, 24));
-        assertThat(output.stalePrs()).singleElement().satisfies(stale -> {
-            assertThat(stale.title()).isEqualTo("P3");
-            assertThat(stale.authorName()).isEqualTo("bob");
-            assertThat(stale.authorLogin()).isEqualTo("bob");
-            assertThat(stale.provider()).isEqualTo("GITHUB");
-        });
-    }
-
-    @Test
-    void should_produceStrategicDelivery_asBefore() {
-        GetStrategicDashboardUseCase strategic = new GetStrategicDashboardUseCase(projectRepository, workItemRepository,
-                new EffortBearingLevelResolver(), userRepository, unusedDeveloperDashboard, deliveryMetricsService);
-
-        StrategicDashboardOutput output = strategic.execute(ORG, "auth", null, null, START, END, java.util.Set.of(PROJECT));
-
-        DeliveryMetrics delivery = output.projects().get(0).delivery();
-        assertThat(delivery.method()).isEqualTo(DeliveryMethod.VCS_PROXY);
-        assertThat(delivery.mergedPrs()).isEqualTo(3);
-        assertThat(delivery.remediationPrs()).isEqualTo(2);
-        assertThat(delivery.changeFailRatePercent()).isEqualTo(66.67);
-        assertThat(delivery.deploymentsPerWeek()).isEqualTo(1.5);
-        assertThat(delivery.changeLeadTime()).isEqualTo(new DurationStat(12.0, 24.0, 3));
-    }
 
     @Test
     void should_produceDeveloperPullRequestContext_asBefore() {

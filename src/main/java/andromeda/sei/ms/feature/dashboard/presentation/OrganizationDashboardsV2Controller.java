@@ -32,7 +32,7 @@ import java.util.Set;
  * <ul>
  *   <li>{@code /organization}: {@code DASHBOARD_STRATEGIC} on at least one project, and only the
  *       projects where it is effective are aggregated ({@link EffectivePermissionService#projectIdsWith},
- *       as level 1 of {@code StrategicDashboardController}); the period is validated after the
+ *       as the former strategic level 1); the period is validated after the
  *       authorization (422 {@code DASHBOARD_PERIOD_INVALID}).</li>
  *   <li>{@code /integrations}: {@code AZURE_CONFIGURE}, {@code REPOS_CONFIGURE} or {@code USER_MANAGE}
  *       (organization level); never a secret in the response.</li>

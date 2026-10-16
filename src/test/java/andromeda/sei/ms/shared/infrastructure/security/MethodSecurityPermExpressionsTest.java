@@ -1,8 +1,5 @@
 package andromeda.sei.ms.shared.infrastructure.security;
 
-import andromeda.sei.ms.feature.dashboard.application.usecase.GetTeamDashboardUseCase;
-import andromeda.sei.ms.feature.dashboard.presentation.TeamDashboardController;
-import andromeda.sei.ms.feature.dashboard.presentation.TeamDashboardMapper;
 import andromeda.sei.ms.feature.integration.application.usecase.GetIntegrationSyncLogsUseCase;
 import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.presentation.IntegrationSyncLogController;
@@ -42,7 +39,6 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -59,7 +55,6 @@ import static org.mockito.Mockito.when;
 class MethodSecurityPermExpressionsTest {
 
     private static final ProjectPermissionEvaluator PERM = mock(ProjectPermissionEvaluator.class);
-    private static final GetTeamDashboardUseCase TEAM = mock(GetTeamDashboardUseCase.class);
     private static final RefreshProjectUseCase REFRESH = mock(RefreshProjectUseCase.class);
     private static final ListRepositoryPullRequestsUseCase PULL_REQUESTS = mock(ListRepositoryPullRequestsUseCase.class);
     private static final GetIntegrationSyncLogsUseCase SYNC_LOGS = mock(GetIntegrationSyncLogsUseCase.class);
@@ -75,10 +70,6 @@ class MethodSecurityPermExpressionsTest {
     @EnableMethodSecurity
     static class Config {
         @Bean ProjectPermissionEvaluator perm() { return PERM; }
-
-        @Bean TeamDashboardController teamDashboardController() {
-            return new TeamDashboardController(TEAM, new TeamDashboardMapper(), mock(DataFreshnessResolver.class));
-        }
 
         @Bean ProjectRefreshController projectRefreshController() {
             return new ProjectRefreshController(REFRESH, mock(GetProjectRefreshStatusUseCase.class));
@@ -112,7 +103,7 @@ class MethodSecurityPermExpressionsTest {
 
     @BeforeEach
     void authenticate() {
-        reset(PERM, TEAM, REFRESH, PULL_REQUESTS, SYNC_LOGS, CREATE_PROJECT, UPDATE_PROJECT, DEACTIVATE_PROJECT,
+        reset(PERM, REFRESH, PULL_REQUESTS, SYNC_LOGS, CREATE_PROJECT, UPDATE_PROJECT, DEACTIVATE_PROJECT,
                 PROJECT_MEMBERS);
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(
                 "user-1", null, AuthorityUtils.createAuthorityList("DASHBOARD_TEAM")));
@@ -121,41 +112,6 @@ class MethodSecurityPermExpressionsTest {
     @AfterEach
     void clear() {
         SecurityContextHolder.clearContext();
-    }
-
-    @Test
-    void should_deny_when_teamDashboardProjectIsNotAllowed() {
-        when(PERM.onProject("p1", "DASHBOARD_TEAM")).thenReturn(false);
-
-        assertThatThrownBy(() -> team().getTeamDashboard("p1", null, null, null))
-                .isInstanceOf(AccessDeniedException.class);
-    }
-
-    @Test
-    void should_invokeUseCase_when_teamDashboardProjectIsAllowed() {
-        when(PERM.onProject("p1", "DASHBOARD_TEAM")).thenReturn(true);
-
-        // The mocked use case returns null, so the mapper may fail afterwards: only the gate matters.
-        assertThat(catchThrowable(() -> team().getTeamDashboard("p1", null, null, null)))
-                .isNotInstanceOf(AccessDeniedException.class);
-        verify(TEAM).execute(any(), any(), any(), any(), any(), any());
-    }
-
-    @Test
-    void should_useAnyProjectGate_when_teamDashboardHasNoProject() {
-        when(PERM.onAnyProject("DASHBOARD_TEAM")).thenReturn(false);
-
-        assertThatThrownBy(() -> team().getTeamDashboard(null, null, null, null))
-                .isInstanceOf(AccessDeniedException.class);
-        verify(PERM).onAnyProject("DASHBOARD_TEAM");
-    }
-
-    @Test
-    void should_propagateNotFound_unwrapped_when_projectIsOfAnotherOrganization() {
-        when(PERM.onProject("foreign", "DASHBOARD_TEAM")).thenThrow(new ProjectNotFoundException("foreign"));
-
-        assertThatThrownBy(() -> team().getTeamDashboard("foreign", null, null, null))
-                .isInstanceOf(ProjectNotFoundException.class);
     }
 
     @Test
@@ -236,7 +192,4 @@ class MethodSecurityPermExpressionsTest {
                 "user-1", null, AuthorityUtils.createAuthorityList(authorities)));
     }
 
-    private static TeamDashboardController team() {
-        return context.getBean(TeamDashboardController.class);
-    }
 }
