@@ -33,16 +33,14 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * Persistence of {@code dashboard_layouts} without a database: {@code @DataMongoTest} and the
- * embedded Mongo do not run under Spring Boot 4 in this repository (the sibling *RepositoryImplTest
- * are {@code @Disabled}). Decision of the orquestrador for P2/task 2.2: prove instead that
+ * Persistence of {@code dashboard_layouts} without a database (fast, query-shape level). Proves that
  * <ul>
  *     <li>every derived query filters by organizationId + userId + active = true (parsed with the
  *     same {@link PartTree} Spring Data uses to build the Mongo query);</li>
  *     <li>the adapter passes the tenant and user through and never deletes (soft delete = save);</li>
  *     <li>the document declares the partial unique index and the org/active index.</li>
  * </ul>
- * The partial-index semantics against a real Mongo are covered by the QA smoke script.
+ * The partial-index semantics against a real Mongo are in {@code DashboardLayoutPartialIndexMongoTest}.
  */
 @ExtendWith(MockitoExtension.class)
 class DashboardLayoutRepositoryImplTest {

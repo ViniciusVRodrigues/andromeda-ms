@@ -28,10 +28,7 @@ import static org.mockito.Mockito.when;
  * apaga dado de outra organizacao sem volta. Estes testes inspecionam o {@link Query} realmente
  * entregue ao {@link MongoTemplate} e exigem que TODA remocao carregue {@code organizationId}.
  *
- * <p>Sem banco de proposito. O projeto esta sem cobertura de persistencia desde o Spring Boot 4
- * (que removeu {@code @DataMongoTest}; os 15 testes de repositorio seguem {@code @Disabled}
- * aguardando reescrita). Escrever mais um teste desabilitado aqui seria aparencia de cobertura
- * justamente no ponto mais perigoso — entao verificamos o predicado montado, que e onde mora a
+ * <p>Sem banco de proposito: verificamos o predicado montado, que e onde mora a
  * classe de bug que importa: filtro de tenant ausente ou frouxo.
  */
 @ExtendWith(MockitoExtension.class)

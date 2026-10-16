@@ -1,9 +1,9 @@
 package andromeda.sei.ms.feature.workitem.infrastructure.persistence;
 
+import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransition;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
@@ -13,7 +13,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@MongoIntegrationTest
 class WorkItemTransitionRepositoryImplTest {
 
     @Autowired

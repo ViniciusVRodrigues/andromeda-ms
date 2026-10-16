@@ -1,12 +1,12 @@
 package andromeda.sei.ms.feature.integration.infrastructure.persistence;
 
+import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import andromeda.sei.ms.feature.integration.domain.Integration;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
 import andromeda.sei.ms.feature.integration.domain.SyncOperation;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -14,7 +14,7 @@ import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@MongoIntegrationTest
 class IntegrationSyncLogRepositoryImplTest {
 
     @Autowired

@@ -1,0 +1,38 @@
+package andromeda.sei.ms.shared.testsupport;
+
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import andromeda.sei.ms.shared.infrastructure.config.DeclaredIndexInitializer;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.testcontainers.mongodb.MongoDBContainer;
+import org.testcontainers.utility.DockerImageName;
+
+/**
+ * Mongo real para os testes de persistencia. O container e estatico e compartilhado por todas as
+ * classes da JVM de teste (iniciado uma vez; o Ryuk o remove ao fim). O {@link ServiceConnection}
+ * sobrescreve {@code spring.data.mongodb.uri}, entao nenhum teste toca o banco de desenvolvimento
+ * configurado no application.yaml.
+ *
+ * <p>O {@link DeclaredIndexInitializer} e um ApplicationRunner (nao entra no slice por scan): importado aqui,
+ * roda no startup do contexto e cria os indices declarados, como em producao. Sem ele os testes de
+ * unicidade passariam em falso (nenhum indice existiria).
+ */
+@TestConfiguration(proxyBeanMethods = false)
+@Import(DeclaredIndexInitializer.class)
+public class MongoTestcontainersConfig {
+
+    static final String MONGO_IMAGE = "mongo:8.0";
+
+    private static final MongoDBContainer MONGO = new MongoDBContainer(DockerImageName.parse(MONGO_IMAGE));
+
+    static {
+        MONGO.start();
+    }
+
+    @Bean
+    @ServiceConnection
+    MongoDBContainer mongoDBContainer() {
+        return MONGO;
+    }
+}

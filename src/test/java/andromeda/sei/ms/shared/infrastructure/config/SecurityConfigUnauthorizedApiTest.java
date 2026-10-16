@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -43,9 +44,11 @@ class SecurityConfigUnauthorizedApiTest {
         mockMvc.perform(get("/api/v1/projects")).andExpect(status().isUnauthorized());
     }
 
+    /* O entry point do login só casa com navegador (Accept text/html); sem Accept, fora da API,
+     * cai no padrão (401), o que também serve para cliente que não é navegador. */
     @Test
     void should_keepTheLoginRedirect_outsideTheApi() throws Exception {
-        mockMvc.perform(get("/somewhere")).andExpect(status().is3xxRedirection());
+        mockMvc.perform(get("/somewhere").accept(MediaType.TEXT_HTML)).andExpect(status().is3xxRedirection());
     }
 
     @Configuration

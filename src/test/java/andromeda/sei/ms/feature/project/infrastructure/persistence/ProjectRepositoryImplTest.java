@@ -1,9 +1,9 @@
 package andromeda.sei.ms.feature.project.infrastructure.persistence;
 
-import org.junit.jupiter.api.Disabled;
+import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import org.junit.jupiter.api.Test;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@MongoIntegrationTest
 class ProjectRepositoryImplTest {
 
     @Test
