@@ -59,14 +59,19 @@ public class AuthController {
     private final JwtService jwtService;
 
     @PostMapping("/login")
-    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request,
+                                                HttpServletRequest http) {
+        rateLimiter.check("login:ip:" + clientIpResolver.resolve(http), 30, Duration.ofMinutes(15));
+        rateLimiter.check("login:email:" + request.email().trim().toLowerCase(), 10, Duration.ofMinutes(15));
         LoginOutput output = loginUseCase.execute(mapper.toLoginInput(request));
         String token = jwtService.generate(output.userId(), output.orgId(), output.permissionCodes());
         return ResponseEntity.ok(mapper.toLoginResponse(output, token));
     }
 
     @PostMapping("/invite/complete")
-    public ResponseEntity<CompleteAccountResponse> completeAccount(@Valid @RequestBody CompleteAccountRequest request) {
+    public ResponseEntity<CompleteAccountResponse> completeAccount(@Valid @RequestBody CompleteAccountRequest request,
+                                                                   HttpServletRequest http) {
+        rateLimiter.check("invite-complete:ip:" + clientIpResolver.resolve(http), 20, Duration.ofMinutes(15));
         CompleteAccountOutput output = completeAccountUseCase.execute(mapper.toCompleteInput(request));
         String token = jwtService.generate(output.userId(), output.orgId(), output.permissionCodes());
         return ResponseEntity.ok(mapper.toCompleteResponse(output, token));
