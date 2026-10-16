@@ -13,7 +13,20 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class GlobalExceptionHandlerTest {
@@ -83,6 +96,34 @@ class GlobalExceptionHandlerTest {
                 .andExpect(jsonPath("$.message").value("An unexpected error occurred"));
     }
 
+    @Test
+    void shouldLogOnlyFieldAndCode_neverTheRejectedValue_onValidationError() throws Exception {
+        Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            mockMvc.perform(post("/stub").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"label\":\"ana.souza@example.test\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        } finally {
+            logger.detachAppender(appender);
+        }
+        assertThat(appender.list).extracting(ILoggingEvent::getFormattedMessage)
+                .anySatisfy(m -> assertThat(m).contains("label=Size"))
+                .noneSatisfy(m -> assertThat(m).contains("ana.souza"));
+    }
+
+    @Test
+    void resolvedExceptionLoggingStaysOff_soDevToolsDoesNotLogRejectedValues() {
+        var yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application.yaml"));
+        assertThat(String.valueOf(yaml.getObject().get("spring.mvc.log-resolved-exception"))).isEqualTo("false");
+    }
+
+    record StubBody(@Size(max = 5) String label) {}
+
     // ── Stub controller used only inside this test ──────────────────────────
 
     @RestController
@@ -100,6 +141,10 @@ class GlobalExceptionHandlerTest {
                         "E11000 duplicate key error dup key: { email: \"ana@example.test\" }");
                 default            -> { /* ok */ }
             }
+        }
+
+        @PostMapping("/stub")
+        void validate(@Valid @RequestBody StubBody body) {
         }
     }
 }

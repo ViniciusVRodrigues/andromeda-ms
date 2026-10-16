@@ -74,8 +74,14 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.from(ex));
     }
 
+    /* Loga só campo e código da restrição: o valor rejeitado pode ser dado pessoal (o
+     * POST /usage-events/public é anônimo). Por isso spring.mvc.log-resolved-exception fica
+     * false no application.yaml, senão o DevTools loga a exceção inteira, valor incluso. */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
+        log.warn("Validation failed: {}", ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + "=" + e.getCode())
+                .collect(Collectors.joining(", ")));
         var message = ex.getBindingResult().getFieldErrors().stream()
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
                 .collect(Collectors.joining(", "));

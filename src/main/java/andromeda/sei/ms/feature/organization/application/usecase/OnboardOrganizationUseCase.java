@@ -187,7 +187,7 @@ public class OnboardOrganizationUseCase {
                 try {
                     emailService.sendInvite(invite.email(), null, frontendUrlResolver.resolve() + "/onboard?token=" + savedInvite.getInviteToken());
                 } catch (Exception e) {
-                    log.warn("Failed to send invite email to {}: {}", invite.email(), e.getMessage());
+                    log.warn("Failed to send invite email to user={}: {}", savedInvite.getId(), e.getClass().getSimpleName());
                 }
             }
         }

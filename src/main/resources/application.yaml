@@ -11,6 +11,10 @@ spring:
       # WARN e o app sobe. Não use spring.data.mongodb.auto-index-creation: com o MongoConfig
       # atual (AbstractMongoClientConfiguration) ela é ignorada, e sem ele a criação automática
       # derrubaria o startup a cada índice com problema.
+  mvc:
+    # O DevTools liga isto e loga a exceção resolvida inteira, com o valor rejeitado de uma
+    # validação (pode ser dado pessoal). O GlobalExceptionHandler já loga só campo e código.
+    log-resolved-exception: false
   security:
     oauth2:
       client:
