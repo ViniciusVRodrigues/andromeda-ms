@@ -10,6 +10,11 @@ import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2SuccessHandle
 import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -84,9 +89,21 @@ public class SecurityConfig {
                         .successHandler(new CompositeOAuth2SuccessHandler(
                                 gitHubOAuth2SuccessHandler, azureOAuth2SuccessHandler))
                 )
+                .exceptionHandling(apiAnswersUnauthorized())
                 .addFilterBefore(connectorTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    /**
+     * O oauth2Login instala um entry point que redireciona (302) para a tela de login do provedor.
+     * Para a API isso é errado: quem chama /api/** sem token recebe 401 e o cliente decide o que
+     * fazer. O redirect continua valendo fora da API (fluxo OAuth no navegador).
+     */
+    static Customizer<ExceptionHandlingConfigurer<HttpSecurity>> apiAnswersUnauthorized() {
+        return ex -> ex.defaultAuthenticationEntryPointFor(
+                new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                PathPatternRequestMatcher.withDefaults().matcher("/api/**"));
     }
 
     @Bean

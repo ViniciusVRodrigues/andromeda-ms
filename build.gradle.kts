@@ -37,7 +37,11 @@ dependencies {
 	annotationProcessor("org.projectlombok:lombok")
 	testImplementation("org.springframework.boot:spring-boot-starter-test")  // JUnit 5, Mockito, @DataMongoTest
 	testImplementation("org.springframework.security:spring-security-test")
-	testImplementation("de.flapdoodle.embed:de.flapdoodle.embed.mongo.spring3x:4.20.0")  // MongoDB embutido para @DataMongoTest
+	// Mongo real nos testes de persistencia: container mongo:8.0 via Testcontainers (versoes geridas pelo BOM do Boot)
+	testImplementation("org.springframework.boot:spring-boot-starter-data-mongodb-test")  // @DataMongoTest (Boot 4)
+	testImplementation("org.springframework.boot:spring-boot-testcontainers")  // @ServiceConnection
+	testImplementation("org.testcontainers:testcontainers-junit-jupiter")
+	testImplementation("org.testcontainers:testcontainers-mongodb")
 	testCompileOnly("org.projectlombok:lombok")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	testAnnotationProcessor("org.projectlombok:lombok")

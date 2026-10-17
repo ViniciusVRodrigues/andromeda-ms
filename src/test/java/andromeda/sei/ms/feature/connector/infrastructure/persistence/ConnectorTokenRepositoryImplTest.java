@@ -1,8 +1,8 @@
 package andromeda.sei.ms.feature.connector.infrastructure.persistence;
 
+import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -12,7 +12,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@Disabled("@DataMongoTest removed in Spring Boot 4 — needs rewrite as @SpringBootTest slice")
+@MongoIntegrationTest
 class ConnectorTokenRepositoryImplTest {
 
     @Autowired
