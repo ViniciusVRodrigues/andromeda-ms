@@ -4,6 +4,8 @@ import andromeda.sei.ms.shared.testsupport.MongoTestcontainersConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * Sobe o contexto completo contra o Mongo do Testcontainers. Os segredos obrigatorios do
@@ -15,6 +17,13 @@ import org.springframework.context.annotation.Import;
 })
 @Import(MongoTestcontainersConfig.class)
 class MsApplicationTests {
+
+	/* O MongoConfig le spring.data.mongodb.uri por @Value (nao ve o @ServiceConnection): sem isto o
+	 * contexto iria para o Mongo de desenvolvimento do application.yaml (localhost:27018). */
+	@DynamicPropertySource
+	static void mongoUri(DynamicPropertyRegistry registry) {
+		registry.add("spring.data.mongodb.uri", MongoTestcontainersConfig::connectionString);
+	}
 
 	@Test
 	void contextLoads() {

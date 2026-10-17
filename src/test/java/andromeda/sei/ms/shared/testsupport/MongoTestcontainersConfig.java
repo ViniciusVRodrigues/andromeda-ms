@@ -30,6 +30,15 @@ public class MongoTestcontainersConfig {
         MONGO.start();
     }
 
+    /**
+     * URI do container, para quem le {@code spring.data.mongodb.uri} direto: o {@code MongoConfig}
+     * da aplicacao usa {@code @Value} e nao enxerga o {@link ServiceConnection}, entao um
+     * {@code @SpringBootTest} precisa sobrescrever a propriedade com {@code @DynamicPropertySource}.
+     */
+    public static String connectionString() {
+        return MONGO.getReplicaSetUrl("andromeda");
+    }
+
     @Bean
     @ServiceConnection
     MongoDBContainer mongoDBContainer() {
