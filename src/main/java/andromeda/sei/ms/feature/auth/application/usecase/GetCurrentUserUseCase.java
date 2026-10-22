@@ -5,6 +5,8 @@ import andromeda.sei.ms.feature.auth.application.dto.GetCurrentUserOutput;
 import andromeda.sei.ms.feature.auth.domain.exception.InvalidCredentialsException;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.role.domain.Role;
+import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.application.security.EffectivePermissionService;
@@ -13,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Profile of the caller with their effective permissions resolved on the server
@@ -27,6 +30,7 @@ public class GetCurrentUserUseCase {
     private final UserRepository userRepository;
     private final OrganizationRepository organizationRepository;
     private final EffectivePermissionService effectivePermissionService;
+    private final RoleRepository roleRepository;
 
     public GetCurrentUserOutput execute(GetCurrentUserInput input) {
         User user = userRepository.findByIdAndOrganizationId(input.userId(), input.organizationId())
@@ -40,6 +44,14 @@ public class GetCurrentUserUseCase {
                 .orElseThrow(InvalidCredentialsException::new);
         List<String> orgPermissions = effectivePermissionService.orgPermissions(snapshot);
 
+        /* Mesmo filtro do EffectivePermissionService: cargo global ou da própria organização. */
+        Optional<Role> role = Optional.ofNullable(snapshot.roleId())
+                .flatMap(roleRepository::findById)
+                .filter(r -> r.getOrganizationId() == null || r.getOrganizationId().equals(input.organizationId()));
+        String roleLabel = role
+                .map(r -> r.getLabel() != null && !r.getLabel().isBlank() ? r.getLabel() : r.getName())
+                .orElse(null);
+
         return new GetCurrentUserOutput(
                 user.getId(),
                 user.getName(),
@@ -49,7 +61,11 @@ public class GetCurrentUserUseCase {
                 org.getSlug(),
                 orgPermissions,
                 orgPermissions,
-                effectivePermissionService.projectPermissions(snapshot)
+                effectivePermissionService.projectPermissions(snapshot),
+                role.map(Role::getId).orElse(null),
+                roleLabel,
+                user.getSeniority(),
+                user.getCreatedAt()
         );
     }
 }
