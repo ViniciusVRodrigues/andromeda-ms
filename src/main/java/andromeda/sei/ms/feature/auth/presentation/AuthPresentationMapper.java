@@ -41,7 +41,11 @@ public class AuthPresentationMapper {
                 output.orgSlug(),
                 output.permissions(),
                 output.orgPermissions(),
-                output.projectPermissions()
+                output.projectPermissions(),
+                output.roleId(),
+                output.roleLabel(),
+                output.seniority(),
+                output.memberSince()
         );
     }
 }

@@ -60,12 +60,53 @@ class GetCurrentUserUseCaseTest {
         EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
                 projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
 
-        GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service)
-                .execute(new GetCurrentUserInput("dev", ORG, List.of("USER_MANAGE")));
+        GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
+                roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of("USER_MANAGE")));
 
         assertThat(output.orgPermissions()).containsExactly("DASHBOARD_INDIVIDUAL", "REPOS_READ");
         assertThat(output.permissions()).isEqualTo(output.orgPermissions());
         assertThat(output.projectPermissions().get("A")).contains("REPOS_READ");
         assertThat(output.projectPermissions().get("B")).doesNotContain("REPOS_READ");
+    }
+
+    @Test
+    void should_exposeRoleLabelSeniorityAndMemberSince() {
+        Instant joined = Instant.parse("2026-03-10T12:00:00Z");
+        User dev = new User("dev", ORG, "dev@x.com", null, "Dev", "role-dev", "PLENO", null, null, null, null,
+                true, true, 1L, joined, T);
+        when(userRepository.findByIdAndOrganizationId("dev", ORG)).thenReturn(Optional.of(dev));
+        when(organizationRepository.findById(ORG)).thenReturn(Optional.of(new Organization(ORG, "Org", "org", null,
+                null, List.of(), List.of(), null, true, 1L, T, T)));
+        when(roleRepository.findById("role-dev")).thenReturn(Optional.of(new Role("role-dev", null, "DEVELOPER",
+                "Desenvolvedor", true, null, new ArrayList<>(List.of("DASHBOARD_INDIVIDUAL")), true, 1L, T, T)));
+        EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
+                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+
+        GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
+                roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of()));
+
+        assertThat(output.roleId()).isEqualTo("role-dev");
+        assertThat(output.roleLabel()).isEqualTo("Desenvolvedor");
+        assertThat(output.seniority()).isEqualTo("PLENO");
+        assertThat(output.memberSince()).isEqualTo(joined);
+    }
+
+    @Test
+    void should_fallBackToRoleName_whenRoleHasNoLabel() {
+        User dev = new User("dev", ORG, "dev@x.com", null, "Dev", "role-custom", null, null, null, null, null,
+                true, true, 1L, T, T);
+        when(userRepository.findByIdAndOrganizationId("dev", ORG)).thenReturn(Optional.of(dev));
+        when(organizationRepository.findById(ORG)).thenReturn(Optional.of(new Organization(ORG, "Org", "org", null,
+                null, List.of(), List.of(), null, true, 1L, T, T)));
+        when(roleRepository.findById("role-custom")).thenReturn(Optional.of(new Role("role-custom", ORG, "Squad Lead",
+                null, false, null, new ArrayList<>(List.of("DASHBOARD_TEAM")), true, 1L, T, T)));
+        EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
+                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+
+        GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
+                roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of()));
+
+        assertThat(output.roleLabel()).isEqualTo("Squad Lead");
+        assertThat(output.seniority()).isNull();
     }
 }
