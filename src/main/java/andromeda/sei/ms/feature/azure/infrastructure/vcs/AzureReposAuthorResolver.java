@@ -1,7 +1,9 @@
 package andromeda.sei.ms.feature.azure.infrastructure.vcs;
 
+import andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUser;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUserRepository;
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.vcs.application.port.VcsAuthorResolver;
@@ -9,8 +11,11 @@ import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Azure DevOps identity → Andromeda user (design D4, azure-repos-integration "Identity resolution
@@ -31,10 +36,30 @@ public class AzureReposAuthorResolver implements VcsAuthorResolver {
 
     private final UserRepository userRepository;
     private final AzureOrgUserRepository azureOrgUserRepository;
+    private final AzureOrgUserCollector orgUserCollector;
+    private final Map<String, Map<String, AzureOrgUserCollector.ObservedIdentity>> observed =
+            new ConcurrentHashMap<>();
 
     @Override
     public VcsProvider provider() {
         return VcsProvider.AZURE_REPOS;
+    }
+
+    @Override
+    public void observe(String organizationId, String actorExternalId, String displayName, String actorEmail) {
+        String id = AzureIdentityIds.normalize(actorExternalId);
+        if (organizationId == null || id == null) return;
+        observed.computeIfAbsent(organizationId, k -> new ConcurrentHashMap<>())
+                .putIfAbsent(id, new AzureOrgUserCollector.ObservedIdentity(id, displayName, actorEmail,
+                        AzureOrgUserSource.PR));
+    }
+
+    @Override
+    public void flushObserved(String organizationId) {
+        Map<String, AzureOrgUserCollector.ObservedIdentity> batch = observed.remove(organizationId);
+        if (batch != null && !batch.isEmpty()) {
+            orgUserCollector.collect(organizationId, new LinkedHashMap<>(batch).values());
+        }
     }
 
     @Override

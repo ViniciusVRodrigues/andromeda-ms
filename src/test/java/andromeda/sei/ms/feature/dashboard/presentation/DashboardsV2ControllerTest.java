@@ -167,6 +167,6 @@ class DashboardsV2ControllerTest {
 
     private static IndividualDashboardV2Output individualOutput() {
         return IndividualDashboardV2Output.withoutSprint(
-                new IndividualDashboardV2Output.Person(CALLER, "Ana", true, true, false), null, AS_OF);
+                new IndividualDashboardV2Output.Person(CALLER, "Ana", true, true, false), AS_OF);
     }
 }

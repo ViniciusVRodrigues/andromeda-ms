@@ -7,11 +7,8 @@ import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
-import andromeda.sei.ms.feature.connector.domain.FluencyScore;
-import andromeda.sei.ms.feature.connector.domain.FluencyScoreCategory;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
@@ -92,7 +89,6 @@ class GetIndividualDashboardV2UseCaseTest {
     @Mock private ProjectRepository projectRepository;
     @Mock private UserRepository userRepository;
     @Mock private ConnectorTokenRepository connectorTokenRepository;
-    @Mock private FluencyScoreRepository fluencyScoreRepository;
     @Mock private GetDeveloperDashboardUseCase developerDashboard;
     @Mock private SprintRepository sprintRepository;
     @Mock private VcsReadPort vcsReadPort;
@@ -107,7 +103,7 @@ class GetIndividualDashboardV2UseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetIndividualDashboardV2UseCase(projectRepository,
-                new DashboardPeopleDirectory(userRepository, connectorTokenRepository), fluencyScoreRepository,
+                new DashboardPeopleDirectory(userRepository, connectorTokenRepository),
                 developerDashboard, new DashboardSprintResolver(sprintRepository),
                 new ProjectVcsActivity(vcsReadPort, commitRepository), workItemRepository,
                 new EffortBearingLevelResolver(), aiUsageRepository, allocationRepository,
@@ -380,18 +376,13 @@ class GetIndividualDashboardV2UseCaseTest {
     }
 
     @Test
-    void should_exposePersonLinks_andFluency() {
+    void should_exposePersonLinks() {
         when(connectorTokenRepository.findActiveByOrganizationIdAndUserId(ORG, ME))
                 .thenReturn(List.of(new ConnectorToken("t1", ORG, ME, "laptop", "hash", true, 0L, NOW, NOW)));
-        when(fluencyScoreRepository.findByOrganizationIdAndUserId(ORG, ME)).thenReturn(Optional.of(new FluencyScore(
-                "f1", ORG, ME, 3, "Stage 3: Fluent", "2026-10-05T00:00:00Z",
-                List.of(new FluencyScoreCategory("prompting", "spark", 2, List.of("tip"))), true, 0L, NOW, NOW)));
 
         IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
 
         assertThat(out.person()).isEqualTo(new IndividualDashboardV2Output.Person(ME, "Ana Ribeiro", true, true, true));
-        assertThat(out.fluency().overallStage()).isEqualTo(3);
-        assertThat(out.fluency().categories().get(0).tips()).containsExactly("tip");
     }
 
     private DeveloperDashboardOutput devOutput(Double planned, Double delivered, Map<String, BigDecimal> aiCostByItem) {

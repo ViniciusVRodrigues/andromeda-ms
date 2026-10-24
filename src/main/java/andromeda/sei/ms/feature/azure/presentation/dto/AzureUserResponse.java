@@ -1,3 +1,6 @@
 package andromeda.sei.ms.feature.azure.presentation.dto;
 
-public record AzureUserResponse(String azureId, String displayName, String azureEmail) {}
+import java.util.List;
+
+public record AzureUserResponse(String azureId, String displayName, String azureEmail,
+                                List<String> sources, String linkedUserId) {}

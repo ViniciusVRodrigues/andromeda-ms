@@ -9,6 +9,7 @@ public class AzureOrgUserDocumentMapper {
     public AzureOrgUser toDomain(AzureOrgUserDocument doc) {
         return new AzureOrgUser(
                 doc.getId(), doc.getOrganizationId(), doc.getAzureId(), doc.getDisplayName(), doc.getAzureEmail(),
+                doc.getPrincipalName(), doc.getSources(),
                 doc.isActive(), doc.getCreatedAt(), doc.getUpdatedAt(), doc.getVersion());
     }
 
@@ -19,6 +20,8 @@ public class AzureOrgUserDocumentMapper {
                 .azureId(user.getAzureId())
                 .displayName(user.getDisplayName())
                 .azureEmail(user.getAzureEmail())
+                .principalName(user.getPrincipalName())
+                .sources(user.getSources())
                 .active(user.isActive())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

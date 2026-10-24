@@ -6,7 +6,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
 import java.time.LocalDate;
-import java.util.Map;
 
 public record AiefUploadRequest(
         String datasetId,
@@ -20,6 +19,5 @@ public record AiefUploadRequest(
         @NotNull @PositiveOrZero Integer inputTokens,
         @NotNull @PositiveOrZero Integer outputTokens,
         @NotNull @PositiveOrZero Integer interactions,
-        String editor,
-        Map<String, Object> fluencyMetrics
+        String editor
 ) {}

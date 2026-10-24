@@ -97,7 +97,7 @@ public record OrganizationDashboardV2Output(
 
     public record Ai(List<String> models, List<CostBucket> costByBucket, List<AiModel> byModel,
                      List<ProjectCost> costByProject, List<EditorUse> byEditor, Tokens tokens, Adoption adoption,
-                     List<FluencyCount> fluency, Subscription subscription) {}
+                     Subscription subscription) {}
 
     /** The people's AI cost per model in the bucket. */
     public record CostBucket(String start, String label, Map<String, BigDecimal> byModel) {}
@@ -111,9 +111,6 @@ public record OrganizationDashboardV2Output(
 
     /** {@code activeUsers} with usage in the period, of {@code people}; {@code connected}: with an active connector token. */
     public record Adoption(int activeUsers, int people, int connected) {}
-
-    /** People per overall fluency stage 1–4 (people without a score are not counted). */
-    public record FluencyCount(int stage, int count) {}
 
     /**
      * {@code consumptionUsd}: the people's whole usage in the period; {@code subscriptionUsd} =

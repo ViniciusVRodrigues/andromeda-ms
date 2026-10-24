@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.user.application.usecase;
 
+import andromeda.sei.ms.feature.user.domain.AzureIdentitySource;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserNotFoundException;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
@@ -31,7 +32,15 @@ public class LinkAzureIdentityUseCase {
 
         user.setAzureId(azureId);
         user.setAzureEmail(azureEmail);
-        user.setUpdatedAt(Instant.now());
+        Instant now = Instant.now();
+        if (azureId == null) {
+            user.setAzureIdentitySource(null);
+            user.setAzureIdentityLinkedAt(null);
+        } else {
+            user.setAzureIdentitySource(AzureIdentitySource.ADMIN);
+            user.setAzureIdentityLinkedAt(now);
+        }
+        user.setUpdatedAt(now);
         userRepository.save(user);
 
         workItemRepository.updateAssigneeUserIdByExternalIdOrEmail(orgId, azureId, user.getEmail(), userId);

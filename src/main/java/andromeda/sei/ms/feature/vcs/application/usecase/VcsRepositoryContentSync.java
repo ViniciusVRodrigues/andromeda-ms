@@ -116,6 +116,7 @@ public class VcsRepositoryContentSync {
         pr.setStatus(remote.status());
         pr.setAuthorLogin(remote.authorLogin());
         pr.setAuthorExternalId(remote.authorExternalId());
+        observe(context, remote.authorExternalId(), remote.authorLogin(), remote.authorEmail());
         pr.setAuthorUserId(resolveUser(context, remote.authorExternalId(), remote.authorEmail()));
         if (pr.getCreatedAt() == null) pr.setCreatedAt(remote.createdAt());
         pr.setMergedAt(remote.mergedAt());
@@ -216,11 +217,18 @@ public class VcsRepositoryContentSync {
         event.setOccurredAt(signal.occurredAt());
         event.setActorExternalId(signal.actorExternalId());
         event.setActorLogin(signal.actorLogin());
+        observe(context, signal.actorExternalId(), signal.actorLogin(), signal.actorEmail());
         event.setActorUserId(resolveUser(context, signal.actorExternalId(), signal.actorEmail()));
         event.setBot(signal.bot());
         event.setDeleted(false);
         reviewEventRepository.save(event);
         return true;
+    }
+
+    private static void observe(Context context, String externalId, String displayName, String email) {
+        if (externalId != null) {
+            context.authors().observe(context.organizationId(), externalId, displayName, email);
+        }
     }
 
     /** The email-aware lookup only when the provider gave an email (GitHub never does). */

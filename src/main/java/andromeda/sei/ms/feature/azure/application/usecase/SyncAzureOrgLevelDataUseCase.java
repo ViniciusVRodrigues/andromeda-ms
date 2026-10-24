@@ -4,7 +4,11 @@ import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgProject;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgProjectRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUser;
+import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUserRepository;
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureEntitlementsForbiddenException;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AdoUserEntitlementDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoTeamDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AdoTeamMemberDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
@@ -39,6 +43,8 @@ public class SyncAzureOrgLevelDataUseCase {
     private final AzureAuthStrategyResolver authStrategyResolver;
     private final AzureOrgProjectRepository azureOrgProjectRepository;
     private final AzureOrgUserRepository azureOrgUserRepository;
+    private final AzureConnectionRepository azureConnectionRepository;
+    private final AutoLinkAzureIdentitiesUseCase autoLinkAzureIdentitiesUseCase;
 
     public void execute(AzureConnection connection) {
         String orgId = connection.getOrganizationId();
@@ -48,6 +54,15 @@ public class SyncAzureOrgLevelDataUseCase {
         List<AzureProjectDto> adoProjects = azureDevOpsClient.getProjects(orgUrl, authHeader);
         persistProjects(orgId, adoProjects);
         persistUsers(orgId, orgUrl, authHeader, adoProjects);
+
+        connection.setOrgLevelSyncedAt(Instant.now());
+        azureConnectionRepository.save(connection);
+
+        try {
+            autoLinkAzureIdentitiesUseCase.executeForOrganization(orgId);
+        } catch (RuntimeException e) {
+            log.warn("Azure auto-link failed after org-level sync: org={}: {}", orgId, e.getClass().getSimpleName());
+        }
 
         log.info("Azure org-level sync completed: org={} projects={}", orgId, adoProjects.size());
     }
@@ -62,6 +77,9 @@ public class SyncAzureOrgLevelDataUseCase {
 
     private void persistUsers(String orgId, String orgUrl, String authHeader, List<AzureProjectDto> adoProjects) {
         Map<String, AzureOrgUser> byAzureId = new LinkedHashMap<>();
+        for (AzureOrgUser existing : azureOrgUserRepository.findAllByOrganizationIdAndActiveTrue(orgId)) {
+            byAzureId.put(existing.getAzureId(), existing);
+        }
         Instant now = Instant.now();
 
         for (AzureProjectDto project : adoProjects) {
@@ -71,14 +89,32 @@ public class SyncAzureOrgLevelDataUseCase {
                         azureDevOpsClient.getTeamMembers(orgUrl, project.id(), team.id(), authHeader);
                 for (AdoTeamMemberDto member : members) {
                     if (member.id() != null) {
-                        byAzureId.putIfAbsent(member.id(),
-                                new AzureOrgUser(null, orgId, member.id(), member.displayName(),
-                                        member.uniqueName(), true, now, now, null));
+                        observe(byAzureId, orgId, member.id(), member.displayName(), member.uniqueName(),
+                                member.uniqueName(), AzureOrgUserSource.TEAM, now);
                     }
                 }
             }
         }
 
+        try {
+            for (AdoUserEntitlementDto e : azureDevOpsClient.listUserEntitlements(orgUrl, authHeader)) {
+                if (e.id() != null) {
+                    observe(byAzureId, orgId, e.id(), e.displayName(), e.mailAddress(), e.principalName(),
+                            AzureOrgUserSource.DIRECTORY, now);
+                }
+            }
+        } catch (AzureEntitlementsForbiddenException e) {
+            log.warn("Azure user directory not readable, continuing with team members only: org={}", orgId);
+        }
+
         azureOrgUserRepository.saveAll(List.copyOf(byAzureId.values()));
+    }
+
+    private static void observe(Map<String, AzureOrgUser> byAzureId, String orgId, String azureId,
+                                String displayName, String email, String principalName,
+                                AzureOrgUserSource source, Instant now) {
+        AzureOrgUser user = byAzureId.computeIfAbsent(azureId, id ->
+                new AzureOrgUser(null, orgId, id, null, null, null, null, true, now, now, null));
+        user.mergeFrom(displayName, email, principalName, source);
     }
 }

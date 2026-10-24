@@ -11,6 +11,8 @@ public record UserResponse(
         boolean active,
         Instant createdAt,
         String azureId,
-        String azureEmail
+        String azureEmail,
+        andromeda.sei.ms.feature.user.domain.AzureIdentitySource azureIdentitySource,
+        Instant azureIdentityLinkedAt
 ) {
 }

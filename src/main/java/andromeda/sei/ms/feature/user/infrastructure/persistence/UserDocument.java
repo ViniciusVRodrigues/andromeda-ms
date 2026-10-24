@@ -56,6 +56,8 @@ public class UserDocument {
     private String githubId;
     private String azureId;
     private String azureEmail;
+    private andromeda.sei.ms.feature.user.domain.AzureIdentitySource azureIdentitySource;
+    private java.time.Instant azureIdentityLinkedAt;
     private String inviteToken;
     private boolean confirmed;
     private boolean active = true;

@@ -35,6 +35,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final EffectivePermissionService effectivePermissionService;
 
+    /**
+     * Connector routes are authenticated by the token in the path; the {@code Authorization} header
+     * there belongs to the person's GitHub (AIEF extension) and must never be read or validated here.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return request.getRequestURI().startsWith("/connector/");
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,

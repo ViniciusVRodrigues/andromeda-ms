@@ -18,6 +18,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class UserLastLoginTest {
@@ -70,5 +71,34 @@ class UserLastLoginTest {
         assertThat(set).containsOnlyKeys("lastLoginAt");
         assertThat(set.get("lastLoginAt")).isEqualTo(LOGIN_AT);
         assertThat(update.getValue().getUpdateObject()).containsOnlyKeys("$set");
+    }
+
+    @Test
+    void linkAutoEmailIfUnlinked_shouldBeConditionalOnNullAzureId_andSetAutoEmailSource() {
+        UserRepositoryImpl repository = new UserRepositoryImpl(mongoRepository, mapper, mongoTemplate);
+        when(mongoTemplate.updateFirst(any(Query.class), any(UpdateDefinition.class), eq(UserDocument.class)))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(1, 1L, null));
+
+        assertThat(repository.linkAutoEmailIfUnlinked("org-A", "user-1", "az-1", "ana@acme.com", LOGIN_AT)).isTrue();
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<UpdateDefinition> update = ArgumentCaptor.forClass(UpdateDefinition.class);
+        verify(mongoTemplate).updateFirst(query.capture(), update.capture(), eq(UserDocument.class));
+        Document filter = query.getValue().getQueryObject();
+        assertThat(filter).containsEntry("_id", "user-1").containsEntry("organizationId", "org-A")
+                .containsEntry("active", true).containsEntry("azureId", null);
+        Document set = (Document) update.getValue().getUpdateObject().get("$set");
+        assertThat(set).containsEntry("azureId", "az-1").containsEntry("azureEmail", "ana@acme.com")
+                .containsEntry("azureIdentitySource", andromeda.sei.ms.feature.user.domain.AzureIdentitySource.AUTO_EMAIL)
+                .containsEntry("azureIdentityLinkedAt", LOGIN_AT);
+    }
+
+    @Test
+    void linkAutoEmailIfUnlinked_shouldReturnFalse_whenNothingModified() {
+        UserRepositoryImpl repository = new UserRepositoryImpl(mongoRepository, mapper, mongoTemplate);
+        when(mongoTemplate.updateFirst(any(Query.class), any(UpdateDefinition.class), eq(UserDocument.class)))
+                .thenReturn(com.mongodb.client.result.UpdateResult.acknowledged(0, 0L, null));
+
+        assertThat(repository.linkAutoEmailIfUnlinked("org-A", "user-1", "az-1", "a@x.com", LOGIN_AT)).isFalse();
     }
 }

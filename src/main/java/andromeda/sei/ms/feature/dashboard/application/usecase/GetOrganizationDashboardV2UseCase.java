@@ -20,7 +20,6 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboa
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.EditorUse;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Engineering;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.FlowRow;
-import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.FluencyCount;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Integrations;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.OrgStats;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Period;
@@ -115,7 +114,6 @@ public class GetOrganizationDashboardV2UseCase {
     private static final int SUBSCRIPTION_SCALE = 2;
     private static final BigDecimal DAYS_PER_MONTH = BigDecimal.valueOf(30);
     private static final double PERCENT = 100.0;
-    private static final List<Integer> FLUENCY_STAGES = List.of(1, 2, 3, 4);
     private static final LocalDate EPOCH = LocalDate.of(1970, 1, 1);
     private static final String PROJECT_SEPARATOR = ", ";
     private static final String DISCONNECTED = "DISCONNECTED";
@@ -420,7 +418,7 @@ public class GetOrganizationDashboardV2UseCase {
         Adoption adoption = new Adoption((int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct()
                 .count(), s.people().size(), connectedPeople(s));
         return new Ai(models, costByBucket(ctx, usage, models), byModel, costByProject(ctx, usage), byEditor, tokens,
-                adoption, fluency(s), subscription(ctx, usage));
+                adoption, subscription(ctx, usage));
     }
 
     /** Cost per model and bucket, in one pass over the records. */
@@ -463,14 +461,6 @@ public class GetOrganizationDashboardV2UseCase {
         Set<String> withToken = s.connectorTokens().stream().filter(ConnectorToken::isActive)
                 .map(ConnectorToken::getUserId).filter(Objects::nonNull).collect(Collectors.toSet());
         return (int) s.people().stream().filter(withToken::contains).count();
-    }
-
-    private static List<FluencyCount> fluency(Snapshot s) {
-        Map<Integer, Long> byStage = s.fluencyScores().stream()
-                .filter(f -> f.getUserId() != null && s.people().contains(f.getUserId()))
-                .collect(Collectors.groupingBy(f -> f.getOverallStage(), Collectors.counting()));
-        return FLUENCY_STAGES.stream().map(stage -> new FluencyCount(stage, byStage.getOrDefault(stage, 0L).intValue()))
-                .toList();
     }
 
     private static Subscription subscription(Context ctx, List<AIUsage> usage) {

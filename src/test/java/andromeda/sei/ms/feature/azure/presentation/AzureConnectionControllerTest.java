@@ -4,7 +4,6 @@ import andromeda.sei.ms.feature.azure.application.dto.AzureConnectionStatusOutpu
 import andromeda.sei.ms.feature.azure.application.usecase.ConfigureAzureDevOpsPatUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.DisconnectAzureUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.GetAzureConnectionStatusUseCase;
-import andromeda.sei.ms.feature.azure.application.usecase.StartAzureOAuthUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureOrgUrlUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCase;
 import andromeda.sei.ms.feature.azure.domain.AzureAuthMethod;
@@ -50,9 +49,6 @@ class AzureConnectionControllerTest {
 
     @Mock
     private ConfigureAzureDevOpsPatUseCase configureAzureDevOpsPatUseCase;
-
-    @Mock
-    private StartAzureOAuthUseCase startAzureOAuthUseCase;
 
     @Mock
     private UpdateAzureOrgUrlUseCase updateAzureOrgUrlUseCase;
@@ -188,22 +184,10 @@ class AzureConnectionControllerTest {
     }
 
     @Test
-    void connect_shouldRedirectToTheAuthorizationWithTheValidatedOrgUrl() throws Exception {
-        when(startAzureOAuthUseCase.execute("https://dev.azure.com/acme/")).thenReturn("https://dev.azure.com/acme");
-
-        mockMvc.perform(get("/api/v1/integrations/azure/connect").param("orgUrl", "https://dev.azure.com/acme/"))
-                .andExpect(status().isFound())
-                .andExpect(header().string("Location",
-                        "/api/v1/auth/oauth2/authorization/azure?orgUrl=https%3A%2F%2Fdev.azure.com%2Facme"));
-    }
-
-    @Test
-    void connect_shouldReturn422WhenTheOrgUrlIsMissingOrInvalid() throws Exception {
-        when(startAzureOAuthUseCase.execute(null)).thenThrow(new AzureOrgUrlInvalidException("orgUrl must match"));
-
-        mockMvc.perform(get("/api/v1/integrations/azure/connect"))
-                .andExpect(status().isUnprocessableEntity())
-                .andExpect(jsonPath("$.code").value("AZURE_ORG_URL_INVALID"));
+    void connect_shouldReturn410Moved() throws Exception {
+        mockMvc.perform(get("/api/v1/integrations/azure/connect").param("orgUrl", "https://dev.azure.com/acme"))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("AZURE_CONNECT_MOVED"));
     }
 
     @Test

@@ -66,7 +66,7 @@ class AiConnectorIntegrationDataWiperTest {
         wiper.wipe(ORG, WipeScope.forUser("user-1"));
 
         List<Query> queries = remocoes();
-        assertThat(queries).hasSize(3);
+        assertThat(queries).hasSize(2);
         for (Query q : queries) {
             assertThat(q.getQueryObject().get("userId"))
                     .as("sem filtro de usuario o wipe individual apagaria o uso de IA da org inteira: %s", q)
@@ -84,15 +84,14 @@ class AiConnectorIntegrationDataWiperTest {
         }
     }
 
-    /** fluency_scores e derivado de ai_usages: manter o score orfao seria numero inexplicavel. */
     @Test
-    void deve_apagar_as_tres_colecoes_incluindo_fluency() {
+    void deve_apagar_as_duas_colecoes() {
         wiper.wipe(ORG, WipeScope.wholeIntegration());
 
         ArgumentCaptor<String> colecoes = ArgumentCaptor.forClass(String.class);
         verify(mongoTemplate, atLeastOnce()).remove(any(Query.class), colecoes.capture());
 
         assertThat(colecoes.getAllValues())
-                .containsExactlyInAnyOrder("ai_usages", "ai_usage_allocations", "fluency_scores");
+                .containsExactlyInAnyOrder("ai_usages", "ai_usage_allocations");
     }
 }

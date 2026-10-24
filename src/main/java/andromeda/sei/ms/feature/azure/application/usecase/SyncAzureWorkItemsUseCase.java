@@ -2,7 +2,9 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
 import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
+import andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
@@ -53,6 +55,7 @@ public class SyncAzureWorkItemsUseCase {
     private final AzureDevOpsClient azureDevOpsClient;
     private final UserRepository userRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
+    private final AzureOrgUserCollector orgUserCollector;
 
     /**
      * @return o binding tal como persistido, com a {@code version} atualizada. Chamadores
@@ -122,15 +125,19 @@ public class SyncAzureWorkItemsUseCase {
 
             List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
 
+            Map<String, AzureOrgUserCollector.ObservedIdentity> seen = new java.util.LinkedHashMap<>();
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
                     processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader);
+                    collectIdentities(adoItem, seen);
                     processed++;
                 } catch (Exception e) {
                     log.warn("Failed to process work item id={}: {}", adoItem.id(), e.getMessage());
                     failed++;
                 }
             }
+
+            collectSeenIdentities(orgId, seen);
 
             binding.setLastSyncAt(Instant.now());
             /* startedAt, nao now(): item editado DURANTE o sync tem ChangedDate menor
@@ -582,6 +589,34 @@ public class SyncAzureWorkItemsUseCase {
             }
         }
         return null;
+    }
+
+    private static final List<String> IDENTITY_FIELDS =
+            List.of("System.AssignedTo", "System.CreatedBy", "System.ChangedBy");
+
+    private static void collectIdentities(AdoWorkItemDto adoItem,
+                                          Map<String, AzureOrgUserCollector.ObservedIdentity> seen) {
+        if (adoItem.fields() == null) return;
+        for (String field : IDENTITY_FIELDS) {
+            if (!(adoItem.fields().get(field) instanceof Map<?, ?> identity)) continue;
+            Object id = identity.get("id");
+            if (id == null || Boolean.TRUE.equals(identity.get("isContainer"))) continue;
+            Object name = identity.get("displayName");
+            Object unique = identity.get("uniqueName");
+            seen.putIfAbsent(id.toString(), new AzureOrgUserCollector.ObservedIdentity(id.toString(),
+                    name != null ? name.toString() : null, unique != null ? unique.toString() : null,
+                    AzureOrgUserSource.WORKITEM));
+        }
+    }
+
+    /** One batch per sync; a failure here must never fail the work item sync. */
+    private void collectSeenIdentities(String orgId, Map<String, AzureOrgUserCollector.ObservedIdentity> seen) {
+        if (seen.isEmpty()) return;
+        try {
+            orgUserCollector.collect(orgId, seen.values());
+        } catch (Exception e) {
+            log.warn("Could not register identities seen in work items: org={}: {}", orgId, e.getMessage());
+        }
     }
 
     private String getAssigneeId(Map<String, Object> fields) {

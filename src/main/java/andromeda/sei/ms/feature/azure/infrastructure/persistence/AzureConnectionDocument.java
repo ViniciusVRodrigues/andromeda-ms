@@ -44,6 +44,7 @@ public class AzureConnectionDocument {
     private AzureAuthMethod authMethod;
     private String personalAccessToken;
     private Boolean reposAccess;
+    private java.time.Instant orgLevelSyncedAt;
 
     @Version
     private Long version;
