@@ -55,8 +55,7 @@ public class ConnectorController {
             @PathVariable String rawToken,
             @Valid @RequestBody List<AiefUploadRequest> entries) {
 
-        log.info("connector upload: org={} token={}... entries={} body={}",
-                orgSlug, rawToken.substring(0, Math.min(8, rawToken.length())), entries.size(), entries);
+        long startedAt = System.nanoTime();
 
         String organizationId = TenantContextHolder.get();
         String userId = resolveUserId();
@@ -79,6 +78,7 @@ public class ConnectorController {
                 .toList();
 
         upsertAIUsageUseCase.execute(usageEntries, organizationId, userId);
+        log.info("connector upload: org={} entries={} ms={}", orgSlug, usageEntries.size(), elapsedMs(startedAt));
         return ResponseEntity.ok(Map.of("uploaded", usageEntries.size()));
     }
 
@@ -91,13 +91,14 @@ public class ConnectorController {
             @PathVariable String rawToken,
             @Valid @RequestBody FluencyScoreRequest body) {
 
-        log.info("connector fluency-score: org={} token={}... body={}",
-                orgSlug, rawToken.substring(0, Math.min(8, rawToken.length())), body);
+        long startedAt = System.nanoTime();
 
         String organizationId = TenantContextHolder.get();
         String userId = resolveUserId();
 
         storeFluencyScoreUseCase.execute(body, organizationId, userId);
+        log.info("connector fluency-score: org={} entries={} ms={}", orgSlug,
+                body.categories().size(), elapsedMs(startedAt));
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
@@ -109,6 +110,10 @@ public class ConnectorController {
             @PathVariable String orgSlug,
             @PathVariable String rawToken) {
         return ResponseEntity.ok(Map.of("status", "ok"));
+    }
+
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
     private String resolveUserId() {
