@@ -15,7 +15,7 @@ public class DashboardsV2Mapper {
 
     public IndividualDashboardV2Response toResponse(IndividualDashboardV2Output out, DataFreshness freshness) {
         return new IndividualDashboardV2Response(out.sprint(), out.person(), out.kpis(), out.previous(), out.burndown(),
-                out.items(), out.pullRequests(), out.reviewsGiven(), out.commitsByDay(), out.ai(), out.fluency(),
+                out.items(), out.pullRequests(), out.reviewsGiven(), out.commitsByDay(), out.ai(),
                 out.history(), iso(out.asOf()), freshness);
     }
 

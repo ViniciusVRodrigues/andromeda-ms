@@ -8,10 +8,8 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
-import andromeda.sei.ms.feature.connector.domain.FluencyScore;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.PortfolioRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectCost;
@@ -82,7 +80,7 @@ import static org.mockito.Mockito.when;
 /**
  * dashboards-customizaveis 1.11 — organization overview v2, table tests ported from the preview's
  * {@code buildOrganization}: only the visible projects are aggregated (mutation "all projects"),
- * portfolio health, throughput per project, consumption × subscription, fluency distribution, AI
+ * portfolio health, throughput per project, consumption × subscription, AI
  * cost per project and the sync runs. Now = Sunday 2026-10-11 12:00Z; 90 days = 2026-07-14 →
  * 2026-10-11 (weekly buckets from 20/07), previous = 2026-04-15 → 2026-07-13.
  */
@@ -108,7 +106,6 @@ class GetOrganizationDashboardV2UseCaseTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
     @Mock private ConnectorTokenRepository connectorTokenRepository;
-    @Mock private FluencyScoreRepository fluencyScoreRepository;
     @Mock private AzureConnectionRepository azureConnectionRepository;
     @Mock private GithubConnectionRepository githubConnectionRepository;
     @Mock private AzureProjectBindingRepository azureBindingRepository;
@@ -127,7 +124,7 @@ class GetOrganizationDashboardV2UseCaseTest {
                 repositoryRepository, vcsReadPort, commitRepository,
                 new DeliveryMetricsService(vcsReadPort, workItemRepository, organizationRepository),
                 organizationRepository, aiUsageRepository, allocationRepository, connectorTokenRepository,
-                fluencyScoreRepository, azureConnectionRepository, githubConnectionRepository, azureBindingRepository,
+                azureConnectionRepository, githubConnectionRepository, azureBindingRepository,
                 syncLogRepository);
         useCase = new GetOrganizationDashboardV2UseCase(data, Clock.fixed(NOW, ZoneOffset.UTC));
         when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(
@@ -322,18 +319,6 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(sub.subscriptionUsd()).isNull();
         assertThat(sub.perUserMonthUsd()).isNull();
         assertThat(sub.usersAboveSubscription()).isNull();
-    }
-
-    @Test
-    void should_distributeFluencyStages_ofThePeopleOnly() {
-        when(fluencyScoreRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(fluency("u-a", 2),
-                fluency("u-b", 2), fluency("u-shared", 4), fluency("u-c", 1)));
-
-        var fluency = useCase.execute(ORG, Set.of(A, B), 90).ai().fluency();
-
-        assertThat(fluency).extracting("stage", "count").containsExactly(
-                org.assertj.core.groups.Tuple.tuple(1, 0), org.assertj.core.groups.Tuple.tuple(2, 2),
-                org.assertj.core.groups.Tuple.tuple(3, 0), org.assertj.core.groups.Tuple.tuple(4, 1));
     }
 
     @Test
@@ -547,10 +532,6 @@ class GetOrganizationDashboardV2UseCaseTest {
 
     private static Organization org(BigDecimal seatCost) {
         return new Organization(ORG, "Acme", "acme", null, null, List.of(), List.of(), seatCost, true, 0L, NOW, NOW);
-    }
-
-    private static FluencyScore fluency(String userId, int stage) {
-        return new FluencyScore("f-" + userId, ORG, userId, stage, "x", "2026-10-01", List.of(), true, 0L, NOW, NOW);
     }
 
     private static IntegrationSyncLog log(String id, String projectId, SyncOperation operation, SyncStatus status,

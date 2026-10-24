@@ -7,8 +7,6 @@ import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
-import andromeda.sei.ms.feature.connector.domain.FluencyScore;
 import andromeda.sei.ms.feature.dashboard.application.BurndownCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
@@ -20,8 +18,6 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.It
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.PullRequestView;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Ai;
-import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Fluency;
-import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.FluencyCategory;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.HistoryPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Kpis;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.PendingAllocation;
@@ -84,7 +80,6 @@ public class GetIndividualDashboardV2UseCase {
 
     private final ProjectRepository projectRepository;
     private final DashboardPeopleDirectory peopleDirectory;
-    private final FluencyScoreRepository fluencyScoreRepository;
     private final GetDeveloperDashboardUseCase developerDashboard;
     private final DashboardSprintResolver sprintResolver;
     private final ProjectVcsActivity vcsActivity;
@@ -96,20 +91,18 @@ public class GetIndividualDashboardV2UseCase {
 
     @Autowired
     public GetIndividualDashboardV2UseCase(ProjectRepository projectRepository, DashboardPeopleDirectory peopleDirectory,
-                                           FluencyScoreRepository fluencyScoreRepository,
                                            GetDeveloperDashboardUseCase developerDashboard,
                                            DashboardSprintResolver sprintResolver, ProjectVcsActivity vcsActivity,
                                            WorkItemRepository workItemRepository,
                                            EffortBearingLevelResolver effortResolver,
                                            AIUsageRepository aiUsageRepository,
                                            AiUsageAllocationRepository allocationRepository) {
-        this(projectRepository, peopleDirectory, fluencyScoreRepository, developerDashboard, sprintResolver,
+        this(projectRepository, peopleDirectory, developerDashboard, sprintResolver,
                 vcsActivity, workItemRepository, effortResolver, aiUsageRepository, allocationRepository,
                 Clock.systemUTC());
     }
 
     GetIndividualDashboardV2UseCase(ProjectRepository projectRepository, DashboardPeopleDirectory peopleDirectory,
-                                    FluencyScoreRepository fluencyScoreRepository,
                                     GetDeveloperDashboardUseCase developerDashboard,
                                     DashboardSprintResolver sprintResolver, ProjectVcsActivity vcsActivity,
                                     WorkItemRepository workItemRepository, EffortBearingLevelResolver effortResolver,
@@ -117,7 +110,6 @@ public class GetIndividualDashboardV2UseCase {
                                     AiUsageAllocationRepository allocationRepository, Clock clock) {
         this.projectRepository = projectRepository;
         this.peopleDirectory = peopleDirectory;
-        this.fluencyScoreRepository = fluencyScoreRepository;
         this.developerDashboard = developerDashboard;
         this.sprintResolver = sprintResolver;
         this.vcsActivity = vcsActivity;
@@ -135,9 +127,8 @@ public class GetIndividualDashboardV2UseCase {
                 .orElseThrow(() -> new ProjectNotFoundException(projectId));
         Instant now = clock.instant();
         Person person = person(orgId, userId);
-        Fluency fluency = fluency(orgId, userId);
         SprintSelection selection = sprintResolver.resolve(orgId, projectId, sprintId);
-        if (selection.isEmpty()) return IndividualDashboardV2Output.withoutSprint(person, fluency, now);
+        if (selection.isEmpty()) return IndividualDashboardV2Output.withoutSprint(person, now);
 
         Context ctx = context(orgId, userId, projectId, selection, now);
         DeveloperDashboardOutput dev = developerDashboard.execute(orgId, userId, projectId,
@@ -146,7 +137,7 @@ public class GetIndividualDashboardV2UseCase {
                 DashboardV2Views.sprintMeta(selection.selected(), ctx.window(), ctx.today()), person,
                 kpis(dev, ctx), selection.previous() == null ? null : stats(ctx, selection.previous()),
                 burndown(dev, ctx), items(dev, ctx), pullRequests(dev, ctx), reviewsGiven(ctx), commitsByDay(ctx),
-                ai(dev, ctx), fluency, history(ctx, selection), now);
+                ai(dev, ctx), history(ctx, selection), now);
     }
 
     private Context context(String orgId, String userId, String projectId, SprintSelection selection, Instant now) {
@@ -161,17 +152,6 @@ public class GetIndividualDashboardV2UseCase {
         PersonInfo info = peopleDirectory.person(orgId, userId);
         return new Person(userId, info.name(), info.githubLinked(), info.vcsLinked(),
                 peopleDirectory.aiConnected(orgId, userId));
-    }
-
-    private Fluency fluency(String orgId, String userId) {
-        return fluencyScoreRepository.findByOrganizationIdAndUserId(orgId, userId)
-                .filter(FluencyScore::isActive)
-                .map(score -> new Fluency(score.getOverallStage(), score.getOverallLabel(), score.getComputedAt(),
-                        score.getCategories() == null ? List.of() : score.getCategories().stream()
-                                .map(c -> new FluencyCategory(c.getCategory(), c.getIcon(), c.getStage(),
-                                        c.getTips() == null ? List.of() : c.getTips()))
-                                .toList()))
-                .orElse(null);
     }
 
     /** The developer dashboard's numbers for the selected sprint, plus this project's pull requests. */

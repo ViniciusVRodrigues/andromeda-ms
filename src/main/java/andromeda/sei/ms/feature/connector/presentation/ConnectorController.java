@@ -2,10 +2,9 @@ package andromeda.sei.ms.feature.connector.presentation;
 
 import andromeda.sei.ms.feature.aiusage.application.dto.AIUsageEntry;
 import andromeda.sei.ms.feature.aiusage.application.usecase.UpsertAIUsageUseCase;
-import andromeda.sei.ms.feature.connector.application.usecase.StoreFluencyScoreUseCase;
 import andromeda.sei.ms.feature.connector.presentation.dto.AiefUploadRequest;
-import andromeda.sei.ms.feature.connector.presentation.dto.FluencyScoreRequest;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import tools.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,7 +33,6 @@ import java.util.Map;
 public class ConnectorController {
 
     private final UpsertAIUsageUseCase upsertAIUsageUseCase;
-    private final StoreFluencyScoreUseCase storeFluencyScoreUseCase;
 
     @Operation(summary = "Health check — public, no authentication required")
     @ApiResponse(responseCode = "200", description = "Service is healthy")
@@ -82,23 +80,15 @@ public class ConnectorController {
         return ResponseEntity.ok(Map.of("uploaded", usageEntries.size()));
     }
 
-    @Operation(summary = "Store pre-computed fluency score (AIEF contract)")
-    @ApiResponse(responseCode = "200", description = "Fluency score stored")
+    @Operation(summary = "Fluency score sink (feature removed; body is discarded)")
+    @ApiResponse(responseCode = "200", description = "Accepted and discarded")
     @ApiResponse(responseCode = "401", description = "Invalid or revoked connector token")
     @PostMapping("/{rawToken}/api/fluency-score")
     public ResponseEntity<Map<String, Boolean>> fluencyScore(
             @PathVariable String orgSlug,
             @PathVariable String rawToken,
-            @Valid @RequestBody FluencyScoreRequest body) {
-
-        long startedAt = System.nanoTime();
-
-        String organizationId = TenantContextHolder.get();
-        String userId = resolveUserId();
-
-        storeFluencyScoreUseCase.execute(body, organizationId, userId);
-        log.info("connector fluency-score: org={} entries={} ms={}", orgSlug,
-                body.categories().size(), elapsedMs(startedAt));
+            @RequestBody(required = false) JsonNode body) {
+        log.info("connector fluency-score discarded: org={}", orgSlug);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 

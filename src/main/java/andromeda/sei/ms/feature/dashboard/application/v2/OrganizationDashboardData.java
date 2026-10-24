@@ -9,10 +9,8 @@ import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
-import andromeda.sei.ms.feature.connector.domain.FluencyScore;
 import andromeda.sei.ms.feature.github.domain.GithubConnection;
 import andromeda.sei.ms.feature.github.domain.GithubConnectionRepository;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
@@ -65,7 +63,7 @@ import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.
  *
  * <ol>
  *   <li>projects, users, sprints, version-control bindings, Azure bindings, connector tokens,
- *       fluency scores, the organization and its two connections: one query each;</li>
+ *       the organization and its two connections: one query each;</li>
  *   <li>per visible project: its active work items with only the metric fields (raw projection,
  *       no document mapping) — the effort level needs each project's whole hierarchy;</li>
  *   <li>repositories of the visible bindings by id; their pull requests touched since the previous
@@ -99,7 +97,6 @@ public class OrganizationDashboardData {
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
     private final ConnectorTokenRepository connectorTokenRepository;
-    private final FluencyScoreRepository fluencyScoreRepository;
     private final AzureConnectionRepository azureConnectionRepository;
     private final GithubConnectionRepository githubConnectionRepository;
     private final AzureProjectBindingRepository azureBindingRepository;
@@ -121,7 +118,6 @@ public class OrganizationDashboardData {
             CompletableFuture<List<VcsRepoBinding>> bindingsF = loads.supply(() -> bindingRepository.findAllActiveByOrganizationId(orgId));
             CompletableFuture<Organization> organizationF = loads.supply(() -> organizationRepository.findById(orgId).orElse(null));
             CompletableFuture<List<ConnectorToken>> tokensF = loads.supply(() -> connectorTokenRepository.findAllByOrganizationId(orgId));
-            CompletableFuture<List<FluencyScore>> fluencyF = loads.supply(() -> fluencyScoreRepository.findAllByOrganizationId(orgId));
             CompletableFuture<Optional<AzureConnection>> azureF = loads.supply(() -> azureConnectionRepository.findByOrganizationIdAndActiveTrue(orgId));
             CompletableFuture<Optional<GithubConnection>> githubF = loads.supply(() -> githubConnectionRepository.findByOrganizationIdAndActiveTrue(orgId));
             CompletableFuture<List<SyncRunCount>> syncF = loads.supply(() -> syncLogRepository.countByProjectDayAndStatus(
@@ -171,7 +167,7 @@ public class OrganizationDashboardData {
                 });
             }
             return new Snapshot(projects, users, people, seesAll, items, itemProject, join(vcsF), join(organizationF),
-                    new Ai(join(usageF), join(previousF), join(allocationsF), join(costsF)), join(tokensF), join(fluencyF),
+                    new Ai(join(usageF), join(previousF), join(allocationsF), join(costsF)), join(tokensF),
                     join(azureF),
                     join(githubF), join(azureBindingsF).stream().filter(b -> projectIds.contains(b.getProjectId())).toList(),
                     join(syncF).stream().filter(c -> c.projectId() == null || projectIds.contains(c.projectId()))
@@ -302,7 +298,7 @@ public class OrganizationDashboardData {
     public record Snapshot(List<Project> projects, List<User> users, Set<String> people, boolean seesAll,
                            Map<String, ProjectPeriodItems> items, Map<String, String> itemProject, Vcs vcs,
                            Organization organization, Ai ai, List<ConnectorToken> connectorTokens,
-                           List<FluencyScore> fluencyScores, Optional<AzureConnection> azureConnection,
+                           Optional<AzureConnection> azureConnection,
                            Optional<GithubConnection> githubConnection, List<AzureProjectBinding> azureBindings,
                            List<SyncRunCount> syncRuns) {}
 

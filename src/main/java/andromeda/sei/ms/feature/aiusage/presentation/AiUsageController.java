@@ -11,9 +11,6 @@ import andromeda.sei.ms.feature.aiusage.presentation.dto.AiUsageSummaryByMonthRe
 import andromeda.sei.ms.feature.aiusage.presentation.dto.AiUsageSummaryGroupedResponse;
 import andromeda.sei.ms.feature.aiusage.presentation.dto.AiUsageSummaryResponse;
 import andromeda.sei.ms.feature.aiusage.presentation.dto.ModelBreakdownResponse;
-import andromeda.sei.ms.feature.connector.application.usecase.GetFluencyScoreUseCase;
-import andromeda.sei.ms.feature.connector.presentation.dto.CategoryScoreResponse;
-import andromeda.sei.ms.feature.connector.presentation.dto.FluencyScoreResponse;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
@@ -41,14 +38,13 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-@Tag(name = "AI Usage", description = "AI usage metrics and fluency score endpoints")
+@Tag(name = "AI Usage", description = "AI usage metrics endpoints")
 @RestController
 @RequestMapping("/api/v1/ai")
 @RequiredArgsConstructor
 public class AiUsageController {
 
     private final GetAiUsageSummaryUseCase getAiUsageSummaryUseCase;
-    private final GetFluencyScoreUseCase getFluencyScoreUseCase;
     private final GetAiUsageSummaryByMonthUseCase getAiUsageSummaryByMonthUseCase;
     private final GetSprintItemsUseCase getSprintItemsUseCase;
     private final UserRepository userRepository;
@@ -114,38 +110,6 @@ public class AiUsageController {
         var s = output.summary();
         return ResponseEntity.ok(new AiUsageSummaryResponse(
                 s.totalInputTokens(), s.totalOutputTokens(), s.totalInteractions(), s.totalCostUsd()));
-    }
-
-    @Operation(summary = "Get fluency score",
-            description = "Returns the AI fluency score for the authenticated user or a team member. "
-                    + "A user with no score yet yields 200 with an empty categories list, not 404.")
-    @ApiResponse(responseCode = "200", description = "Fluency score returned (empty when not computed yet)")
-    @ApiResponse(responseCode = "403", description = "Not authorised to view another user's fluency score")
-    @GetMapping("/fluency-score")
-    @PreAuthorize(AI_READ)
-    public ResponseEntity<FluencyScoreResponse> getFluencyScore(
-            @RequestParam(required = false) String userId) {
-
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        String callerUserId = auth.getName();
-        if (userId != null && !currentUserPermissions.canReadUserData(userId)) {
-            throw new ForbiddenOperationException("FLUENCY_SCORE_FORBIDDEN",
-                    "You are not authorised to view another user's fluency score");
-        }
-
-        String effectiveUserId = userId != null ? userId : callerUserId;
-        String orgId = TenantContextHolder.get();
-
-        return ResponseEntity.ok(getFluencyScoreUseCase.execute(orgId, effectiveUserId)
-                .map(score -> new FluencyScoreResponse(
-                        score.getOverallStage(),
-                        score.getOverallLabel(),
-                        score.getComputedAt(),
-                        score.getCategories().stream()
-                                .map(c -> new CategoryScoreResponse(
-                                        c.getCategory(), c.getIcon(), c.getStage(), c.getTips()))
-                                .toList()))
-                .orElseGet(FluencyScoreResponse::empty));
     }
 
     @Operation(summary = "Get AI usage summary by month", description = "Returns monthly aggregate with model breakdown")
@@ -232,7 +196,7 @@ public class AiUsageController {
      * {@code id} e não {@code userId}: é o nome que todo o resto da API usa para a
      * identidade de um recurso (ver /v1/users, /v1/roles), e é o que o front lê. A
      * divergência anterior fazia o seletor "Visualizar como" enviar o nome do usuário
-     * como se fosse id, quebrando fluency, summary, pending e history de uma vez.
+     * como se fosse id, quebrando summary, pending e history de uma vez.
      */
     public record TeamMemberResponse(String id, String name, String email) {}
 

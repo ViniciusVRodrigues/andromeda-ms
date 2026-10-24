@@ -6,7 +6,6 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.It
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.PullRequestView;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.SprintMeta;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Ai;
-import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Fluency;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.HistoryPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Kpis;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Person;
@@ -33,7 +32,6 @@ public record IndividualDashboardV2Response(
         ReviewsGiven reviewsGiven,
         List<CommitDay> commitsByDay,
         Ai ai,
-        Fluency fluency,
         List<HistoryPoint> history,
         @Schema(description = "Instante do cálculo (ISO-8601, UTC)", example = "2026-10-11T12:00:00Z") String asOf,
         @Schema(description = "Frescura dos dados do projeto (sync mais antigo, refresh rodando)") DataFreshness dataFreshness) {}

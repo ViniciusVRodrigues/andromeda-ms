@@ -2,7 +2,6 @@ package andromeda.sei.ms.feature.connector.presentation;
 
 import andromeda.sei.ms.feature.aiusage.application.usecase.UpsertAIUsageUseCase;
 import andromeda.sei.ms.feature.connector.application.usecase.ResolveConnectorTokenUseCase;
-import andromeda.sei.ms.feature.connector.application.usecase.StoreFluencyScoreUseCase;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.infrastructure.security.ConnectorTokenAuthFilter;
 import andromeda.sei.ms.feature.organization.domain.Organization;
@@ -49,7 +48,6 @@ class ConnectorLogLeakTest {
     private static final String MACHINE = "MACHINE-SECRET-NAME";
 
     @Mock private UpsertAIUsageUseCase upsertAIUsageUseCase;
-    @Mock private StoreFluencyScoreUseCase storeFluencyScoreUseCase;
     @Mock private ResolveConnectorTokenUseCase resolveConnectorTokenUseCase;
     @Mock private OrganizationRepository organizationRepository;
     @Mock private JwtService jwtService;
@@ -68,7 +66,7 @@ class ConnectorLogLeakTest {
         root.setLevel(Level.INFO);
 
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new ConnectorController(upsertAIUsageUseCase, storeFluencyScoreUseCase)).build();
+                new ConnectorController(upsertAIUsageUseCase)).build();
     }
 
     @AfterEach
@@ -106,7 +104,7 @@ class ConnectorLogLeakTest {
     }
 
     @Test
-    void fluencyScoreDoesNotLogBodyTokenOrAuthorization() throws Exception {
+    void fluencyScoreSinkDiscardsBodyAndDoesNotLogBodyTokenOrAuthorization() throws Exception {
         String body = "{\"overallStage\":2,\"overallLabel\":\"" + MACHINE + "\",\"categories\":[]}";
 
         mockMvc.perform(post("/connector/acme/" + RAW_TOKEN + "/api/fluency-score")
@@ -114,8 +112,7 @@ class ConnectorLogLeakTest {
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());
 
-        assertThat(appender.list).anyMatch(e -> e.getFormattedMessage().contains("org=acme")
-                && e.getFormattedMessage().contains("ms="));
+        assertThat(appender.list).anyMatch(e -> e.getFormattedMessage().contains("fluency-score discarded: org=acme"));
         assertNoLeak();
     }
 

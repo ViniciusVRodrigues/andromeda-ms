@@ -22,9 +22,6 @@ import java.util.Map;
  * usuario — e o que sobra para quem tem apenas {@code CONNECTOR_TOKEN_MANAGE_OWN}. Quem tem
  * {@code CONNECTOR_TOKEN_MANAGE_ALL} passa o escopo da organizacao inteira. Essa decisao e tomada
  * no caso de uso a partir do token, nunca por parametro do cliente.
- *
- * <p>{@code fluency_scores} sai junto: e derivado inteiramente de {@code ai_usages}, e preservar
- * o score depois de apagar a origem deixaria um numero orfao, impossivel de recalcular.
  */
 @Slf4j
 @Component
@@ -46,8 +43,6 @@ public class AiConnectorIntegrationDataWiper implements IntegrationDataWiper {
                 mongoTemplate.remove(query(organizationId, scope), "ai_usage_allocations").getDeletedCount());
         removidos.put("ai_usages",
                 mongoTemplate.remove(query(organizationId, scope), "ai_usages").getDeletedCount());
-        removidos.put("fluency_scores",
-                mongoTemplate.remove(query(organizationId, scope), "fluency_scores").getDeletedCount());
 
         log.info("Wipe conector IA concluido: org={} scope={} removidos={}", organizationId, scope, removidos);
         return removidos;

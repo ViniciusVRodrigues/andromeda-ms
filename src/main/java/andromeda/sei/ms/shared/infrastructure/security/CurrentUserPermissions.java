@@ -38,8 +38,7 @@ public class CurrentUserPermissions {
     }
 
     /**
-     * Whether the caller may read {@code targetUserId}'s personal data (AI usage, allocations,
-     * fluency) — project-scoped-permissions 6.4: themselves, or a member of a project where the
+     * Whether the caller may read {@code targetUserId}'s personal data (AI usage, allocations) — project-scoped-permissions 6.4: themselves, or a member of a project where the
      * caller holds {@code AI_READ_ALL} or {@code DASHBOARD_TEAM} (the codes that already allowed it).
      */
     public boolean canReadUserData(String targetUserId) {

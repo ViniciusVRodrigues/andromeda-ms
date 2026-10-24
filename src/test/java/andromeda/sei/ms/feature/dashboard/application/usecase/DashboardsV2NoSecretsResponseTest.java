@@ -3,7 +3,6 @@ package andromeda.sei.ms.feature.dashboard.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
 import andromeda.sei.ms.feature.dashboard.application.v2.OrganizationDashboardData;
 import andromeda.sei.ms.feature.dashboard.presentation.OrganizationDashboardsV2Controller;
 import andromeda.sei.ms.feature.dashboard.presentation.OrganizationDashboardsV2Mapper;
@@ -72,7 +71,7 @@ class DashboardsV2NoSecretsResponseTest {
                 new DeliveryMetricsService(mock(VcsReadPort.class), mock(WorkItemRepository.class),
                         fixtures.organizationRepository),
                 fixtures.organizationRepository, mock(AIUsageRepository.class), mock(AiUsageAllocationRepository.class),
-                fixtures.connectorTokenRepository, mock(FluencyScoreRepository.class),
+                fixtures.connectorTokenRepository,
                 fixtures.azureConnectionRepository, fixtures.githubConnectionRepository,
                 mock(AzureProjectBindingRepository.class), fixtures.syncLogRepository);
         CurrentUserPermissions permissions = mock(CurrentUserPermissions.class);
