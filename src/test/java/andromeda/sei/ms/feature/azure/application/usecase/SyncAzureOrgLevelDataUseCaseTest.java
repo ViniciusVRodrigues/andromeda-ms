@@ -39,6 +39,7 @@ class SyncAzureOrgLevelDataUseCaseTest {
     @Mock private AzureOrgProjectRepository azureOrgProjectRepository;
     @Mock private AzureOrgUserRepository azureOrgUserRepository;
     @Mock private AzureConnectionRepository azureConnectionRepository;
+    @Mock private AutoLinkAzureIdentitiesUseCase autoLink;
 
     @InjectMocks
     private SyncAzureOrgLevelDataUseCase useCase;
@@ -171,5 +172,18 @@ class SyncAzureOrgLevelDataUseCaseTest {
         assertThat(users.get(0).getDisplayName()).isEqualTo("Ana Silva");
         assertThat(users.get(0).getSources())
                 .containsExactlyInAnyOrder(AzureOrgUserSource.TEAM, AzureOrgUserSource.DIRECTORY);
+    }
+
+    @Test
+    void shouldAutoLinkAfterSync_andSurviveAutoLinkFailure() {
+        stubOneTeam();
+        when(azureDevOpsClient.listUserEntitlements(anyString(), anyString())).thenReturn(List.of());
+        org.mockito.Mockito.doThrow(new RuntimeException("boom")).when(autoLink).executeForOrganization("org-1");
+        AzureConnection connection = connection();
+
+        useCase.execute(connection);
+
+        verify(autoLink).executeForOrganization("org-1");
+        assertThat(connection.getOrgLevelSyncedAt()).isNotNull();
     }
 }

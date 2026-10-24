@@ -44,6 +44,7 @@ public class SyncAzureOrgLevelDataUseCase {
     private final AzureOrgProjectRepository azureOrgProjectRepository;
     private final AzureOrgUserRepository azureOrgUserRepository;
     private final AzureConnectionRepository azureConnectionRepository;
+    private final AutoLinkAzureIdentitiesUseCase autoLinkAzureIdentitiesUseCase;
 
     public void execute(AzureConnection connection) {
         String orgId = connection.getOrganizationId();
@@ -56,6 +57,12 @@ public class SyncAzureOrgLevelDataUseCase {
 
         connection.setOrgLevelSyncedAt(Instant.now());
         azureConnectionRepository.save(connection);
+
+        try {
+            autoLinkAzureIdentitiesUseCase.executeForOrganization(orgId);
+        } catch (RuntimeException e) {
+            log.warn("Azure auto-link failed after org-level sync: org={}: {}", orgId, e.getClass().getSimpleName());
+        }
 
         log.info("Azure org-level sync completed: org={} projects={}", orgId, adoProjects.size());
     }
