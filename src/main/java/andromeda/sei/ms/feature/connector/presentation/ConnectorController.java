@@ -2,10 +2,10 @@ package andromeda.sei.ms.feature.connector.presentation;
 
 import andromeda.sei.ms.feature.aiusage.application.dto.AIUsageEntry;
 import andromeda.sei.ms.feature.aiusage.application.usecase.UpsertAIUsageUseCase;
-import andromeda.sei.ms.feature.connector.application.usecase.StoreFluencyScoreUseCase;
 import andromeda.sei.ms.feature.connector.presentation.dto.AiefUploadRequest;
-import andromeda.sei.ms.feature.connector.presentation.dto.FluencyScoreRequest;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import jakarta.servlet.http.HttpServletRequest;
+import tools.jackson.databind.json.JsonMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -33,8 +34,11 @@ import java.util.Map;
 @Slf4j
 public class ConnectorController {
 
+    /** Fluency sink body cap (100 KB): the body is read bounded, never trusted by Content-Length. */
+    static final int FLUENCY_SINK_MAX_BYTES = 100 * 1024;
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+
     private final UpsertAIUsageUseCase upsertAIUsageUseCase;
-    private final StoreFluencyScoreUseCase storeFluencyScoreUseCase;
 
     @Operation(summary = "Health check — public, no authentication required")
     @ApiResponse(responseCode = "200", description = "Service is healthy")
@@ -55,8 +59,7 @@ public class ConnectorController {
             @PathVariable String rawToken,
             @Valid @RequestBody List<AiefUploadRequest> entries) {
 
-        log.info("connector upload: org={} token={}... entries={} body={}",
-                orgSlug, rawToken.substring(0, Math.min(8, rawToken.length())), entries.size(), entries);
+        long startedAt = System.nanoTime();
 
         String organizationId = TenantContextHolder.get();
         String userId = resolveUserId();
@@ -79,25 +82,29 @@ public class ConnectorController {
                 .toList();
 
         upsertAIUsageUseCase.execute(usageEntries, organizationId, userId);
+        log.info("connector upload: org={} entries={} ms={}", orgSlug, usageEntries.size(), elapsedMs(startedAt));
         return ResponseEntity.ok(Map.of("uploaded", usageEntries.size()));
     }
 
-    @Operation(summary = "Store pre-computed fluency score (AIEF contract)")
-    @ApiResponse(responseCode = "200", description = "Fluency score stored")
+    @Operation(summary = "Fluency score sink (feature removed; body is validated as JSON, size-capped and discarded)")
+    @ApiResponse(responseCode = "200", description = "Accepted and discarded")
+    @ApiResponse(responseCode = "400", description = "Body is not JSON or exceeds 100 KB")
     @ApiResponse(responseCode = "401", description = "Invalid or revoked connector token")
     @PostMapping("/{rawToken}/api/fluency-score")
-    public ResponseEntity<Map<String, Boolean>> fluencyScore(
+    public ResponseEntity<Map<String, Object>> fluencyScore(
             @PathVariable String orgSlug,
             @PathVariable String rawToken,
-            @Valid @RequestBody FluencyScoreRequest body) {
-
-        log.info("connector fluency-score: org={} token={}... body={}",
-                orgSlug, rawToken.substring(0, Math.min(8, rawToken.length())), body);
-
-        String organizationId = TenantContextHolder.get();
-        String userId = resolveUserId();
-
-        storeFluencyScoreUseCase.execute(body, organizationId, userId);
+            HttpServletRequest request) throws IOException {
+        byte[] raw = request.getInputStream().readNBytes(FLUENCY_SINK_MAX_BYTES + 1);
+        if (raw.length > FLUENCY_SINK_MAX_BYTES) {
+            return ResponseEntity.badRequest().body(Map.of("code", "PAYLOAD_TOO_LARGE"));
+        }
+        try {
+            JSON.readTree(raw);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("code", "INVALID_JSON"));
+        }
+        log.info("connector fluency-score discarded: org={}", orgSlug);
         return ResponseEntity.ok(Map.of("ok", true));
     }
 
@@ -109,6 +116,10 @@ public class ConnectorController {
             @PathVariable String orgSlug,
             @PathVariable String rawToken) {
         return ResponseEntity.ok(Map.of("status", "ok"));
+    }
+
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000;
     }
 
     private String resolveUserId() {

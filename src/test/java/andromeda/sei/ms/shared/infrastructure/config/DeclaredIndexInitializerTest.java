@@ -39,10 +39,10 @@ import static org.mockito.Mockito.when;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class DeclaredIndexInitializerTest {
 
-    /* Pinned inventory: 31 @Document classes declaring 68 indexes (usage_events: ix_usage_org_occurred + TTL; funnel_events: ix_funnel_id_occurred + TTL) (fix/mongo-index-creation report).
+    /* Pinned inventory: 30 @Document classes declaring 67 indexes (usage_events: ix_usage_org_occurred + TTL; funnel_events: ix_funnel_id_occurred + TTL) (fix/mongo-index-creation report).
      * Adding or removing a declaration changes these numbers on purpose. */
-    private static final int DOCUMENT_COLLECTIONS = 31;
-    private static final int DECLARED_INDEXES = 68;
+    private static final int DOCUMENT_COLLECTIONS = 30;
+    private static final int DECLARED_INDEXES = 67;
 
     private static final String USERS = "users";
     private static final String WORK_ITEMS = "work_items";

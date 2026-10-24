@@ -35,13 +35,12 @@ public record IndividualDashboardV2Output(
         ReviewsGiven reviewsGiven,
         List<CommitDay> commitsByDay,
         Ai ai,
-        Fluency fluency,
         List<HistoryPoint> history,
         Instant asOf) {
 
-    public static IndividualDashboardV2Output withoutSprint(Person person, Fluency fluency, Instant asOf) {
+    public static IndividualDashboardV2Output withoutSprint(Person person, Instant asOf) {
         return new IndividualDashboardV2Output(null, person, null, null, List.of(), List.of(), List.of(),
-                ReviewsGiven.NONE, List.of(), Ai.EMPTY, fluency, List.of(), asOf);
+                ReviewsGiven.NONE, List.of(), Ai.EMPTY, List.of(), asOf);
     }
 
     /**
@@ -81,11 +80,6 @@ public record IndividualDashboardV2Output(
                                     List<PendingSplit> splits) {}
 
     public record PendingSplit(String externalId, String title, Double pct) {}
-
-    /** Latest fluency score sent by the connector; {@code computedAt} as sent. */
-    public record Fluency(int overallStage, String overallLabel, String computedAt, List<FluencyCategory> categories) {}
-
-    public record FluencyCategory(String category, String icon, int stage, List<String> tips) {}
 
     public record HistoryPoint(String sprintId, String label, String name,
                                @JsonProperty("isSelected") boolean isSelected,

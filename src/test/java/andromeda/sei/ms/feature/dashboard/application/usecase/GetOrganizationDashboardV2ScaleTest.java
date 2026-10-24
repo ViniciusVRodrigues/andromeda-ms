@@ -7,7 +7,6 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
-import andromeda.sei.ms.feature.connector.application.port.FluencyScoreRepository;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.v2.OrganizationDashboardData;
@@ -177,7 +176,7 @@ class GetOrganizationDashboardV2ScaleTest {
                 repositoryRepository, vcsReadPort, mock(VcsCommitRepository.class),
                 new DeliveryMetricsService(vcsReadPort, workItemRepository, organizationRepository),
                 organizationRepository, aiUsageRepository, allocationRepository, mock(ConnectorTokenRepository.class),
-                mock(FluencyScoreRepository.class), mock(AzureConnectionRepository.class),
+                mock(AzureConnectionRepository.class),
                 mock(GithubConnectionRepository.class), mock(AzureProjectBindingRepository.class),
                 mock(IntegrationSyncLogRepository.class));
         GetOrganizationDashboardV2UseCase useCase = new GetOrganizationDashboardV2UseCase(data,
