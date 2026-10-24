@@ -10,7 +10,10 @@ import org.springframework.data.mongodb.core.index.CompoundIndex;
 import org.springframework.data.mongodb.core.index.CompoundIndexes;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource;
+
 import java.time.Instant;
+import java.util.Set;
 
 @Document(collection = "azure_org_users")
 @CompoundIndexes({
@@ -29,6 +32,8 @@ public class AzureOrgUserDocument {
     private String azureId;
     private String displayName;
     private String azureEmail;
+    private String principalName;
+    private Set<AzureOrgUserSource> sources;
     private boolean active = true;
     private Instant createdAt;
     private Instant updatedAt;

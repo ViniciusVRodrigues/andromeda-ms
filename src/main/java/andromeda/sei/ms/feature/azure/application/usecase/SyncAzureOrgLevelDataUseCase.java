@@ -73,7 +73,9 @@ public class SyncAzureOrgLevelDataUseCase {
                     if (member.id() != null) {
                         byAzureId.putIfAbsent(member.id(),
                                 new AzureOrgUser(null, orgId, member.id(), member.displayName(),
-                                        member.uniqueName(), true, now, now, null));
+                                        member.uniqueName(), member.uniqueName(),
+                                        java.util.Set.of(andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource.TEAM),
+                                        true, now, now, null));
                     }
                 }
             }

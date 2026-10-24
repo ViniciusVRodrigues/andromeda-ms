@@ -127,7 +127,7 @@ class GetIntegrationsDashboardV2UseCaseTest {
                 account("u-carla", "carla-gh", List.of("repo"), NOW.plus(Duration.ofDays(3)))));
         when(t.azureOrgUserRepository.findAllByOrganizationIdAndActiveTrue(ORG)).thenReturn(List.of(
                 new andromeda.sei.ms.feature.azure.domain.AzureOrgUser("x", ORG, "az-carla", "Carla",
-                        "carla@azure.example.com", true, NOW, NOW, 0L)));
+                        "carla@azure.example.com", "carla@azure.example.com", java.util.Set.of(andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource.TEAM), true, NOW, NOW, 0L)));
         when(t.connectorTokenRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(
                 token("t1", "u-ana", "notebook", true), token("t2", "u-ana", "antigo", false),
                 token("t3", "u-carla", "desktop", true)));
