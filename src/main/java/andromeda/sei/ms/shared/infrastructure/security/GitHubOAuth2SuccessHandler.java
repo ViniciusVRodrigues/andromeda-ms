@@ -4,8 +4,6 @@ import andromeda.sei.ms.feature.auth.application.usecase.LinkGithubUseCase;
 import andromeda.sei.ms.feature.provideraccount.application.dto.LinkProviderAccountInput;
 import andromeda.sei.ms.feature.provideraccount.application.usecase.LinkProviderAccountUseCase;
 import andromeda.sei.ms.feature.provideraccount.domain.Provider;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -26,7 +24,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class GitHubOAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
-    private final JwtService jwtService;
     private final LinkGithubUseCase linkGithubUseCase;
     private final LinkProviderAccountUseCase linkProviderAccountUseCase;
     private final OAuth2AuthorizedClientService authorizedClientService;
@@ -34,22 +31,14 @@ public class GitHubOAuth2SuccessHandler implements AuthenticationSuccessHandler 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
                                         Authentication authentication) throws IOException, ServletException {
-        String jwt = (String) request.getSession().getAttribute("ANDROMEDA_JWT");
-        if (jwt == null) {
+        Object binding = request.getSession().getAttribute(LinkBinding.SESSION_ATTRIBUTE);
+        if (!(binding instanceof LinkBinding link)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
 
-        Claims claims;
-        try {
-            claims = jwtService.parse(jwt);
-        } catch (JwtException e) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            return;
-        }
-
-        String userId = claims.getSubject();
-        String orgId = claims.get("orgId", String.class);
+        String userId = link.userId();
+        String orgId = link.organizationId();
 
         OAuth2AuthenticationToken oauthToken = (OAuth2AuthenticationToken) authentication;
         Object idAttr = oauthToken.getPrincipal().getAttribute("id");
@@ -59,7 +48,7 @@ public class GitHubOAuth2SuccessHandler implements AuthenticationSuccessHandler 
 
         persistProviderAccount(oauthToken, userId, orgId, githubId);
 
-        request.getSession().removeAttribute("ANDROMEDA_JWT");
+        request.getSession().removeAttribute(LinkBinding.SESSION_ATTRIBUTE);
 
         response.setStatus(HttpServletResponse.SC_OK);
         response.setContentType("application/json");

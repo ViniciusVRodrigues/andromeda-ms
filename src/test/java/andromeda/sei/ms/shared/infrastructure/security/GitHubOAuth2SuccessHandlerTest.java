@@ -3,7 +3,6 @@ package andromeda.sei.ms.shared.infrastructure.security;
 import andromeda.sei.ms.feature.auth.application.usecase.LinkGithubUseCase;
 import andromeda.sei.ms.feature.provideraccount.application.dto.LinkProviderAccountInput;
 import andromeda.sei.ms.feature.provideraccount.application.usecase.LinkProviderAccountUseCase;
-import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -38,7 +37,6 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class GitHubOAuth2SuccessHandlerTest {
 
-    @Mock private JwtService jwtService;
     @Mock private LinkGithubUseCase linkGithubUseCase;
     @Mock private LinkProviderAccountUseCase linkProviderAccountUseCase;
     @Mock private OAuth2AuthorizedClientService authorizedClientService;
@@ -49,7 +47,6 @@ class GitHubOAuth2SuccessHandlerTest {
     @Mock private HttpServletRequest request;
     @Mock private HttpServletResponse response;
     @Mock private HttpSession session;
-    @Mock private Claims claims;
 
     @Test
     void shouldPersistProviderAccount_andKeepLegacyLink_onSuccess() throws Exception {
@@ -81,7 +78,7 @@ class GitHubOAuth2SuccessHandlerTest {
 
         verify(response).setStatus(HttpServletResponse.SC_OK);
         assertThat(body.toString()).isEqualTo("{\"linked\":true}");
-        verify(session).removeAttribute("ANDROMEDA_JWT");
+        verify(session).removeAttribute(LinkBinding.SESSION_ATTRIBUTE);
     }
 
     @Test
@@ -109,9 +106,9 @@ class GitHubOAuth2SuccessHandlerTest {
     }
 
     @Test
-    void shouldReturn401_whenSessionHasNoJwt() throws Exception {
+    void shouldReturn401_whenSessionHasNoLinkBinding() throws Exception {
         when(request.getSession()).thenReturn(session);
-        when(session.getAttribute("ANDROMEDA_JWT")).thenReturn(null);
+        when(session.getAttribute(LinkBinding.SESSION_ATTRIBUTE)).thenReturn(null);
         OAuth2AuthenticationToken token = oauthToken(Map.of("id", 58421));
 
         handler.onAuthenticationSuccess(request, response, token);
@@ -123,10 +120,8 @@ class GitHubOAuth2SuccessHandlerTest {
 
     private void setUpSession() {
         when(request.getSession()).thenReturn(session);
-        when(session.getAttribute("ANDROMEDA_JWT")).thenReturn("jwt-token");
-        when(jwtService.parse("jwt-token")).thenReturn(claims);
-        when(claims.getSubject()).thenReturn("user-1");
-        lenient().when(claims.get("orgId", String.class)).thenReturn("org-1");
+        when(session.getAttribute(LinkBinding.SESSION_ATTRIBUTE)).thenReturn(new LinkBinding("org-1", "user-1",
+                andromeda.sei.ms.feature.auth.domain.OAuthLinkPurpose.GITHUB_PROFILE, null, "hash"));
     }
 
     private OAuth2AuthenticationToken oauthToken(Map<String, Object> attributes) {

@@ -1,14 +1,16 @@
 package andromeda.sei.ms.shared.infrastructure.config;
 
 import andromeda.sei.ms.feature.connector.infrastructure.security.ConnectorTokenAuthFilter;
-import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2AuthorizationRequestResolver;
 import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2SuccessHandler;
-import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2AuthorizationRequestResolver;
 import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2SuccessHandler;
-import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2AuthorizationRequestResolver;
 import andromeda.sei.ms.shared.infrastructure.security.GitHubOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
+import andromeda.sei.ms.feature.auth.application.usecase.ConsumeOAuthLinkTicketUseCase;
+import andromeda.sei.ms.shared.infrastructure.security.OAuthTicketAuthorizationFilter;
+import andromeda.sei.ms.shared.infrastructure.security.TicketOAuth2AuthorizationRequestResolver;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
@@ -38,6 +40,14 @@ public class SecurityConfig {
     private final ConnectorTokenAuthFilter connectorTokenAuthFilter;
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
     private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
+    private final ConsumeOAuthLinkTicketUseCase consumeOAuthLinkTicketUseCase;
+
+    @Value("${app.frontend-url}")
+    private String frontendUrl;
+
+    /** Cookie do nonce do OAuth: Secure em dev/prod, desligado no perfil local (http). */
+    @Value("${app.oauth.cookie-secure:true}")
+    private boolean oauthCookieSecure;
 
     static final String[] PUBLIC_ENDPOINTS = {
             "/api/v1/auth/login",
@@ -57,7 +67,8 @@ public class SecurityConfig {
             "/v3/api-docs/**",
             "/swagger-ui/**",
             "/swagger-ui.html",
-            "/login/oauth2/code/azure",
+            "/api/v1/auth/oauth2/authorization/*", // popup do OAuth: o ticket de uso unico autoriza
+            "/api/v1/auth/oauth2/callback/*",      // retorno do provedor
             "/connector/*/health"       // connector health — public, no auth
     };
 
@@ -69,11 +80,6 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    ClientRegistrationRepository clientRegistrationRepository) throws Exception {
-        GitHubOAuth2AuthorizationRequestResolver githubResolver =
-                new GitHubOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
-        AzureOAuth2AuthorizationRequestResolver azureResolver =
-                new AzureOAuth2AuthorizationRequestResolver(clientRegistrationRepository);
-
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
@@ -84,12 +90,15 @@ public class SecurityConfig {
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(ep -> ep
-                                .authorizationRequestResolver(new CompositeOAuth2AuthorizationRequestResolver(
-                                        githubResolver, azureResolver)))
+                                .authorizationRequestResolver(
+                                        new TicketOAuth2AuthorizationRequestResolver(clientRegistrationRepository)))
+                        .loginProcessingUrl("/api/v1/auth/oauth2/callback/*")
                         .successHandler(new CompositeOAuth2SuccessHandler(
                                 gitHubOAuth2SuccessHandler, azureOAuth2SuccessHandler))
                 )
                 .exceptionHandling(apiAnswersUnauthorized())
+                .addFilterBefore(new OAuthTicketAuthorizationFilter(consumeOAuthLinkTicketUseCase, frontendUrl,
+                        oauthCookieSecure), OAuth2AuthorizationRequestRedirectFilter.class)
                 .addFilterBefore(connectorTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();

@@ -3,8 +3,6 @@ package andromeda.sei.ms.shared.infrastructure.security;
 import andromeda.sei.ms.feature.azure.application.dto.AzureOAuthCallbackInput;
 import andromeda.sei.ms.feature.azure.application.usecase.CompleteAzureOAuthConnectionUseCase;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureOrgUrlInvalidException;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -33,23 +31,14 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
 
     private static final int UNPROCESSABLE_ENTITY = 422;
 
-    private final JwtService jwtService;
     private final OAuth2AuthorizedClientService authorizedClientService;
     private final CompleteAzureOAuthConnectionUseCase completeAzureOAuthConnectionUseCase;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
                                         Authentication authentication) throws IOException {
-        String jwt = (String) request.getSession().getAttribute("ANDROMEDA_JWT");
-        if (jwt == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            return;
-        }
-
-        Claims claims;
-        try {
-            claims = jwtService.parse(jwt);
-        } catch (JwtException e) {
+        Object binding = request.getSession().getAttribute(LinkBinding.SESSION_ATTRIBUTE);
+        if (!(binding instanceof LinkBinding link)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             return;
         }
@@ -63,14 +52,14 @@ public class AzureOAuth2SuccessHandler implements AuthenticationSuccessHandler {
         }
 
         AzureOAuthCallbackInput input = new AzureOAuthCallbackInput(
-                claims.get("orgId", String.class),
-                claims.getSubject(),
+                link.organizationId(),
+                link.userId(),
                 AzureOAuthOrgUrlState.decode(request.getParameter("state")).orElse(null),
                 authorizedClient.getAccessToken().getTokenValue(),
                 authorizedClient.getRefreshToken() != null ? authorizedClient.getRefreshToken().getTokenValue() : null,
                 authorizedClient.getAccessToken().getExpiresAt());
 
-        request.getSession().removeAttribute("ANDROMEDA_JWT");
+        request.getSession().removeAttribute(LinkBinding.SESSION_ATTRIBUTE);
         response.setContentType("application/json");
         try {
             completeAzureOAuthConnectionUseCase.execute(input);
