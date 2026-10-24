@@ -4,7 +4,8 @@ import andromeda.sei.ms.feature.aiusage.application.dto.AIUsageEntry;
 import andromeda.sei.ms.feature.aiusage.application.usecase.UpsertAIUsageUseCase;
 import andromeda.sei.ms.feature.connector.presentation.dto.AiefUploadRequest;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
-import tools.jackson.databind.JsonNode;
+import jakarta.servlet.http.HttpServletRequest;
+import tools.jackson.databind.json.JsonMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +33,10 @@ import java.util.Map;
 @RequiredArgsConstructor
 @Slf4j
 public class ConnectorController {
+
+    /** Fluency sink body cap (100 KB): the body is read bounded, never trusted by Content-Length. */
+    static final int FLUENCY_SINK_MAX_BYTES = 100 * 1024;
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final UpsertAIUsageUseCase upsertAIUsageUseCase;
 
@@ -80,14 +86,24 @@ public class ConnectorController {
         return ResponseEntity.ok(Map.of("uploaded", usageEntries.size()));
     }
 
-    @Operation(summary = "Fluency score sink (feature removed; body is discarded)")
+    @Operation(summary = "Fluency score sink (feature removed; body is validated as JSON, size-capped and discarded)")
     @ApiResponse(responseCode = "200", description = "Accepted and discarded")
+    @ApiResponse(responseCode = "400", description = "Body is not JSON or exceeds 100 KB")
     @ApiResponse(responseCode = "401", description = "Invalid or revoked connector token")
     @PostMapping("/{rawToken}/api/fluency-score")
-    public ResponseEntity<Map<String, Boolean>> fluencyScore(
+    public ResponseEntity<Map<String, Object>> fluencyScore(
             @PathVariable String orgSlug,
             @PathVariable String rawToken,
-            @RequestBody(required = false) JsonNode body) {
+            HttpServletRequest request) throws IOException {
+        byte[] raw = request.getInputStream().readNBytes(FLUENCY_SINK_MAX_BYTES + 1);
+        if (raw.length > FLUENCY_SINK_MAX_BYTES) {
+            return ResponseEntity.badRequest().body(Map.of("code", "PAYLOAD_TOO_LARGE"));
+        }
+        try {
+            JSON.readTree(raw);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(Map.of("code", "INVALID_JSON"));
+        }
         log.info("connector fluency-score discarded: org={}", orgSlug);
         return ResponseEntity.ok(Map.of("ok", true));
     }
