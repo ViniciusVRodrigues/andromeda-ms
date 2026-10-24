@@ -54,7 +54,7 @@ public class AzureConnectionController {
     /** Read again by the OAuth authorization request resolver, which carries it in the state. */
     private static final String ORG_URL_PARAM = "orgUrl";
 
-    @Operation(summary = "List all Azure DevOps users across all active project bindings")
+    @Operation(summary = "List the persisted Azure DevOps org directory (no live Azure call)")
     @ApiResponse(responseCode = "200", description = "List of Azure users")
     @ApiResponse(responseCode = "404", description = "Azure connection not found")
     @ApiResponse(responseCode = "403", description = "No permission")
@@ -62,7 +62,7 @@ public class AzureConnectionController {
     @PreAuthorize("hasAuthority('USER_MANAGE')")
     public ResponseEntity<AzureUsersResponse> listUsers() {
         List<AzureUserResponse> users = listAzureUsersUseCase.execute().stream()
-                .map(u -> new AzureUserResponse(u.azureId(), u.displayName(), u.azureEmail()))
+                .map(u -> new AzureUserResponse(u.azureId(), u.displayName(), u.azureEmail(), u.sources(), u.linkedUserId()))
                 .toList();
         return ResponseEntity.ok(new AzureUsersResponse(users));
     }
