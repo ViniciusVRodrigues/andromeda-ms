@@ -8,6 +8,7 @@ import andromeda.sei.ms.shared.infrastructure.security.JwtAuthenticationFilter;
 import andromeda.sei.ms.feature.auth.application.usecase.ConsumeOAuthLinkTicketUseCase;
 import andromeda.sei.ms.shared.infrastructure.security.OAuthTicketAuthorizationFilter;
 import andromeda.sei.ms.shared.infrastructure.security.TicketOAuth2AuthorizationRequestResolver;
+import andromeda.sei.ms.shared.infrastructure.security.OAuth2FailureHandler;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
@@ -40,6 +41,7 @@ public class SecurityConfig {
     private final ConnectorTokenAuthFilter connectorTokenAuthFilter;
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
     private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
+    private final OAuth2FailureHandler oauth2FailureHandler;
     private final ConsumeOAuthLinkTicketUseCase consumeOAuthLinkTicketUseCase;
 
     @Value("${app.frontend-url}")
@@ -93,6 +95,7 @@ public class SecurityConfig {
                                 .authorizationRequestResolver(
                                         new TicketOAuth2AuthorizationRequestResolver(clientRegistrationRepository)))
                         .loginProcessingUrl("/api/v1/auth/oauth2/callback/*")
+                        .failureHandler(oauth2FailureHandler)
                         .successHandler(new CompositeOAuth2SuccessHandler(
                                 gitHubOAuth2SuccessHandler, azureOAuth2SuccessHandler))
                 )

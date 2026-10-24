@@ -9,13 +9,10 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.ResponseCookie;
 import org.springframework.web.filter.OncePerRequestFilter;
-import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.util.Base64;
 import java.util.Optional;
 
@@ -31,10 +28,6 @@ import java.util.Optional;
 public class OAuthTicketAuthorizationFilter extends OncePerRequestFilter {
 
     public static final String AUTHORIZATION_BASE = "/api/v1/auth/oauth2/authorization/";
-    public static final String NONCE_COOKIE = "andromeda_oauth_nonce";
-    public static final String NONCE_COOKIE_PATH = "/api/v1/auth/oauth2";
-    public static final String TICKET_INVALID = "OAUTH_TICKET_INVALID";
-    static final Duration NONCE_MAX_AGE = Duration.ofMinutes(10);
 
     private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -62,11 +55,9 @@ public class OAuthTicketAuthorizationFilter extends OncePerRequestFilter {
 
         Optional<OAuthLinkTicket> ticket = consumeTicket.execute(request.getParameter("ticket"), purpose);
         if (ticket.isEmpty()) {
-            response.sendRedirect(UriComponentsBuilder.fromUriString(frontendUrl).path("/oauth/retorno")
-                    .queryParam("provider", registrationId)
-                    .queryParam("status", "error")
-                    .queryParam("code", TICKET_INVALID)
-                    .build().toUriString());
+            response.sendRedirect(OAuthReturnRedirect.error(frontendUrl,
+                    OAuthReturnRedirect.Provider.fromRegistrationId(registrationId),
+                    OAuthReturnRedirect.Code.OAUTH_TICKET_INVALID));
             return;
         }
 
@@ -76,14 +67,8 @@ public class OAuthTicketAuthorizationFilter extends OncePerRequestFilter {
         OAuthLinkTicket t = ticket.get();
         session.setAttribute(LinkBinding.SESSION_ATTRIBUTE, new LinkBinding(t.getOrganizationId(), t.getUserId(),
                 t.getPurpose(), t.getAzureOrgUrl(), OAuthLinkTicket.hash(nonce)));
-        response.addHeader(HttpHeaders.SET_COOKIE, nonceCookie(nonce).toString());
+        response.addHeader(HttpHeaders.SET_COOKIE, OAuthNonceCookie.issue(nonce, secureCookie).toString());
         chain.doFilter(request, response);
-    }
-
-    private ResponseCookie nonceCookie(String value) {
-        return ResponseCookie.from(NONCE_COOKIE, value)
-                .httpOnly(true).secure(secureCookie).sameSite("Lax")
-                .path(NONCE_COOKIE_PATH).maxAge(NONCE_MAX_AGE).build();
     }
 
     private static String newNonce() {
