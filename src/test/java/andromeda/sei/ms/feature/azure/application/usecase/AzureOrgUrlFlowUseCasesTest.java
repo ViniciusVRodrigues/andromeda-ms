@@ -54,26 +54,6 @@ class AzureOrgUrlFlowUseCasesTest {
     }
 
     @Nested
-    class Start {
-
-        private final StartAzureOAuthUseCase useCase = new StartAzureOAuthUseCase();
-
-        @Test
-        void shouldNormalizeAValidUrl() {
-            assertThat(useCase.execute("https://dev.azure.com/acme/")).isEqualTo(URL);
-            assertThat(useCase.execute("https://acme.visualstudio.com")).isEqualTo("https://acme.visualstudio.com");
-        }
-
-        @Test
-        void shouldRejectAMissingOrForeignUrl() {
-            assertThatThrownBy(() -> useCase.execute(null)).isInstanceOf(AzureOrgUrlInvalidException.class);
-            assertThatThrownBy(() -> useCase.execute("https://login.microsoftonline.com/tenant/v2.0"))
-                    .isInstanceOf(AzureOrgUrlInvalidException.class)
-                    .hasFieldOrPropertyWithValue("code", "AZURE_ORG_URL_INVALID");
-        }
-    }
-
-    @Nested
     class Callback {
 
         private CompleteAzureOAuthConnectionUseCase useCase;

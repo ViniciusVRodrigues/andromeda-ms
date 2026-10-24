@@ -17,6 +17,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.savedrequest.NullRequestCache;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -90,6 +92,11 @@ public class SecurityConfig {
                         .requestMatchers(CONNECTOR_ENDPOINTS).permitAll() // ConnectorTokenAuthFilter handles auth
                         .anyRequest().authenticated()
                 )
+                // Nada do SecurityContext fica em sessao: a sessao serve so ao AuthorizationRequest e ao
+                // LinkBinding do popup; a identidade do app e sempre o JWT (perfil-integracoes D3).
+                .securityContext(ctx -> ctx.securityContextRepository(new RequestAttributeSecurityContextRepository()))
+                // 401 da API nao guarda a requisicao em sessao (HttpSessionRequestCache criaria uma).
+                .requestCache(cache -> cache.requestCache(new NullRequestCache()))
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(ep -> ep
                                 .authorizationRequestResolver(
