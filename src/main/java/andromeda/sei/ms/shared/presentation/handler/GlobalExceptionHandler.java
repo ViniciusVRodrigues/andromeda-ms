@@ -59,6 +59,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
     }
 
+    @ExceptionHandler(andromeda.sei.ms.feature.auth.domain.exception.OAuthLinkRequestInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleOAuthLinkRequestInvalid(
+            andromeda.sei.ms.feature.auth.domain.exception.OAuthLinkRequestInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
+    }
+
     @ExceptionHandler(ForbiddenOperationException.class)
     public ResponseEntity<ErrorResponse> handleForbidden(ForbiddenOperationException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ErrorResponse.from(ex));
