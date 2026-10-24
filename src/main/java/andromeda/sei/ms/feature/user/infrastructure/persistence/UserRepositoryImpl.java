@@ -105,4 +105,21 @@ public class UserRepositoryImpl implements UserRepository {
                 .and("active").is(true));
         mongoTemplate.updateFirst(query, new Update().set("lastLoginAt", at), UserDocument.class);
     }
+
+    @Override
+    public boolean linkAutoEmailIfUnlinked(String organizationId, String userId, String azureId,
+                                           String azureEmail, Instant at) {
+        Query query = Query.query(Criteria.where("_id").is(userId)
+                .and("organizationId").is(organizationId)
+                .and("active").is(true)
+                .and("azureId").is(null));
+        Update update = new Update()
+                .set("azureId", azureId)
+                .set("azureEmail", azureEmail)
+                .set("azureIdentitySource", andromeda.sei.ms.feature.user.domain.AzureIdentitySource.AUTO_EMAIL)
+                .set("azureIdentityLinkedAt", at)
+                .set("updatedAt", at)
+                .inc("version", 1);
+        return mongoTemplate.updateFirst(query, update, UserDocument.class).getModifiedCount() > 0;
+    }
 }

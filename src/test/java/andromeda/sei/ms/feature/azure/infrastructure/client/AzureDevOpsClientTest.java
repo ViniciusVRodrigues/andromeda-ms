@@ -409,4 +409,104 @@ class AzureDevOpsClientTest {
             server.stop(0);
         }
     }
+
+    private WebClient webClientRouting(java.util.function.Function<URI, String> bodyFor, List<URI> seen) {
+        return WebClient.builder()
+                .exchangeFunction(request -> {
+                    seen.add(request.url());
+                    return Mono.just(ClientResponse.create(HttpStatus.OK)
+                            .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                            .body(bodyFor.apply(request.url()))
+                            .build());
+                })
+                .build();
+    }
+
+    private static String entitlement(String id, String kind) {
+        return "{\"id\":\"" + id + "\",\"user\":{\"subjectKind\":\"" + kind + "\",\"displayName\":\"N" + id
+                + "\",\"mailAddress\":\"" + id + "@x.com\",\"principalName\":\"" + id
+                + "@x.com\",\"originId\":\"o" + id + "\"}}";
+    }
+
+    @Test
+    void listUserEntitlements_followsContinuationTokenAcrossTwoPages_andDropsGroups() {
+        List<URI> seen = new java.util.ArrayList<>();
+        AzureDevOpsClient client = clientFor(webClientRouting(uri -> uri.toString().contains("continuationToken=tok1")
+                ? "{\"items\":[" + entitlement("c", "user") + "]}"
+                : "{\"items\":[" + entitlement("a", "user") + "," + entitlement("g", "group")
+                        + "],\"continuationToken\":\"tok1\"}", seen));
+
+        var users = client.listUserEntitlements("https://dev.azure.com/myorg/", "Basic x");
+
+        assertThat(users).extracting(AdoUserEntitlementDto::id).containsExactly("a", "c");
+        assertThat(users.get(0).originId()).isEqualTo("oa");
+        assertThat(users.get(0).mailAddress()).isEqualTo("a@x.com");
+        assertThat(seen).hasSize(2);
+        assertThat(seen.get(0).toString())
+                .isEqualTo("https://vsaex.dev.azure.com/myorg/_apis/userentitlements?api-version=7.1-preview.3");
+    }
+
+    @Test
+    void listUserEntitlements_acceptsMembersArrayAndVisualStudioUrl() {
+        List<URI> seen = new java.util.ArrayList<>();
+        AzureDevOpsClient client = clientFor(webClientRouting(
+                uri -> "{\"members\":[" + entitlement("a", "user") + "]}", seen));
+
+        assertThat(client.listUserEntitlements("https://myorg.visualstudio.com", "Basic x")).hasSize(1);
+        assertThat(seen.get(0).getHost()).isEqualTo("vsaex.dev.azure.com");
+        assertThat(seen.get(0).getPath()).startsWith("/myorg/");
+    }
+
+    @Test
+    void listUserEntitlements_stopsAtTwentyPages() {
+        List<URI> seen = new java.util.ArrayList<>();
+        AzureDevOpsClient client = clientFor(webClientRouting(
+                uri -> "{\"items\":[" + entitlement("a", "user") + "],\"continuationToken\":\"more\"}", seen));
+
+        assertThat(client.listUserEntitlements("https://dev.azure.com/myorg", "Basic x")).hasSize(20);
+        assertThat(seen).hasSize(20);
+    }
+
+    @Test
+    void listUserEntitlements_403And401MapToForbiddenException() {
+        for (int status : new int[]{401, 403}) {
+            AzureDevOpsClient client = clientFor(webClientReturning(status, "{}"));
+            assertThatThrownBy(() -> client.listUserEntitlements("https://dev.azure.com/myorg", "Basic x"))
+                    .isInstanceOf(andromeda.sei.ms.feature.azure.domain.exception.AzureEntitlementsForbiddenException.class);
+        }
+    }
+
+    private static String member(int n, boolean container) {
+        return "{\"identity\":{\"id\":\"m" + n + "\",\"displayName\":\"M" + n + "\",\"uniqueName\":\"m" + n
+                + "@x.com\",\"isContainer\":" + container + "}}";
+    }
+
+    @Test
+    void getTeamMembers_pagesWithTopAndSkip_150MembersInTwoPages() {
+        List<URI> seen = new java.util.ArrayList<>();
+        AzureDevOpsClient client = clientFor(webClientRouting(uri -> {
+            boolean second = uri.toString().contains("$skip=100");
+            int from = second ? 100 : 0;
+            int to = second ? 150 : 100;
+            return "{\"value\":[" + java.util.stream.IntStream.range(from, to)
+                    .mapToObj(n -> member(n, false)).collect(java.util.stream.Collectors.joining(",")) + "]}";
+        }, seen));
+
+        var members = client.getTeamMembers("https://dev.azure.com/myorg", "p", "t", "Basic x");
+
+        assertThat(members).hasSize(150);
+        assertThat(seen).hasSize(2);
+        assertThat(seen.get(0).toString()).contains("$top=100").contains("$skip=0");
+        assertThat(seen.get(1).toString()).contains("$skip=100");
+    }
+
+    @Test
+    void getTeamMembers_dropsContainers() {
+        List<URI> seen = new java.util.ArrayList<>();
+        AzureDevOpsClient client = clientFor(webClientRouting(
+                uri -> "{\"value\":[" + member(1, false) + "," + member(2, true) + "]}", seen));
+
+        assertThat(client.getTeamMembers("https://dev.azure.com/myorg", "p", "t", "Basic x"))
+                .extracting(AdoTeamMemberDto::id).containsExactly("m1");
+    }
 }

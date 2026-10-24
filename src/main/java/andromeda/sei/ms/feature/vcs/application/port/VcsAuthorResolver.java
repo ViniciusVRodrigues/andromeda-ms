@@ -17,4 +17,10 @@ public interface VcsAuthorResolver {
     default String resolveUserId(String organizationId, String actorExternalId, String actorEmail) {
         return resolveUserId(organizationId, actorExternalId);
     }
+
+    /** Notes an actor seen while syncing (id required); providers that do not track identities ignore it. */
+    default void observe(String organizationId, String actorExternalId, String displayName, String actorEmail) {}
+
+    /** Ends a repository sync: lets the provider persist, in batch, what {@link #observe} noted. */
+    default void flushObserved(String organizationId) {}
 }

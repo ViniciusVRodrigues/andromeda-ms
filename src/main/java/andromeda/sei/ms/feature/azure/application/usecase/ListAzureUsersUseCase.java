@@ -1,67 +1,58 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.application.dto.AzureUserOutput;
-import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
-import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
-import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUser;
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUserRepository;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
-import andromeda.sei.ms.feature.azure.infrastructure.client.AdoTeamDto;
-import andromeda.sei.ms.feature.azure.infrastructure.client.AdoTeamMemberDto;
-import andromeda.sei.ms.feature.azure.infrastructure.client.AzureAuthStrategyResolver;
-import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsClient;
+import andromeda.sei.ms.feature.user.domain.User;
+import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Lists the persisted org directory (no Azure call): active {@code AzureOrgUser} rows of the caller's
+ * organization, deduplicated by azureId, sorted by displayName ignoring case. Groups are never
+ * persisted there, so they never appear.
+ */
 @Component
 @RequiredArgsConstructor
 public class ListAzureUsersUseCase {
 
     private final AzureConnectionRepository azureConnectionRepository;
-    private final AzureProjectBindingRepository azureProjectBindingRepository;
-    private final AzureDevOpsClient azureDevOpsClient;
-    private final AzureAuthStrategyResolver authStrategyResolver;
+    private final AzureOrgUserRepository azureOrgUserRepository;
+    private final UserRepository userRepository;
 
     public List<AzureUserOutput> execute() {
         String orgId = TenantContextHolder.get();
 
-        AzureConnection connection = azureConnectionRepository
-                .findByOrganizationIdAndActiveTrue(orgId)
+        azureConnectionRepository.findByOrganizationIdAndActiveTrue(orgId)
                 .orElseThrow(() -> new AzureConnectionNotFoundException(orgId));
 
-        List<AzureProjectBinding> bindings = azureProjectBindingRepository
-                .findAllByOrganizationIdAndActiveTrue(orgId);
-
-        if (bindings.isEmpty()) {
-            return List.of();
+        Map<String, AzureOrgUser> byAzureId = new LinkedHashMap<>();
+        for (AzureOrgUser identity : azureOrgUserRepository.findAllByOrganizationIdAndActiveTrue(orgId)) {
+            if (identity.getAzureId() != null) byAzureId.putIfAbsent(identity.getAzureId(), identity);
         }
 
-        String authHeader = authStrategyResolver.resolve(connection);
-        String orgUrl = connection.getAzureOrgUrl();
-
-        Map<String, AzureUserOutput> byAzureId = new LinkedHashMap<>();
-        for (AzureProjectBinding binding : bindings) {
-            List<AdoTeamDto> teams = azureDevOpsClient.getTeams(orgUrl, binding.getAzureProjectId(), authHeader);
-            for (AdoTeamDto team : teams) {
-                List<AdoTeamMemberDto> members = azureDevOpsClient.getTeamMembers(orgUrl, binding.getAzureProjectId(), team.id(), authHeader);
-                for (AdoTeamMemberDto member : members) {
-                    if (member.id() != null) {
-                        byAzureId.putIfAbsent(member.id(),
-                                new AzureUserOutput(member.id(), member.displayName(), member.uniqueName()));
-                    }
-                }
-            }
+        Map<String, String> linkedUserByAzureId = new HashMap<>();
+        for (User user : userRepository.findAllByOrganizationId(orgId)) {
+            if (user.getAzureId() != null) linkedUserByAzureId.putIfAbsent(user.getAzureId(), user.getId());
         }
 
-        return new ArrayList<>(byAzureId.values()).stream()
-                .sorted(Comparator.comparing(u -> u.displayName() != null ? u.displayName() : ""))
+        return byAzureId.values().stream()
+                .sorted(Comparator.comparing((AzureOrgUser i) -> i.getDisplayName() == null ? ""
+                        : i.getDisplayName().toLowerCase(Locale.ROOT)))
+                .map(i -> new AzureUserOutput(i.getAzureId(), i.getDisplayName(), i.getAzureEmail(),
+                        i.getSources().stream().map(Enum::name).sorted().toList(),
+                        linkedUserByAzureId.get(i.getAzureId())))
                 .toList();
     }
 }

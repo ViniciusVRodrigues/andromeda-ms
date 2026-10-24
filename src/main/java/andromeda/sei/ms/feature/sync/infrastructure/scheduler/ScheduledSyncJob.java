@@ -1,5 +1,8 @@
 package andromeda.sei.ms.feature.sync.infrastructure.scheduler;
 
+import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureOrgLevelDataUseCase;
+import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
+import andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
@@ -34,9 +37,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ScheduledSyncJob {
 
+    static final java.time.Duration ORG_LEVEL_SYNC_INTERVAL = java.time.Duration.ofHours(6);
+
     private final OrganizationRepository organizationRepository;
     private final SyncTargetResolver syncTargetResolver;
     private final SyncOrchestrator syncOrchestrator;
+    private final AzureConnectionRepository azureConnectionRepository;
+    private final SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
 
     @Scheduled(cron = "0 0 * * * *")
     public void run() {
@@ -47,18 +54,19 @@ public class ScheduledSyncJob {
         Instant tick = now.truncatedTo(ChronoUnit.HOURS);
         for (Organization organization : organizationRepository.findAllDueForScheduledSync(tick)) {
             if (organization.isScheduledSyncDue(tick)) {
-                dispatch(organization, tick);
+                dispatch(organization, tick, now);
             }
         }
     }
 
-    private void dispatch(Organization organization, Instant tick) {
+    private void dispatch(Organization organization, Instant tick, Instant now) {
         String orgId = organization.getId();
         if (!markDispatched(organization, tick)) {
             return;
         }
         TenantContextHolder.set(orgId);
         try {
+            refreshAzureOrgLevel(orgId, now);
             List<SyncTarget> targets = syncTargetResolver.forScheduled(orgId);
             if (targets.isEmpty()) {
                 return;
@@ -68,6 +76,19 @@ public class ScheduledSyncJob {
             log.error("Scheduled sync failed for org={}", orgId, e);
         } finally {
             TenantContextHolder.clear();
+        }
+    }
+
+    /** Org-level Azure sync (directory + teams) before the bindings, at most once per 6 h; a failure only warns. */
+    private void refreshAzureOrgLevel(String orgId, Instant now) {
+        try {
+            azureConnectionRepository.findByOrganizationIdAndActiveTrue(orgId)
+                    .filter(c -> c.getStatus() == AzureConnectionStatus.CONNECTED)
+                    .filter(c -> c.getOrgLevelSyncedAt() == null
+                            || c.getOrgLevelSyncedAt().isBefore(now.minus(ORG_LEVEL_SYNC_INTERVAL)))
+                    .ifPresent(syncAzureOrgLevelDataUseCase::execute);
+        } catch (Exception e) {
+            log.warn("Azure org-level sync failed for org={}; continuing with bindings: {}", orgId, e.getMessage());
         }
     }
 

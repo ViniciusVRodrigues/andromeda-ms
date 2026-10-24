@@ -19,7 +19,9 @@ public class UserPresentationMapper {
                 output.active(),
                 output.createdAt(),
                 output.azureId(),
-                output.azureEmail()
+                output.azureEmail(),
+                output.azureIdentitySource(),
+                output.azureIdentityLinkedAt()
         );
     }
 

@@ -28,6 +28,7 @@ public class AzureConnectionDocumentMapper {
                 doc.getPersonalAccessToken()
         );
         connection.setReposAccess(doc.getReposAccess());
+        connection.setOrgLevelSyncedAt(doc.getOrgLevelSyncedAt());
         return connection;
     }
 
@@ -52,6 +53,7 @@ public class AzureConnectionDocumentMapper {
                 .authMethod(connection.getAuthMethod())
                 .personalAccessToken(connection.getPersonalAccessToken())
                 .reposAccess(connection.getReposAccess())
+                .orgLevelSyncedAt(connection.getOrgLevelSyncedAt())
                 .build();
     }
 }

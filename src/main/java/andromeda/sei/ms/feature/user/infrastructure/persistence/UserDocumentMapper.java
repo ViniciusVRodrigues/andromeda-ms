@@ -31,6 +31,8 @@ public class UserDocumentMapper {
                 doc.getUpdatedAt()
         );
         user.setPermissionOverrides(toDomainOverrides(doc.getPermissionOverrides()));
+        user.setAzureIdentitySource(doc.getAzureIdentitySource());
+        user.setAzureIdentityLinkedAt(doc.getAzureIdentityLinkedAt());
         user.setLastLoginAt(doc.getLastLoginAt());
         return user;
     }
@@ -46,6 +48,8 @@ public class UserDocumentMapper {
                 .githubId(user.getGithubId())
                 .azureId(user.getAzureId())
                 .azureEmail(user.getAzureEmail())
+                .azureIdentitySource(user.getAzureIdentitySource())
+                .azureIdentityLinkedAt(user.getAzureIdentityLinkedAt())
                 .inviteToken(user.getInviteToken())
                 .confirmed(user.isConfirmed())
                 .active(user.isActive())

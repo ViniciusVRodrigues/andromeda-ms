@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.azure.infrastructure.client;
 
+import andromeda.sei.ms.feature.azure.domain.AzureOrgUrl;
 import andromeda.sei.ms.feature.azure.domain.WiqlFilter;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureEntitlementsForbiddenException;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.RequiredArgsConstructor;
@@ -213,24 +215,95 @@ public class AzureDevOpsClient {
         return all;
     }
 
+    public static final int TEAM_MEMBERS_PAGE_SIZE = 100;
+    public static final int TEAM_MEMBERS_MAX_PAGES = 50;
+    public static final int ENTITLEMENTS_MAX_PAGES = 20;
+    private static final String VSAEX_HOST = "https://vsaex.dev.azure.com/";
+
     public List<AdoTeamMemberDto> getTeamMembers(String orgUrl, String projectId, String teamId, String authHeader) {
-        String url = baseUrl(orgUrl) + "/_apis/projects/" + projectId + "/teams/" + teamId
-                + "/members?api-version=7.1";
+        List<AdoTeamMemberDto> all = new ArrayList<>();
+        for (int page = 0; page < TEAM_MEMBERS_MAX_PAGES; page++) {
+            int skip = page * TEAM_MEMBERS_PAGE_SIZE;
+            String url = baseUrl(orgUrl) + "/_apis/projects/" + projectId + "/teams/" + teamId
+                    + "/members?api-version=7.1&$top=" + TEAM_MEMBERS_PAGE_SIZE + "&$skip=" + skip;
 
-        ListResponse<AdoTeamMemberWrapperDto> response = azureWebClient.get()
-                .uri(url)
-                .header("Authorization", authHeader)
-                .retrieve()
-                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoTeamMemberWrapperDto>>() {})
-                .retryWhen(retrySpec())
-                .block();
+            ListResponse<AdoTeamMemberWrapperDto> response = azureWebClient.get()
+                    .uri(url)
+                    .header("Authorization", authHeader)
+                    .retrieve()
+                    .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<AdoTeamMemberWrapperDto>>() {})
+                    .retryWhen(retrySpec())
+                    .block();
 
-        if (response == null || response.value() == null) return List.of();
-        return response.value().stream()
-                .filter(w -> w.identity() != null)
-                .map(w -> new AdoTeamMemberDto(w.identity().id(), w.identity().displayName(), w.identity().uniqueName()))
-                .toList();
+            if (response == null || response.value() == null || response.value().isEmpty()) break;
+            response.value().stream()
+                    .filter(w -> w.identity() != null && !w.identity().isContainer())
+                    .map(w -> new AdoTeamMemberDto(w.identity().id(), w.identity().displayName(),
+                            w.identity().uniqueName(), false))
+                    .forEach(all::add);
+            if (response.value().size() < TEAM_MEMBERS_PAGE_SIZE) break;
+        }
+        return all;
     }
+
+    /** Organization directory ({@code userentitlements}); only {@code subjectKind == "user"}, up to 20 pages. */
+    public List<AdoUserEntitlementDto> listUserEntitlements(String orgUrl, String authHeader) {
+        String org = orgName(orgUrl);
+        List<AdoUserEntitlementDto> all = new ArrayList<>();
+        String continuation = null;
+        for (int page = 0; page < ENTITLEMENTS_MAX_PAGES; page++) {
+            String url = VSAEX_HOST + org + "/_apis/userentitlements?api-version=7.1-preview.3"
+                    + (continuation != null ? "&continuationToken="
+                    + java.net.URLEncoder.encode(continuation, java.nio.charset.StandardCharsets.UTF_8) : "");
+
+            EntitlementsResponse response = azureWebClient.get()
+                    .uri(java.net.URI.create(url))
+                    .header("Authorization", authHeader)
+                    .retrieve()
+                    .onStatus(st -> st.value() == 401 || st.value() == 403,
+                            r -> reactor.core.publisher.Mono.error(new AzureEntitlementsForbiddenException()))
+                    .bodyToMono(EntitlementsResponse.class)
+                    .retryWhen(retrySpec())
+                    .block();
+
+            if (response == null) break;
+            for (EntitlementItem item : response.entries()) {
+                EntitlementUser u = item.user();
+                if (u == null || !"user".equalsIgnoreCase(u.subjectKind())) continue;
+                all.add(new AdoUserEntitlementDto(item.id(), u.displayName(), u.mailAddress(),
+                        u.principalName(), u.originId()));
+            }
+            continuation = response.continuationToken();
+            if (continuation == null || continuation.isBlank()) break;
+        }
+        return all;
+    }
+
+    /** {@code https://dev.azure.com/{org}} or {@code https://{org}.visualstudio.com} to {@code {org}}. */
+    private static String orgName(String orgUrl) {
+        String u = AzureOrgUrl.normalize(orgUrl);
+        String suffix = ".visualstudio.com";
+        if (u.startsWith("https://") && u.endsWith(suffix)) {
+            return u.substring("https://".length(), u.length() - suffix.length());
+        }
+        return u.substring(u.lastIndexOf('/') + 1);
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record EntitlementsResponse(List<EntitlementItem> items, List<EntitlementItem> members,
+                                        String continuationToken) {
+        List<EntitlementItem> entries() {
+            if (items != null) return items;
+            return members != null ? members : List.of();
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record EntitlementItem(String id, EntitlementUser user) {}
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private record EntitlementUser(String subjectKind, String displayName, String mailAddress,
+                                   String principalName, String originId) {}
 
     public List<AdoWorkItemUpdateDto> getWorkItemUpdates(String orgUrl, int workItemId, String authHeader) {
         List<AdoWorkItemUpdateDto> all = new ArrayList<>();

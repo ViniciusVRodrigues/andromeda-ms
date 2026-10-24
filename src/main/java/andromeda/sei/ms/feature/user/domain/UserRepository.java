@@ -33,6 +33,16 @@ public interface UserRepository {
     User save(User user);
 
     /**
+     * Automatic link by email (AUTO_EMAIL): an atomic $set filtered by id, organization, active and
+     * {@code azureId} still null, so it never overwrites an existing link and loses silently to a
+     * concurrent one.
+     *
+     * @return whether the write applied
+     */
+    boolean linkAutoEmailIfUnlinked(String organizationId, String userId, String azureId, String azureEmail,
+                                    java.time.Instant at);
+
+    /**
      * Stamps lastLoginAt with an atomic $set filtered by id, organization and active.
      * Deliberately not save(): it must not touch version or updatedAt, so a concurrent edit never
      * turns a login into a conflict.

@@ -13,7 +13,9 @@ public record UserOutput(
         boolean active,
         Instant createdAt,
         String azureId,
-        String azureEmail
+        String azureEmail,
+        andromeda.sei.ms.feature.user.domain.AzureIdentitySource azureIdentitySource,
+        Instant azureIdentityLinkedAt
 ) {
     public static UserOutput from(User user) {
         return new UserOutput(
@@ -25,7 +27,9 @@ public record UserOutput(
                 user.isActive(),
                 user.getCreatedAt(),
                 user.getAzureId(),
-                user.getAzureEmail()
+                user.getAzureEmail(),
+                user.getAzureIdentitySource(),
+                user.getAzureIdentityLinkedAt()
         );
     }
 }

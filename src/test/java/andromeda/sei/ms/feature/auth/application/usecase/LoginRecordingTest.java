@@ -40,6 +40,7 @@ class LoginRecordingTest {
     @Mock private PasswordHasher passwordHasher;
     @Mock private RecordLoginUseCase recordLoginUseCase;
     @Mock private andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase linkFunnelUseCase;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.AutoLinkAzureIdentitiesUseCase autoLink;
 
     private User user() {
         return new User("user-1", "org-A", "ana@acme.com", "hash", "Ana", "role-1", null, null, null, null,
@@ -97,7 +98,7 @@ class LoginRecordingTest {
         when(passwordHasher.hash("pw")).thenReturn("hash");
         when(roleRepository.findById("role-1")).thenReturn(Optional.of(role()));
 
-        new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase)
+        new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase, autoLink)
                 .execute(new CompleteAccountInput("tok", "Ana", "pw", null));
 
         verify(recordLoginUseCase).execute("user-1", "org-A", LoginMethod.INVITE);
@@ -111,7 +112,7 @@ class LoginRecordingTest {
         when(roleRepository.findById("role-1")).thenReturn(Optional.of(role()));
         doThrow(new IllegalStateException("boom")).when(recordLoginUseCase).execute(any(), any(), any());
 
-        var out = new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase)
+        var out = new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase, autoLink)
                 .execute(new CompleteAccountInput("tok", "Ana", "pw", null));
 
         assertThat(out.userId()).isEqualTo("user-1");
@@ -125,7 +126,7 @@ class LoginRecordingTest {
         when(passwordHasher.hash("pw")).thenReturn("hash");
         when(roleRepository.findById("role-1")).thenReturn(Optional.of(role()));
 
-        new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase)
+        new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase, autoLink)
                 .execute(new CompleteAccountInput("tok", "Ana", "pw", FUNNEL));
 
         verify(linkFunnelUseCase).execute(FUNNEL, andromeda.sei.ms.feature.usage.domain.FunnelFlow.INVITE,
@@ -139,7 +140,7 @@ class LoginRecordingTest {
         when(roleRepository.findById("role-1")).thenReturn(Optional.of(role()));
         doThrow(new IllegalStateException("boom")).when(linkFunnelUseCase).execute(any(), any(), any(), any());
 
-        var out = new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase)
+        var out = new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher, recordLoginUseCase, linkFunnelUseCase, autoLink)
                 .execute(new CompleteAccountInput("tok", "Ana", "pw", FUNNEL));
 
         assertThat(out.userId()).isEqualTo("user-1");
@@ -150,7 +151,7 @@ class LoginRecordingTest {
         when(userRepository.findByInviteToken("bad")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> new CompleteAccountUseCase(userRepository, roleRepository, passwordHasher,
-                recordLoginUseCase, linkFunnelUseCase).execute(new CompleteAccountInput("bad", "Ana", "pw", FUNNEL)))
+                recordLoginUseCase, linkFunnelUseCase, autoLink).execute(new CompleteAccountInput("bad", "Ana", "pw", FUNNEL)))
                 .isInstanceOf(andromeda.sei.ms.feature.auth.domain.exception.InvalidInviteTokenException.class);
         org.mockito.Mockito.verifyNoInteractions(linkFunnelUseCase);
     }

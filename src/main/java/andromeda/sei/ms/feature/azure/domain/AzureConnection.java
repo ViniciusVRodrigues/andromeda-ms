@@ -28,6 +28,8 @@ public class AzureConnection {
      * (azure-repos-provider D6).
      */
     private Boolean reposAccess;
+    /** Last completed org-level sync (directory + teams); null until the first one. */
+    private Instant orgLevelSyncedAt;
 
     public AzureConnection(String id, String organizationId, String azureOrgUrl,
                             String accessToken, String refreshToken, Instant tokenExpiresAt,
@@ -76,6 +78,9 @@ public class AzureConnection {
 
     public String getAuthorizedByUserId() { return authorizedByUserId; }
     public void setAuthorizedByUserId(String authorizedByUserId) { this.authorizedByUserId = authorizedByUserId; }
+
+    public Instant getOrgLevelSyncedAt() { return orgLevelSyncedAt; }
+    public void setOrgLevelSyncedAt(Instant orgLevelSyncedAt) { this.orgLevelSyncedAt = orgLevelSyncedAt; }
 
     public AzureConnectionStatus getStatus() { return status; }
     public void setStatus(AzureConnectionStatus status) { this.status = status; }
