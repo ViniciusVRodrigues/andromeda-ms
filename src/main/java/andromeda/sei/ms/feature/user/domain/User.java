@@ -18,6 +18,9 @@ public class User {
     private String githubId;
     private String azureId;
     private String azureEmail;
+    /** Origem do vinculo Azure; null em usuarios sem vinculo. */
+    private AzureIdentitySource azureIdentitySource;
+    private Instant azureIdentityLinkedAt;
     private String inviteToken;
     private boolean confirmed;
     private boolean active;
@@ -82,6 +85,12 @@ public class User {
 
     public String getAzureEmail() { return azureEmail; }
     public void setAzureEmail(String azureEmail) { this.azureEmail = azureEmail; }
+
+    public AzureIdentitySource getAzureIdentitySource() { return azureIdentitySource; }
+    public void setAzureIdentitySource(AzureIdentitySource azureIdentitySource) { this.azureIdentitySource = azureIdentitySource; }
+
+    public Instant getAzureIdentityLinkedAt() { return azureIdentityLinkedAt; }
+    public void setAzureIdentityLinkedAt(Instant azureIdentityLinkedAt) { this.azureIdentityLinkedAt = azureIdentityLinkedAt; }
 
     public String getInviteToken() { return inviteToken; }
     public void setInviteToken(String inviteToken) { this.inviteToken = inviteToken; }
