@@ -59,6 +59,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
     }
 
+    @ExceptionHandler(andromeda.sei.ms.feature.azure.domain.exception.AzureConnectMovedException.class)
+    public ResponseEntity<ErrorResponse> handleAzureConnectMoved(
+            andromeda.sei.ms.feature.azure.domain.exception.AzureConnectMovedException ex) {
+        return ResponseEntity.status(HttpStatus.GONE).body(ErrorResponse.from(ex));
+    }
+
     @ExceptionHandler(andromeda.sei.ms.feature.auth.domain.exception.OAuthLinkRequestInvalidException.class)
     public ResponseEntity<ErrorResponse> handleOAuthLinkRequestInvalid(
             andromeda.sei.ms.feature.auth.domain.exception.OAuthLinkRequestInvalidException ex) {

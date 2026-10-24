@@ -5,9 +5,9 @@ import andromeda.sei.ms.feature.azure.application.usecase.ConfigureAzureDevOpsPa
 import andromeda.sei.ms.feature.azure.application.usecase.DisconnectAzureUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.GetAzureConnectionStatusUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.ListAzureUsersUseCase;
-import andromeda.sei.ms.feature.azure.application.usecase.StartAzureOAuthUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.UpdateAzureOrgUrlUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.TriggerAzureSyncUseCase;
+import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectMovedException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureConnectionNotFoundException;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureConnectionStatusResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureOrgUrlRequest;
@@ -16,8 +16,6 @@ import andromeda.sei.ms.feature.azure.presentation.dto.AzureUserResponse;
 import andromeda.sei.ms.feature.azure.presentation.dto.AzureUsersResponse;
 import andromeda.sei.ms.shared.presentation.dto.ErrorResponse;
 import andromeda.sei.ms.shared.presentation.dto.SyncStartedResponse;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,7 +31,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Tag(name = "Azure DevOps Integration", description = "Azure DevOps OAuth connection management")
@@ -47,12 +44,9 @@ public class AzureConnectionController {
     private final TriggerAzureSyncUseCase triggerAzureSyncUseCase;
     private final ConfigureAzureDevOpsPatUseCase configureAzureDevOpsPatUseCase;
     private final ListAzureUsersUseCase listAzureUsersUseCase;
-    private final StartAzureOAuthUseCase startAzureOAuthUseCase;
     private final UpdateAzureOrgUrlUseCase updateAzureOrgUrlUseCase;
 
-    private static final String AUTHORIZATION_PATH = "/api/v1/auth/oauth2/authorization/azure";
     /** Read again by the OAuth authorization request resolver, which carries it in the state. */
-    private static final String ORG_URL_PARAM = "orgUrl";
 
     @Operation(summary = "List all Azure DevOps users across all active project bindings")
     @ApiResponse(responseCode = "200", description = "List of Azure users")
@@ -67,21 +61,14 @@ public class AzureConnectionController {
         return ResponseEntity.ok(new AzureUsersResponse(users));
     }
 
-    @Operation(summary = "Initiate Azure DevOps OAuth authorization",
-            description = "The Azure DevOps organization URL is required up front (https://dev.azure.com/{org} or "
-                    + "https://{org}.visualstudio.com): it is carried through the authorization state and validated "
-                    + "with the organization's project list after the callback.")
-    @ApiResponse(responseCode = "302", description = "Redirect to Microsoft authorization")
-    @ApiResponse(responseCode = "422", description = "Missing or malformed orgUrl (AZURE_ORG_URL_INVALID)")
-    @ApiResponse(responseCode = "403", description = "No permission")
+    @Operation(summary = "Moved: Azure DevOps OAuth now starts from a one-time ticket",
+            description = "The popup cannot send Authorization. Ask POST /api/v1/auth/oauth2/link-ticket "
+                    + "(purpose AZURE_ORG_CONNECT) and open /api/v1/auth/oauth2/authorization/azure?ticket=...")
+    @ApiResponse(responseCode = "410", description = "AZURE_CONNECT_MOVED")
     @GetMapping("/connect")
     @PreAuthorize("hasAuthority('AZURE_CONFIGURE')")
-    public ResponseEntity<Void> connect(@RequestParam(name = ORG_URL_PARAM, required = false) String orgUrl) {
-        String validated = startAzureOAuthUseCase.execute(orgUrl);
-        return ResponseEntity.status(302)
-                .header("Location", AUTHORIZATION_PATH + "?" + ORG_URL_PARAM + "="
-                        + URLEncoder.encode(validated, StandardCharsets.UTF_8))
-                .build();
+    public ResponseEntity<Void> connect() {
+        throw new AzureConnectMovedException();
     }
 
     @Operation(summary = "Fix the Azure DevOps organization URL without reauthorizing",
