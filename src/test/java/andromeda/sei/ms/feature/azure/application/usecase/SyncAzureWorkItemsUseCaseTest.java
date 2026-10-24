@@ -56,6 +56,7 @@ class SyncAzureWorkItemsUseCaseTest {
     @Mock private AzureDevOpsClient azureDevOpsClient;
     @Mock private andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
     @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
+    @Mock private andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector orgUserCollector;
 
     @InjectMocks
     private SyncAzureWorkItemsUseCase useCase;
@@ -686,5 +687,41 @@ class SyncAzureWorkItemsUseCaseTest {
         when(workItemRepository.save(any())).thenReturn(savedItem);
         when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
         when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldCollectIdentitiesSeenInWorkItems_inASingleBatch_andSurviveCollectorFailure() {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100, 101));
+        Map<String, Object> pedro = Map.of("id", "p-1", "displayName", "Pedro", "uniqueName", "pedro@x.com");
+        Map<String, Object> group = Map.of("id", "g-1", "displayName", "Grp", "uniqueName", "[P]\\T",
+                "isContainer", true);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString())).thenReturn(List.of(
+                new AdoWorkItemDto(100, Map.of("System.Title", "a", "System.WorkItemType", "Bug",
+                        "System.State", "Active", "System.CreatedDate", NOW.toString(),
+                        "System.ChangedDate", NOW.toString(), "System.AssignedTo", pedro,
+                        "System.ChangedBy", group), null),
+                new AdoWorkItemDto(101, Map.of("System.Title", "b", "System.WorkItemType", "Bug",
+                        "System.State", "Active", "System.CreatedDate", NOW.toString(),
+                        "System.ChangedDate", NOW.toString(), "System.CreatedBy", pedro), null)));
+        WorkItem saved = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.of(saved));
+        when(workItemRepository.save(any())).thenReturn(saved);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        org.mockito.Mockito.doThrow(new RuntimeException("boom")).when(orgUserCollector).collect(anyString(), any());
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        ArgumentCaptor<java.util.Collection<andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector.ObservedIdentity>> captor =
+                ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(orgUserCollector).collect(eq("org-1"), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        var seen = captor.getValue().iterator().next();
+        assertThat(seen.azureId()).isEqualTo("p-1");
+        assertThat(seen.source()).isEqualTo(andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource.WORKITEM);
     }
 }

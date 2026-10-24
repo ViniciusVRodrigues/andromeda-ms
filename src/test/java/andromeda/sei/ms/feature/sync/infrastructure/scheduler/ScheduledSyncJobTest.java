@@ -41,6 +41,8 @@ class ScheduledSyncJobTest {
     @Mock private OrganizationRepository organizationRepository;
     @Mock private SyncTargetResolver syncTargetResolver;
     @Mock private SyncOrchestrator syncOrchestrator;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository azureConnectionRepository;
+    @Mock private andromeda.sei.ms.feature.azure.application.usecase.SyncAzureOrgLevelDataUseCase syncAzureOrgLevelDataUseCase;
 
     @InjectMocks
     private ScheduledSyncJob job;
@@ -130,6 +132,62 @@ class ScheduledSyncJobTest {
         when(organizationRepository.findAllDueForScheduledSync(TICK)).thenReturn(List.of(failing, healthy));
         when(syncTargetResolver.forScheduled("org-1")).thenThrow(new RuntimeException("mongo hiccup"));
         when(syncTargetResolver.forScheduled("org-2")).thenReturn(TARGETS);
+
+        job.run(NOW);
+
+        verify(syncOrchestrator).runNow(any());
+    }
+
+    private andromeda.sei.ms.feature.azure.domain.AzureConnection azureConnection(Instant orgLevelSyncedAt) {
+        var c = new andromeda.sei.ms.feature.azure.domain.AzureConnection("c-1", "org-1", "https://dev.azure.com/o",
+                null, null, null, "u", andromeda.sei.ms.feature.azure.domain.AzureConnectionStatus.CONNECTED,
+                null, 0, null, null, true, NOW, NOW, null, andromeda.sei.ms.feature.azure.domain.AzureAuthMethod.PAT, "p");
+        c.setOrgLevelSyncedAt(orgLevelSyncedAt);
+        return c;
+    }
+
+    @Test
+    void shouldRunAzureOrgLevelSyncBeforeBindings_whenOlderThanSixHours() {
+        givenDue(organization(ScheduledSyncFrequency.DAILY, null));
+        var conn = azureConnection(NOW.minus(Duration.ofHours(7)));
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(java.util.Optional.of(conn));
+
+        job.run(NOW);
+
+        var order = org.mockito.Mockito.inOrder(syncAzureOrgLevelDataUseCase, syncOrchestrator);
+        order.verify(syncAzureOrgLevelDataUseCase).execute(conn);
+        order.verify(syncOrchestrator).runNow(any());
+    }
+
+    @Test
+    void shouldRunAzureOrgLevelSync_whenOrgLevelSyncedAtIsNull() {
+        givenDue(organization(ScheduledSyncFrequency.DAILY, null));
+        var conn = azureConnection(null);
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(java.util.Optional.of(conn));
+
+        job.run(NOW);
+
+        verify(syncAzureOrgLevelDataUseCase).execute(conn);
+    }
+
+    @Test
+    void shouldNotRunAzureOrgLevelSync_whenSyncedLessThanSixHoursAgo() {
+        givenDue(organization(ScheduledSyncFrequency.DAILY, null));
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1"))
+                .thenReturn(java.util.Optional.of(azureConnection(NOW.minus(Duration.ofHours(5)))));
+
+        job.run(NOW);
+
+        verifyNoInteractions(syncAzureOrgLevelDataUseCase);
+        verify(syncOrchestrator).runNow(any());
+    }
+
+    @Test
+    void shouldStillSyncBindings_whenAzureOrgLevelSyncFails() {
+        givenDue(organization(ScheduledSyncFrequency.DAILY, null));
+        var conn = azureConnection(null);
+        when(azureConnectionRepository.findByOrganizationIdAndActiveTrue("org-1")).thenReturn(java.util.Optional.of(conn));
+        org.mockito.Mockito.doThrow(new RuntimeException("azure down")).when(syncAzureOrgLevelDataUseCase).execute(conn);
 
         job.run(NOW);
 

@@ -33,6 +33,7 @@ class AzureReposAuthorResolverTest {
 
     @Mock private UserRepository userRepository;
     @Mock private AzureOrgUserRepository azureOrgUserRepository;
+    @Mock private andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector orgUserCollector;
     @InjectMocks private AzureReposAuthorResolver resolver;
 
     @Test
@@ -109,5 +110,27 @@ class AzureReposAuthorResolverTest {
         User user = mock(User.class);
         when(user.getId()).thenReturn(id);
         return user;
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void shouldFlushObservedPullRequestIdentitiesInASingleBatchPerOrganization() {
+        resolver.observe(ORG, "D6245F202AF844F494518107CB2767DB", "Fab", EMAIL);
+        resolver.observe(ORG, GUID, "Fab again", EMAIL);
+        resolver.observe(ORG, null, "No id", EMAIL);
+        resolver.observe("org-2", GUID, "Other org", EMAIL);
+
+        resolver.flushObserved(ORG);
+        resolver.flushObserved(ORG); // already drained: no second call
+
+        org.mockito.ArgumentCaptor<java.util.Collection<
+                andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector.ObservedIdentity>> captor =
+                org.mockito.ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(orgUserCollector).collect(org.mockito.ArgumentMatchers.eq(ORG), captor.capture());
+        assertThat(captor.getValue()).hasSize(1);
+        var seen = captor.getValue().iterator().next();
+        assertThat(seen.azureId()).isEqualTo(GUID);
+        assertThat(seen.source()).isEqualTo(andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource.PR);
+        verify(orgUserCollector, never()).collect(org.mockito.ArgumentMatchers.eq("org-2"), any());
     }
 }

@@ -95,6 +95,12 @@ public class SyncRepositoryUseCase {
         List<VcsPullRequest> pullRequests = contentSync.syncPullRequests(context, lastSyncAt, backfillFrom);
         int events = contentSync.syncReviewEvents(context, pullRequests, lastSyncAt);
 
+        try {
+            authors.flushObserved(orgId);
+        } catch (RuntimeException e) {
+            log.warn("Could not register identities seen in pull requests: org={}: {}", orgId, e.getMessage());
+        }
+
         binding.setLastSyncAt(startedAt);
         bindingRepository.save(binding);
         int processed = 1 + commits + pullRequests.size() + events;
