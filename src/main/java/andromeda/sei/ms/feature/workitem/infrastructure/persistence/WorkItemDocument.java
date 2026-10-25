@@ -72,6 +72,8 @@ public class WorkItemDocument {
     private FieldValueSource effortSource;
     private String effortOverriddenBy;
     private Instant effortOverriddenAt;
+    private Instant deactivatedAt;
+    private WorkItem.DeactivationReason deactivationReason;
 
     @Version
     private Long version;

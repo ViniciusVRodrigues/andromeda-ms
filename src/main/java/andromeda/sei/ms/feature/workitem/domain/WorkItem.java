@@ -7,6 +7,9 @@ public class WorkItem {
 
     public enum Source { AZURE_DEVOPS, JIRA }
 
+    /** Why an Azure work item was deactivated by the removal reconciliation. */
+    public enum DeactivationReason { DELETED_IN_AZURE, LEFT_BINDING, UNKNOWN }
+
     public enum ResolvedType { STORY, BUG, TASK, EPIC, FEATURE, SUB_TASK }
 
     public enum ResolvedStatus { TODO, IN_PROGRESS, DONE }
@@ -55,6 +58,8 @@ public class WorkItem {
     private FieldValueSource effortSource;
     private String effortOverriddenBy;
     private Instant effortOverriddenAt;
+    private Instant deactivatedAt;
+    private DeactivationReason deactivationReason;
 
     public WorkItem(String id, String organizationId, String projectId, Source source,
                     String externalId, Instant externalUpdatedAt, String title,
@@ -188,6 +193,12 @@ public class WorkItem {
 
     public Double getTokensPerSp() { return tokensPerSp; }
     public void setTokensPerSp(Double tokensPerSp) { this.tokensPerSp = tokensPerSp; }
+
+    public Instant getDeactivatedAt() { return deactivatedAt; }
+    public void setDeactivatedAt(Instant deactivatedAt) { this.deactivatedAt = deactivatedAt; }
+
+    public DeactivationReason getDeactivationReason() { return deactivationReason; }
+    public void setDeactivationReason(DeactivationReason deactivationReason) { this.deactivationReason = deactivationReason; }
 
     public boolean isActive() { return active; }
     public void setActive(boolean active) { this.active = active; }

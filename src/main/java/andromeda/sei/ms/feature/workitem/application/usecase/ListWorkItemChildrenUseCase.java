@@ -54,6 +54,7 @@ public class ListWorkItemChildrenUseCase {
                         .orElse(null);
 
         List<WorkItem> validChildren = candidates.stream()
+                .filter(WorkItem::isActive)
                 .filter(item -> classifier.classify(item, hierarchyLevels, resolver) == WorkItemHierarchyClassifier.Classification.CHILD)
                 .toList();
 

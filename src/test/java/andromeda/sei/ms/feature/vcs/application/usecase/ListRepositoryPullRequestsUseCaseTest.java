@@ -169,4 +169,21 @@ class ListRepositoryPullRequestsUseCaseTest {
                 null, null, null, null, null, null, null, null);
         return item;
     }
+
+    @Test
+    void shouldReturnPullRequestUnlinked_when_referencedWorkItemIsInactive() {
+        givenRepo();
+        givenPage(pullRequest("pr-1", "123"));
+        WorkItem removed = workItem("wi-1", "123", "Excluido no Azure");
+        removed.setActive(false);
+        when(workItemRepository.findAllByOrganizationIdAndExternalIdInAndSource(
+                "org-1", List.of("123"), WorkItem.Source.AZURE_DEVOPS)).thenReturn(List.of(removed));
+
+        RepositoryPullRequestPageOutput result = useCase.execute("repo-1", null, null, 0, 20);
+
+        assertThat(result.content()).hasSize(1);
+        assertThat(result.content().get(0).linkedWorkItemExternalId()).isNull();
+        assertThat(result.content().get(0).linkedWorkItemId()).isNull();
+        assertThat(result.content().get(0).linkedWorkItemTitle()).isNull();
+    }
 }

@@ -44,6 +44,10 @@ public final class WiqlQueryBuilder {
     public static String build(Instant since, Integer lastSeenId, WiqlFilter filter) {
         StringBuilder where = new StringBuilder();
 
+        /* O projeto da rota so define o @project: sem esta clausula o WIQL abrange a organizacao
+         * inteira, e um item movido para outro projeto continuaria "presente" no vinculo
+         * (azure-itens-excluidos D2). */
+        appendCondition(where, true, "[System.TeamProject] = @project");
         appendCondition(where, since != null,
                 "[System.AuthorizedDate] >= '" + (since != null ? WIQL_DATE.format(since) : "") + "'");
         appendCondition(where, lastSeenId != null, "[System.Id] > " + lastSeenId);

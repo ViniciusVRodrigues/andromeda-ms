@@ -14,7 +14,7 @@ class WiqlQueryBuilderTest {
     void shouldBuildQueryWithNoFilters() {
         String wiql = WiqlQueryBuilder.build(null, null, null);
 
-        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems ORDER BY [System.Id] ASC");
+        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -24,7 +24,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, null, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.AuthorizedDate] >= '2026-01-01' ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AuthorizedDate] >= '2026-01-01' ORDER BY [System.Id] ASC");
         /* bypassRules grava ChangedDate no passado; o filtro não pode depender dele. */
         assertThat(wiql).doesNotContain("System.ChangedDate");
     }
@@ -40,7 +40,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, null, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.AuthorizedDate] >= '2026-08-12' ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AuthorizedDate] >= '2026-08-12' ORDER BY [System.Id] ASC");
         assertThat(wiql).doesNotContain(":");
     }
 
@@ -62,7 +62,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(null, 100, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.Id] > 100 ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.Id] > 100 ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -72,7 +72,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, 100, null);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.AuthorizedDate] >= '2026-01-01' AND [System.Id] > 100 ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AuthorizedDate] >= '2026-01-01' AND [System.Id] > 100 ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -82,7 +82,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(null, null, filter);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.WorkItemType] IN ('Bug', 'User Story') ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.WorkItemType] IN ('Bug', 'User Story') ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -92,7 +92,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(null, null, filter);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER 'MyProject\\TeamA' ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AreaPath] UNDER 'MyProject\\TeamA' ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -102,7 +102,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(null, null, filter);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.IterationPath] UNDER 'MyProject\\Sprint 1' ORDER BY [System.Id] ASC");
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.IterationPath] UNDER 'MyProject\\Sprint 1' ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -113,7 +113,7 @@ class WiqlQueryBuilderTest {
         String wiql = WiqlQueryBuilder.build(since, 100, filter);
 
         assertThat(wiql).isEqualTo(
-                "SELECT [System.Id] FROM WorkItems WHERE [System.AuthorizedDate] >= '2026-01-01'"
+                "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.AuthorizedDate] >= '2026-01-01'"
                         + " AND [System.Id] > 100"
                         + " AND [System.WorkItemType] IN ('Bug')"
                         + " AND [System.AreaPath] UNDER 'MyProject\\TeamA'"
@@ -127,7 +127,7 @@ class WiqlQueryBuilderTest {
 
         String wiql = WiqlQueryBuilder.build(null, null, filter);
 
-        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems ORDER BY [System.Id] ASC");
+        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -136,7 +136,7 @@ class WiqlQueryBuilderTest {
 
         String wiql = WiqlQueryBuilder.build(null, null, filter);
 
-        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems ORDER BY [System.Id] ASC");
+        assertThat(wiql).isEqualTo("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project ORDER BY [System.Id] ASC");
     }
 
     @Test
@@ -147,5 +147,17 @@ class WiqlQueryBuilderTest {
 
         assertThat(wiql).contains("'O''Brien Type'");
         assertThat(wiql).contains("UNDER 'Project\\O''Brien'");
+    }
+
+    /* Sem a clausula o WIQL da REST abrange a organizacao inteira: um item movido para outro
+     * projeto continuaria "presente" e o sync traria itens de outros projetos
+     * (azure-itens-excluidos, D2). */
+    @Test
+    void shouldAlwaysScopeQueryToTheRouteProject() {
+        WiqlFilter filter = new WiqlFilter(List.of("Bug"), "MyProject\\TeamA", "MyProject\\Sprint 1");
+
+        assertThat(WiqlQueryBuilder.build(null, null, null)).contains("WHERE [System.TeamProject] = @project");
+        assertThat(WiqlQueryBuilder.build(Instant.parse("2026-01-01T00:00:00Z"), 100, filter))
+                .startsWith("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND ");
     }
 }

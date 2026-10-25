@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.azure.application.usecase;
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
 import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
 import andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector;
+import andromeda.sei.ms.feature.azure.application.service.AzureWorkItemRemovalReconciler;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
@@ -41,6 +42,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Slf4j
 @Component
@@ -56,6 +58,7 @@ public class SyncAzureWorkItemsUseCase {
     private final UserRepository userRepository;
     private final AzureProjectBindingRepository azureProjectBindingRepository;
     private final AzureOrgUserCollector orgUserCollector;
+    private final AzureWorkItemRemovalReconciler removalReconciler;
 
     /**
      * @return o binding tal como persistido, com a {@code version} atualizada. Chamadores
@@ -87,6 +90,9 @@ public class SyncAzureWorkItemsUseCase {
 
         int processed = 0;
         int failed = 0;
+        int deactivated = 0;
+        int reactivated = 0;
+        boolean reconciliationSkipped = false;
 
         try {
             String orgUrl = connection.getAzureOrgUrl();
@@ -114,27 +120,35 @@ public class SyncAzureWorkItemsUseCase {
             List<Integer> ids = fetchAllWorkItemIds(orgUrl, azureProjectId, authHeader,
                     since, config);
 
-            if (ids.isEmpty()) {
-                log.info("No work items to sync for org={} project={}", orgId, projectId);
-                finishSuccess(syncLog, startedAt, 0, 0);
-                binding.setLastSyncAt(Instant.now());
-                binding.setWorkItemsWatermark(startedAt);
-                return new AzureWorkItemsSyncResult(
-                        azureProjectBindingRepository.save(binding), SyncStatus.SUCCESS, 0, 0);
-            }
+            /* Reconciliacao de removidos (azure-itens-excluidos D1): o WIQL de IDs sem filtro de data
+             * decide quem reativar (entra no lote) e, depois do loop, quem desativar. */
+            Set<String> presentIds = (since == null
+                    ? removalReconciler.presentIdsOf(ids, azureProjectId)
+                    : removalReconciler.fetchPresentIds(orgUrl, azureProjectId, authHeader, config)).orElse(null);
+            reconciliationSkipped = presentIds == null;
+            List<Integer> batchIds = presentIds == null ? ids
+                    : withReactivations(ids, removalReconciler.findReactivations(orgId, presentIds));
 
-            List<AdoWorkItemDto> adoItems = azureDevOpsClient.getWorkItemsBatch(orgUrl, ids, authHeader);
+            List<AdoWorkItemDto> adoItems = batchIds.isEmpty()
+                    ? List.of() : azureDevOpsClient.getWorkItemsBatch(orgUrl, batchIds, authHeader);
 
             Map<String, AzureOrgUserCollector.ObservedIdentity> seen = new java.util.LinkedHashMap<>();
+            Set<String> processedIds = new java.util.HashSet<>();
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
-                    processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader);
+                    if (processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader)) reactivated++;
+                    processedIds.add(String.valueOf(adoItem.id()));
                     collectIdentities(adoItem, seen);
                     processed++;
                 } catch (Exception e) {
                     log.warn("Failed to process work item id={}: {}", adoItem.id(), e.getMessage());
                     failed++;
                 }
+            }
+
+            if (presentIds != null) {
+                deactivated = removalReconciler.deactivateMissing(orgId, projectId, orgUrl, azureProjectId,
+                        authHeader, presentIds, processedIds);
             }
 
             collectSeenIdentities(orgId, seen);
@@ -152,11 +166,15 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setDurationMs(finishedAt.toEpochMilli() - startedAt.toEpochMilli());
             syncLog.setItemsProcessed(processed);
             syncLog.setItemsFailed(failed);
+            syncLog.setItemsDeactivated(deactivated);
+            syncLog.setItemsReactivated(reactivated);
             syncLogRepository.save(syncLog);
-            log.info("Work item sync completed: org={} project={} status={} processed={} failed={} durationMs={}",
+            log.info("Work item sync completed: org={} project={} status={} processed={} failed={} deactivated={} reactivated={} reconciliationSkipped={} durationMs={}",
                     connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
+                    deactivated, reactivated, reconciliationSkipped,
                     finishedAt.toEpochMilli() - startedAt.toEpochMilli());
-            return new AzureWorkItemsSyncResult(saved, status, processed, failed);
+            return new AzureWorkItemsSyncResult(saved, status, processed, failed, deactivated, reactivated,
+                    reconciliationSkipped);
 
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
@@ -199,39 +217,27 @@ public class SyncAzureWorkItemsUseCase {
         return processed > 0 ? SyncStatus.PARTIAL : SyncStatus.FAILED;
     }
 
-    /**
-     * Fetches all matching work item IDs by looping over WIQL pages ordered ascending by
-     * System.Id, until a page returns fewer than the page size (last page) or the hard
-     * page-count safety cap is reached (in which case the sync fails rather than looping
-     * forever or silently truncating results).
-     */
     private List<Integer> fetchAllWorkItemIds(String orgUrl, String azureProjectId, String authHeader,
                                                Instant since, WorkflowConfig config) {
-        List<Integer> allIds = new ArrayList<>();
-        Integer lastSeenId = null;
-        int pageCount = 0;
-
-        while (true) {
-            if (pageCount >= AzureDevOpsClient.WIQL_MAX_PAGES) {
-                throw new AzureSyncPageLimitExceededException(AzureDevOpsClient.WIQL_MAX_PAGES);
-            }
-
-            List<Integer> page = azureDevOpsClient.queryWorkItemIdsPage(
-                    orgUrl, azureProjectId, authHeader, since, lastSeenId, config.getSyncFilter());
-            pageCount++;
-
-            if (page.isEmpty()) break;
-
-            allIds.addAll(page);
-            lastSeenId = page.get(page.size() - 1);
-
-            if (page.size() < AzureDevOpsClient.WIQL_PAGE_SIZE) break;
-        }
-
-        return allIds;
+        return removalReconciler.fetchAllWorkItemIds(orgUrl, azureProjectId, authHeader, since, config);
     }
 
-    private void processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
+    /** Incremental ids followed by the reactivation ids not already in them. */
+    private static List<Integer> withReactivations(List<Integer> ids, Set<String> reactivate) {
+        if (reactivate.isEmpty()) return ids;
+        Set<Integer> merged = new java.util.LinkedHashSet<>(ids);
+        for (String externalId : reactivate) {
+            try {
+                merged.add(Integer.valueOf(externalId));
+            } catch (NumberFormatException ignored) {
+                // non-numeric externalId cannot come from Azure
+            }
+        }
+        return new ArrayList<>(merged);
+    }
+
+    /** @return true when the item existed inactive and this write reactivated it */
+    private boolean processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
                                   WorkflowConfig config, String orgUrl, String authHeader) {
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String externalId = String.valueOf(adoItem.id());
@@ -263,6 +269,10 @@ public class SyncAzureWorkItemsUseCase {
                 null, null, null, null, null, null, null, true, null, now,
                 null, null, null, null, null, null, null, null));
 
+        boolean reactivated = existing.isPresent() && !existing.get().isActive();
+        workItem.setActive(true);
+        workItem.setDeactivatedAt(null);
+        workItem.setDeactivationReason(null);
         workItem.setProjectId(projectId);
         workItem.setExternalUpdatedAt(parseInstant(fields, "System.ChangedDate"));
         workItem.setTitle(getString(fields, "System.Title"));
@@ -309,6 +319,7 @@ public class SyncAzureWorkItemsUseCase {
         if (transitionStartedAt != null) saved.setStartedAt(transitionStartedAt);
         if (transitionCompletedAt != null) saved.setCompletedAt(transitionCompletedAt);
         workItemRepository.save(saved);
+        return reactivated;
     }
 
     /**
@@ -676,15 +687,5 @@ public class SyncAzureWorkItemsUseCase {
     private <T> T firstNonNull(T... values) {
         for (T v : values) { if (v != null) return v; }
         return null;
-    }
-
-    private void finishSuccess(IntegrationSyncLog syncLog, Instant startedAt, int processed, int failed) {
-        Instant finishedAt = Instant.now();
-        syncLog.setStatus(SyncStatus.SUCCESS);
-        syncLog.setFinishedAt(finishedAt);
-        syncLog.setDurationMs(finishedAt.toEpochMilli() - startedAt.toEpochMilli());
-        syncLog.setItemsProcessed(processed);
-        syncLog.setItemsFailed(failed);
-        syncLogRepository.save(syncLog);
     }
 }

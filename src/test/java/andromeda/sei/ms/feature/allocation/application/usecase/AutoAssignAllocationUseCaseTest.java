@@ -207,6 +207,28 @@ class AutoAssignAllocationUseCaseTest {
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    @Test
+    void should_ignoreInactiveWorkItems_when_assigning() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint("sprint-1")));
+        WorkItem active = workItem("wi-active", "Ativo");
+        WorkItem removed = workItem("wi-removed", "Excluido");
+        removed.setActive(false);
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(active, removed));
+        when(allocationRepository.save(any())).thenReturn(savedAllocation("alloc-1", List.of("usage-1")));
+
+        useCase.execute(ORG, USER, DAY);
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getSplits()).extracting(sp -> sp.getWorkItemId())
+                .containsExactly("wi-active");
+    }
+
     private AIUsage aiUsage(String id) {
         return new AIUsage(
                 id, ORG, USER, "gh-login", "dataset-1", DAY, "gpt-4o",

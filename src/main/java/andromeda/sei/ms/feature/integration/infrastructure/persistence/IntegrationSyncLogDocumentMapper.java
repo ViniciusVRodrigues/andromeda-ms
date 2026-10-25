@@ -27,6 +27,8 @@ public class IntegrationSyncLogDocumentMapper {
         log.setErrorDetail(doc.getErrorDetail());
         log.setParentSyncId(doc.getParentSyncId());
         log.setBindingId(doc.getBindingId());
+        log.setItemsDeactivated(doc.getItemsDeactivated());
+        log.setItemsReactivated(doc.getItemsReactivated());
         return log;
     }
 
@@ -48,7 +50,9 @@ public class IntegrationSyncLogDocumentMapper {
                 .httpStatus(log.getHttpStatus())
                 .errorDetail(log.getErrorDetail())
                 .parentSyncId(log.getParentSyncId())
-                .bindingId(log.getBindingId());
+                .bindingId(log.getBindingId())
+                .itemsDeactivated(log.getItemsDeactivated())
+                .itemsReactivated(log.getItemsReactivated());
 
         if (log.getId() != null) {
             builder.id(log.getId());

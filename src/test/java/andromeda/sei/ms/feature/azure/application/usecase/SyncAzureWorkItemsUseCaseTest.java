@@ -24,7 +24,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -58,7 +57,6 @@ class SyncAzureWorkItemsUseCaseTest {
     @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
     @Mock private andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector orgUserCollector;
 
-    @InjectMocks
     private SyncAzureWorkItemsUseCase useCase;
 
     private AzureConnection connection;
@@ -67,6 +65,11 @@ class SyncAzureWorkItemsUseCaseTest {
 
     @BeforeEach
     void setUp() {
+        useCase = new SyncAzureWorkItemsUseCase(syncLogRepository, authStrategyResolver, workItemRepository,
+                workItemTransitionRepository, sprintRepository, azureDevOpsClient, userRepository,
+                azureProjectBindingRepository, orgUserCollector,
+                new andromeda.sei.ms.feature.azure.application.service.AzureWorkItemRemovalReconciler(
+                        workItemRepository, azureDevOpsClient));
         connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
                 "enc-access", "enc-refresh", NOW.plusSeconds(3600),
                 "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null,
@@ -484,6 +487,210 @@ class SyncAzureWorkItemsUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute(connection, binding, SyncTrigger.SCHEDULED))
                 .isInstanceOf(AzureSyncPageLimitExceededException.class);
+    }
+
+
+    // ---- azure-itens-excluidos: reconciliacao de removidos ----
+
+    private static final Instant WATERMARK = NOW.minusSeconds(3600);
+
+    /** Incremental: the since=watermark listing returns changed; the unrestricted one returns present. */
+    private void stubWiql(List<Integer> changed, List<Integer> present) {
+        binding.setWorkItemsWatermark(WATERMARK);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(WATERMARK), isNull(), any()))
+                .thenReturn(changed);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(present);
+    }
+
+    private void stubActiveInAndromeda(String... externalIds) {
+        when(workItemRepository.findActiveExternalIdsByOrganizationIdAndProjectIdAndSource(
+                "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS)).thenReturn(java.util.Set.of(externalIds));
+    }
+
+    private void stubProcessing(WorkItem stored) {
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), eq(stored.getExternalId()), any()))
+                .thenReturn(Optional.of(stored));
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+    }
+
+    @Test
+    void shouldDeactivateActiveItemMissingFromWiqlAsDeletedInAzure() {
+        stubWiql(List.of(), List.of(1));
+        stubActiveInAndromeda("1", "2");
+        when(azureDevOpsClient.getDeletedWorkItems(anyString(), eq("azure-proj-1"), eq(List.of(2)), anyString()))
+                .thenReturn(java.util.Set.of(2));
+        when(workItemRepository.deactivateByExternalIds(eq("org-1"), eq("proj-1"), eq(WorkItem.Source.AZURE_DEVOPS),
+                eq(java.util.Set.of("2")), eq(WorkItem.DeactivationReason.DELETED_IN_AZURE), any())).thenReturn(1L);
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.itemsDeactivated()).isEqualTo(1);
+        assertThat(result.reconciliationSkipped()).isFalse();
+        verify(azureDevOpsClient, never()).getWorkItemsBatch(anyString(), any(), anyString());
+    }
+
+    @Test
+    void shouldDeactivateAsLeftBindingWhenNotInRecycleBin() {
+        stubWiql(List.of(), List.of(1));
+        stubActiveInAndromeda("1", "2");
+        when(azureDevOpsClient.getDeletedWorkItems(anyString(), anyString(), any(), anyString()))
+                .thenReturn(java.util.Set.of());
+        when(workItemRepository.deactivateByExternalIds(any(), any(), any(), eq(java.util.Set.of("2")),
+                eq(WorkItem.DeactivationReason.LEFT_BINDING), any())).thenReturn(1L);
+
+        assertThat(useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null).itemsDeactivated()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldDeactivateAsUnknownAndStaySuccessWhenRecycleBinFails() {
+        stubWiql(List.of(), List.of(1));
+        stubActiveInAndromeda("1", "2");
+        when(azureDevOpsClient.getDeletedWorkItems(anyString(), anyString(), any(), anyString()))
+                .thenThrow(new RuntimeException("403"));
+        when(workItemRepository.deactivateByExternalIds(any(), any(), any(), eq(java.util.Set.of("2")),
+                eq(WorkItem.DeactivationReason.UNKNOWN), any())).thenReturn(1L);
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.itemsDeactivated()).isEqualTo(1);
+    }
+
+    @Test
+    void shouldNotDeactivateAnythingWhenIdListingFails_andKeepSyncing() {
+        binding.setWorkItemsWatermark(WATERMARK);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(WATERMARK), isNull(), any()))
+                .thenReturn(List.of(100));
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenThrow(new RuntimeException("wiql down"));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        stubProcessing(workItem("100", "Active"));
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.processed()).isEqualTo(1);
+        assertThat(result.reconciliationSkipped()).isTrue();
+        verify(workItemRepository, never()).deactivateByExternalIds(any(), any(), any(), any(), any(), any());
+        verify(workItemRepository, never()).findActiveExternalIdsByOrganizationIdAndProjectIdAndSource(any(), any(), any());
+    }
+
+    @Test
+    void shouldNotDeactivateAnythingWhenIdListingIsEmpty() {
+        stubWiql(List.of(), List.of());
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.reconciliationSkipped()).isTrue();
+        verify(workItemRepository, never()).deactivateByExternalIds(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldNotDeactivateAnythingWhenIdListingHitsPageLimit() {
+        binding.setWorkItemsWatermark(WATERMARK);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), eq(WATERMARK), isNull(), any()))
+                .thenReturn(List.of());
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), any(), any()))
+                .thenAnswer(inv -> {
+                    List<Integer> page = new java.util.ArrayList<>();
+                    for (int i = 0; i < AzureDevOpsClient.WIQL_PAGE_SIZE; i++) page.add(i);
+                    return page;
+                });
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(result.reconciliationSkipped()).isTrue();
+        verify(workItemRepository, never()).deactivateByExternalIds(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldFetchAndReactivateInactiveItemPresentInWiqlEvenWithEmptyIncremental() {
+        stubWiql(List.of(), List.of(7));
+        WorkItem inactive = workItem("7", "Active");
+        inactive.setActive(false);
+        inactive.setDeactivatedAt(NOW);
+        inactive.setDeactivationReason(WorkItem.DeactivationReason.DELETED_IN_AZURE);
+        when(workItemRepository.findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+                eq("org-1"), eq(WorkItem.Source.AZURE_DEVOPS), any())).thenReturn(java.util.Set.of("7"));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), eq(List.of(7)), anyString()))
+                .thenReturn(List.of(adoItem(7, "Active")));
+        stubProcessing(inactive);
+        stubActiveInAndromeda();
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.itemsReactivated()).isEqualTo(1);
+        assertThat(result.processed()).isEqualTo(1);
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        WorkItem saved = captor.getAllValues().get(0);
+        assertThat(saved.isActive()).isTrue();
+        assertThat(saved.getDeactivatedAt()).isNull();
+        assertThat(saved.getDeactivationReason()).isNull();
+    }
+
+    @Test
+    void shouldNotFetchIdPresentInWiqlThatHasNoDocumentInAndromeda() {
+        stubWiql(List.of(), List.of(9));
+        when(workItemRepository.findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+                anyString(), any(), any())).thenReturn(java.util.Set.of());
+        stubActiveInAndromeda();
+
+        useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        verify(azureDevOpsClient, never()).getWorkItemsBatch(anyString(), any(), anyString());
+    }
+
+    @Test
+    void shouldNotDeactivateItemThatArrivedThroughTheIncrementalBatch() {
+        /* the id listing was read before the item existed: 100 is in the batch but not in the listing */
+        stubWiql(List.of(100), List.of(1));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        stubProcessing(workItem("100", "Active"));
+        when(workItemRepository.findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+                anyString(), any(), any())).thenReturn(java.util.Set.of());
+        stubActiveInAndromeda("1", "100");
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.itemsDeactivated()).isZero();
+        verify(workItemRepository, never()).deactivateByExternalIds(any(), any(), any(), any(), any(), any());
+        verify(azureDevOpsClient, never()).getDeletedWorkItems(any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldRecordDeactivatedAndReactivatedCountsInSyncLogAndResult() {
+        stubWiql(List.of(), List.of(1, 7));
+        stubActiveInAndromeda("1", "2", "3");
+        WorkItem inactive = workItem("7", "Active");
+        inactive.setActive(false);
+        when(workItemRepository.findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+                anyString(), any(), any())).thenReturn(java.util.Set.of("7"));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), eq(List.of(7)), anyString()))
+                .thenReturn(List.of(adoItem(7, "Active")));
+        stubProcessing(inactive);
+        when(azureDevOpsClient.getDeletedWorkItems(anyString(), anyString(), any(), anyString()))
+                .thenReturn(java.util.Set.of(2, 3));
+        when(workItemRepository.deactivateByExternalIds(any(), any(), any(), any(),
+                eq(WorkItem.DeactivationReason.DELETED_IN_AZURE), any())).thenReturn(2L);
+
+        var result = useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        assertThat(result.itemsDeactivated()).isEqualTo(2);
+        assertThat(result.itemsReactivated()).isEqualTo(1);
+        ArgumentCaptor<IntegrationSyncLog> logs = ArgumentCaptor.forClass(IntegrationSyncLog.class);
+        verify(syncLogRepository, atLeastOnce()).save(logs.capture());
+        IntegrationSyncLog last = logs.getAllValues().get(logs.getAllValues().size() - 1);
+        assertThat(last.getItemsDeactivated()).isEqualTo(2);
+        assertThat(last.getItemsReactivated()).isEqualTo(1);
     }
 
     private AdoWorkItemDto adoItem(int id, String status) {

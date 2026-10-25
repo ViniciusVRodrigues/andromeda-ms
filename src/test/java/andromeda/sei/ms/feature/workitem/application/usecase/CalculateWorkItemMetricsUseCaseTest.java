@@ -13,7 +13,9 @@ import java.time.Instant;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.ArgumentMatchers.notNull;
 import static org.mockito.Mockito.verify;
@@ -126,5 +128,19 @@ class CalculateWorkItemMetricsUseCaseTest {
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
                 null, null, List.of(), null, null, null, null, null,
                 createdAt, startedAt, completedAt, null, null, null, true, null, Instant.now(), null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void ignoresInactiveWorkItems() {
+        WorkItem active = workItem("wi-active", BASE, BASE.plusSeconds(3600), BASE.plusSeconds(7200));
+        WorkItem removed = workItem("wi-removed", BASE, BASE.plusSeconds(3600), BASE.plusSeconds(7200));
+        removed.setActive(false);
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG_ID, PROJECT_ID))
+                .thenReturn(List.of(active, removed));
+
+        useCase.execute(ORG_ID, PROJECT_ID);
+
+        verify(workItemRepository).updateMetrics(eq("wi-active"), notNull(), notNull());
+        verify(workItemRepository, never()).updateMetrics(eq("wi-removed"), any(), any());
     }
 }

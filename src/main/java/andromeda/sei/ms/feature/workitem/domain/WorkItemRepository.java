@@ -84,4 +84,23 @@ public interface WorkItemRepository {
     default List<WorkItem> findMetricFieldsByOrganizationIdAndProjectId(String organizationId, String projectId) {
         return findAllByOrganizationIdAndProjectId(organizationId, projectId).stream().filter(WorkItem::isActive).toList();
     }
+
+    /** ExternalIds of the project's active work items of the given source (lean projection). */
+    java.util.Set<String> findActiveExternalIdsByOrganizationIdAndProjectIdAndSource(
+            String organizationId, String projectId, WorkItem.Source source);
+
+    /**
+     * ExternalIds, among {@code externalIds}, of inactive work items of the organization and source,
+     * any project. Queried in batches, so the input may be large.
+     */
+    java.util.Set<String> findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+            String organizationId, WorkItem.Source source, Collection<String> externalIds);
+
+    /**
+     * Soft-deletes (bulk) the ACTIVE work items of exactly this organization, project and source whose
+     * externalId is in {@code externalIds}: sets active=false, deactivatedAt, deactivationReason,
+     * updatedAt and increments version. Idempotent. Returns how many were changed.
+     */
+    long deactivateByExternalIds(String organizationId, String projectId, WorkItem.Source source,
+                                 Collection<String> externalIds, WorkItem.DeactivationReason reason, Instant at);
 }

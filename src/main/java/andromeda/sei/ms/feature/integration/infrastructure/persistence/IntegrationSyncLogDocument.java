@@ -47,4 +47,6 @@ public class IntegrationSyncLogDocument {
     private String errorDetail;
     private String parentSyncId;
     private String bindingId;
+    private int itemsDeactivated;
+    private int itemsReactivated;
 }
