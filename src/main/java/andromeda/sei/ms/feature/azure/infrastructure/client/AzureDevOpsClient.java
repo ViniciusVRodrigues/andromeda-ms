@@ -215,6 +215,34 @@ public class AzureDevOpsClient {
         return all;
     }
 
+    /**
+     * Ids, among {@code ids}, that are in the project's recycle bin (deleted in Azure DevOps). One call
+     * to the plain listing (the {@code ids} filter fails the whole call for an id not in the bin).
+     * Needs the "delete and restore" permission: a 403 is propagated and the caller decides.
+     */
+    public java.util.Set<Integer> getDeletedWorkItems(String orgUrl, String azureProjectId, List<Integer> ids,
+                                                      String authHeader) {
+        java.util.Set<Integer> deleted = new java.util.HashSet<>();
+        if (ids == null || ids.isEmpty()) return deleted;
+        String url = baseUrl(orgUrl) + "/" + azureProjectId + "/_apis/wit/recyclebin?api-version=7.1";
+
+        ListResponse<java.util.Map<String, Object>> response = azureWebClient.get()
+                .uri(url)
+                .header("Authorization", authHeader)
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<ListResponse<java.util.Map<String, Object>>>() {})
+                .retryWhen(retrySpec())
+                .block();
+
+        if (response != null && response.value() != null) {
+            java.util.Set<Integer> wanted = new java.util.HashSet<>(ids);
+            for (java.util.Map<String, Object> entry : response.value()) {
+                if (entry.get("id") instanceof Number n && wanted.contains(n.intValue())) deleted.add(n.intValue());
+            }
+        }
+        return deleted;
+    }
+
     public static final int TEAM_MEMBERS_PAGE_SIZE = 100;
     public static final int TEAM_MEMBERS_MAX_PAGES = 50;
     public static final int ENTITLEMENTS_MAX_PAGES = 20;

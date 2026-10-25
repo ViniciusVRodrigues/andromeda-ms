@@ -63,6 +63,8 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("startedAt", doc.getStartedAt())
                 .set("completedAt", doc.getCompletedAt())
                 .set("active", doc.isActive())
+                .set("deactivatedAt", doc.getDeactivatedAt())
+                .set("deactivationReason", doc.getDeactivationReason())
                 .set("complexity", doc.getComplexity())
                 .set("complexitySource", doc.getComplexitySource())
                 .set("complexityOverriddenBy", doc.getComplexityOverriddenBy())
@@ -281,5 +283,64 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                                                                                       Instant from, Instant to) {
         return mongoRepository.findActiveCompletedInRange(organizationId, projectId, from, to)
                 .stream().map(mapper::toDomain).toList();
+    }
+
+    private static final int EXTERNAL_ID_BATCH = 1000;
+
+    @Override
+    public java.util.Set<String> findActiveExternalIdsByOrganizationIdAndProjectIdAndSource(
+            String organizationId, String projectId, WorkItem.Source source) {
+        org.bson.Document filter = new org.bson.Document("organizationId", organizationId)
+                .append("projectId", projectId).append("source", source.name()).append("active", true);
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (org.bson.Document d : mongoTemplate.getCollection(mongoTemplate.getCollectionName(WorkItemDocument.class))
+                .find(filter).projection(new org.bson.Document("externalId", 1))) {
+            ids.add(d.getString("externalId"));
+        }
+        return ids;
+    }
+
+    @Override
+    public java.util.Set<String> findInactiveExternalIdsByOrganizationIdAndSourceAndExternalIdIn(
+            String organizationId, WorkItem.Source source, Collection<String> externalIds) {
+        java.util.Set<String> found = new java.util.HashSet<>();
+        if (externalIds == null || externalIds.isEmpty()) return found;
+        List<String> all = List.copyOf(externalIds);
+        for (int i = 0; i < all.size(); i += EXTERNAL_ID_BATCH) {
+            List<String> batch = all.subList(i, Math.min(i + EXTERNAL_ID_BATCH, all.size()));
+            org.bson.Document filter = new org.bson.Document("organizationId", organizationId)
+                    .append("source", source.name()).append("active", false)
+                    .append("externalId", new org.bson.Document("$in", batch));
+            for (org.bson.Document d : mongoTemplate.getCollection(mongoTemplate.getCollectionName(WorkItemDocument.class))
+                    .find(filter).projection(new org.bson.Document("externalId", 1))) {
+                found.add(d.getString("externalId"));
+            }
+        }
+        return found;
+    }
+
+    @Override
+    public long deactivateByExternalIds(String organizationId, String projectId, WorkItem.Source source,
+                                        Collection<String> externalIds, WorkItem.DeactivationReason reason,
+                                        Instant at) {
+        if (externalIds == null || externalIds.isEmpty()) return 0;
+        List<String> all = List.copyOf(externalIds);
+        long changed = 0;
+        for (int i = 0; i < all.size(); i += EXTERNAL_ID_BATCH) {
+            List<String> batch = all.subList(i, Math.min(i + EXTERNAL_ID_BATCH, all.size()));
+            Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                    .and("projectId").is(projectId)
+                    .and("source").is(source)
+                    .and("externalId").in(batch)
+                    .and("active").is(true));
+            Update update = new Update()
+                    .set("active", false)
+                    .set("deactivatedAt", at)
+                    .set("deactivationReason", reason)
+                    .set("updatedAt", at)
+                    .inc("version", 1);
+            changed += mongoTemplate.updateMulti(query, update, WorkItemDocument.class).getModifiedCount();
+        }
+        return changed;
     }
 }

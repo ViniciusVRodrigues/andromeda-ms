@@ -24,6 +24,9 @@ public class IntegrationSyncLog {
     private String parentSyncId;
     /** Binding sincronizado; presente nos logs filhos por binding criados pelo orquestrador. */
     private String bindingId;
+    /** Work items deactivated / reactivated by the Azure removal reconciliation of this sync. */
+    private int itemsDeactivated;
+    private int itemsReactivated;
 
     public IntegrationSyncLog(String id, String organizationId, Integration integration,
                                SyncOperation operation, SyncStatus status, SyncTrigger triggeredBy,
@@ -99,6 +102,12 @@ public class IntegrationSyncLog {
 
     public String getBindingId() { return bindingId; }
     public void setBindingId(String bindingId) { this.bindingId = bindingId; }
+
+    public int getItemsDeactivated() { return itemsDeactivated; }
+    public void setItemsDeactivated(int itemsDeactivated) { this.itemsDeactivated = itemsDeactivated; }
+
+    public int getItemsReactivated() { return itemsReactivated; }
+    public void setItemsReactivated(int itemsReactivated) { this.itemsReactivated = itemsReactivated; }
 
     /** Verdadeiro enquanto o log nao atingiu um status terminal. */
     public boolean isRunning() { return status == SyncStatus.RUNNING; }

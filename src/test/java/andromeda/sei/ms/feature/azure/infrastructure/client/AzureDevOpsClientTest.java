@@ -509,4 +509,38 @@ class AzureDevOpsClientTest {
         assertThat(client.getTeamMembers("https://dev.azure.com/myorg", "p", "t", "Basic x"))
                 .extracting(AdoTeamMemberDto::id).containsExactly("m1");
     }
+
+    @Test
+    void getDeletedWorkItems_shouldBuildRecycleBinUrlAndReturnIds() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        String json = """
+                { "count": 3, "value": [ { "id": 11, "url": "u" }, { "id": 13, "url": "u" }, { "id": 99, "url": "u" } ] }
+                """;
+        AzureDevOpsClient client = clientFor(webClientCapturingRequest(captured, json));
+
+        java.util.Set<Integer> deleted = client.getDeletedWorkItems(
+                "https://dev.azure.com/myorg/", "proj-1", List.of(11, 12, 13), "Basic dGVzdA==");
+
+        assertThat(deleted).containsExactlyInAnyOrder(11, 13);
+        assertThat(captured.get().url().toString())
+                .isEqualTo("https://dev.azure.com/myorg/proj-1/_apis/wit/recyclebin?api-version=7.1");
+    }
+
+    @Test
+    void getDeletedWorkItems_shouldReturnEmptyWithoutCallForNoIds() {
+        AtomicReference<ClientRequest> captured = new AtomicReference<>();
+        AzureDevOpsClient client = clientFor(webClientCapturingRequest(captured, "{}"));
+
+        assertThat(client.getDeletedWorkItems("https://dev.azure.com/myorg", "proj-1", List.of(), "x")).isEmpty();
+        assertThat(captured.get()).isNull();
+    }
+
+    @Test
+    void getDeletedWorkItems_shouldPropagate403() {
+        AzureDevOpsClient client = clientFor(webClientReturning(403, "{}"));
+
+        assertThatThrownBy(() -> client.getDeletedWorkItems(
+                "https://dev.azure.com/myorg", "proj-1", List.of(1), "Basic dGVzdA=="))
+                .isInstanceOf(WebClientResponseException.class);
+    }
 }

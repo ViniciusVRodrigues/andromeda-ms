@@ -12,5 +12,15 @@ import andromeda.sei.ms.feature.integration.domain.SyncStatus;
  *                  gravados, ou {@code FAILED} quando nenhum item pode ser gravado
  * @param processed itens gravados
  * @param failed    itens que falharam
+ * @param itemsDeactivated itens desativados por terem saido do WIQL do vinculo
+ * @param itemsReactivated itens inativos que voltaram ao WIQL
+ * @param reconciliationSkipped true quando a reconciliacao de removidos foi pulada por listagem nao confiavel
  */
-public record AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed) {}
+public record AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed,
+                                       int itemsDeactivated, int itemsReactivated, boolean reconciliationSkipped) {
+
+    /** Result of a sync that reconciled nothing (kept for callers that do not care about removals). */
+    public AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed) {
+        this(binding, status, processed, failed, 0, 0, false);
+    }
+}

@@ -48,6 +48,8 @@ public class WorkItemDocumentMapper {
         /* Fora do construtor de propósito: ele já tem 38 parâmetros posicionais e é
          * chamado de vários pontos; um 39º só aumentaria a chance de troca silenciosa. */
         item.setSprintName(doc.getSprintName());
+        item.setDeactivatedAt(doc.getDeactivatedAt());
+        item.setDeactivationReason(doc.getDeactivationReason());
         return item;
     }
 
@@ -90,6 +92,8 @@ public class WorkItemDocumentMapper {
                 .effortSource(item.getEffortSource())
                 .effortOverriddenBy(item.getEffortOverriddenBy())
                 .effortOverriddenAt(item.getEffortOverriddenAt())
+                .deactivatedAt(item.getDeactivatedAt())
+                .deactivationReason(item.getDeactivationReason())
                 .build();
     }
 }
