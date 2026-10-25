@@ -12,11 +12,17 @@ import java.util.List;
  * ascending by System.Id. Pagination is driven by an exclusive lower bound
  * (lastSeenId) rather than offset/skip, keeping each page a bounded, indexed
  * range scan on the ADO side.
+ *
+ * <p>The date filter uses {@code System.AuthorizedDate}, not {@code System.ChangedDate}.
+ * Scripts that edit with {@code bypassRules=true} can write {@code ChangedDate} in the
+ * past, so a {@code ChangedDate >= watermark} filter never sees those revisions.
+ * {@code AuthorizedDate} is the server's own revision timestamp and is not overwritten
+ * by bypassRules; on a normal edit it equals {@code ChangedDate}.
  */
 public final class WiqlQueryBuilder {
 
     /**
-     * {@code System.ChangedDate} is queried with <em>date precision</em>, so Azure
+     * {@code System.AuthorizedDate} is queried with <em>date precision</em>, so Azure
      * DevOps rejects any literal carrying a time component at all — with or without
      * sub-second digits — failing the whole query with HTTP 400
      * ("You cannot supply a time with the date when running a query using date
@@ -39,7 +45,7 @@ public final class WiqlQueryBuilder {
         StringBuilder where = new StringBuilder();
 
         appendCondition(where, since != null,
-                "[System.ChangedDate] >= '" + (since != null ? WIQL_DATE.format(since) : "") + "'");
+                "[System.AuthorizedDate] >= '" + (since != null ? WIQL_DATE.format(since) : "") + "'");
         appendCondition(where, lastSeenId != null, "[System.Id] > " + lastSeenId);
 
         if (filter != null) {

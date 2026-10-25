@@ -402,7 +402,7 @@ class AzureDevOpsClientTest {
                     .startsWith("/proj-1/_apis/wit/wiql?api-version=7.1")
                     .contains("$top=" + AzureDevOpsClient.WIQL_PAGE_SIZE);
             assertThat(requestBody.get())
-                    .contains("[System.ChangedDate] >= '2026-08-12'")
+                    .contains("[System.AuthorizedDate] >= '2026-08-12'")
                     .contains("[System.Id] > 100")
                     .doesNotContain("789123");
         } finally {

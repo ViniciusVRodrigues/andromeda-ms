@@ -689,6 +689,84 @@ class SyncAzureWorkItemsUseCaseTest {
         when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
     }
 
+    private WorkItem syncOneItemAndCaptureSaved(WorkItem stored, Map<String, Object> extraFields) {
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(List.of(100));
+        java.util.HashMap<String, Object> fields = new java.util.HashMap<>(Map.of(
+                "System.Title", "t", "System.WorkItemType", "Bug", "System.State", "Active",
+                "System.CreatedDate", NOW.toString(), "System.ChangedDate", NOW.toString()));
+        fields.putAll(extraFields);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(new AdoWorkItemDto(100, fields, null)));
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.of(stored));
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+
+        useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
+
+        ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(captor.capture());
+        return captor.getValue();
+    }
+
+    private andromeda.sei.ms.feature.user.domain.User userOf(String id, String orgId) {
+        andromeda.sei.ms.feature.user.domain.User u = org.mockito.Mockito.mock(andromeda.sei.ms.feature.user.domain.User.class);
+        org.mockito.Mockito.lenient().when(u.getId()).thenReturn(id);
+        org.mockito.Mockito.lenient().when(u.getOrganizationId()).thenReturn(orgId);
+        return u;
+    }
+
+    @Test
+    void shouldClearAssigneeUserIdWhenReassignedToSomeoneWithoutAndromedaUser() {
+        WorkItem stored = workItem("100", "Active");
+        stored.setAssigneeUserId("u1");
+        Map<String, Object> other = Map.of("id", "az-9", "displayName", "Outro", "uniqueName", "outro@x.com");
+        when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-9")).thenReturn(Optional.empty());
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "outro@x.com")).thenReturn(List.of());
+
+        WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", other));
+
+        assertThat(saved.getAssigneeUserId()).isNull();
+    }
+
+    @Test
+    void shouldClearAssigneeUserIdWhenItemHasNoAssignee() {
+        WorkItem stored = workItem("100", "Active");
+        stored.setAssigneeUserId("u1");
+
+        WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of());
+
+        assertThat(saved.getAssigneeUserId()).isNull();
+    }
+
+    @Test
+    void shouldMatchAssigneeByEmailWhenAzureIdHasNoUser() {
+        WorkItem stored = workItem("100", "Active");
+        Map<String, Object> pedro = Map.of("id", "az-1", "displayName", "Pedro", "uniqueName", "Pedro@X.com");
+        when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-1")).thenReturn(Optional.empty());
+        var u = userOf("u7", "org-1");
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "Pedro@X.com")).thenReturn(List.of(u));
+
+        WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", pedro));
+
+        assertThat(saved.getAssigneeUserId()).isEqualTo("u7");
+    }
+
+    @Test
+    void shouldNotMatchAssigneeByEmailOfUserFromAnotherOrganization() {
+        WorkItem stored = workItem("100", "Active");
+        Map<String, Object> pedro = Map.of("id", "az-1", "displayName", "Pedro", "uniqueName", "pedro@x.com");
+        when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-1")).thenReturn(Optional.empty());
+        // the lookup is scoped to the organization: a user of org-2 is never returned
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "pedro@x.com")).thenReturn(List.of());
+
+        WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", pedro));
+
+        assertThat(saved.getAssigneeUserId()).isNull();
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void shouldCollectIdentitiesSeenInWorkItems_inASingleBatch_andSurviveCollectorFailure() {
