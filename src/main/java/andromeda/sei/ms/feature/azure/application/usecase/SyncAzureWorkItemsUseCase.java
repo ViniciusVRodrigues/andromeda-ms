@@ -650,8 +650,8 @@ public class SyncAzureWorkItemsUseCase {
                     .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
         }
         if (workItem.getAssigneeUserId() == null && email != null && !email.isBlank()) {
-            userRepository.findByEmail(email.trim().toLowerCase())
-                    .filter(user -> orgId.equals(user.getOrganizationId()))
+            userRepository.findAllByOrganizationIdAndEmailIgnoringCase(orgId, email.trim()).stream()
+                    .findFirst()
                     .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
         }
     }

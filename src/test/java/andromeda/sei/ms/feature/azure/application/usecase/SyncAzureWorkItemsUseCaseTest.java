@@ -714,7 +714,7 @@ class SyncAzureWorkItemsUseCaseTest {
     private andromeda.sei.ms.feature.user.domain.User userOf(String id, String orgId) {
         andromeda.sei.ms.feature.user.domain.User u = org.mockito.Mockito.mock(andromeda.sei.ms.feature.user.domain.User.class);
         org.mockito.Mockito.lenient().when(u.getId()).thenReturn(id);
-        when(u.getOrganizationId()).thenReturn(orgId);
+        org.mockito.Mockito.lenient().when(u.getOrganizationId()).thenReturn(orgId);
         return u;
     }
 
@@ -724,7 +724,7 @@ class SyncAzureWorkItemsUseCaseTest {
         stored.setAssigneeUserId("u1");
         Map<String, Object> other = Map.of("id", "az-9", "displayName", "Outro", "uniqueName", "outro@x.com");
         when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-9")).thenReturn(Optional.empty());
-        when(userRepository.findByEmail("outro@x.com")).thenReturn(Optional.empty());
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "outro@x.com")).thenReturn(List.of());
 
         WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", other));
 
@@ -747,7 +747,7 @@ class SyncAzureWorkItemsUseCaseTest {
         Map<String, Object> pedro = Map.of("id", "az-1", "displayName", "Pedro", "uniqueName", "Pedro@X.com");
         when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-1")).thenReturn(Optional.empty());
         var u = userOf("u7", "org-1");
-        when(userRepository.findByEmail("pedro@x.com")).thenReturn(Optional.of(u));
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "Pedro@X.com")).thenReturn(List.of(u));
 
         WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", pedro));
 
@@ -759,8 +759,8 @@ class SyncAzureWorkItemsUseCaseTest {
         WorkItem stored = workItem("100", "Active");
         Map<String, Object> pedro = Map.of("id", "az-1", "displayName", "Pedro", "uniqueName", "pedro@x.com");
         when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-1")).thenReturn(Optional.empty());
-        var u = userOf("u7", "org-2");
-        when(userRepository.findByEmail("pedro@x.com")).thenReturn(Optional.of(u));
+        // the lookup is scoped to the organization: a user of org-2 is never returned
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "pedro@x.com")).thenReturn(List.of());
 
         WorkItem saved = syncOneItemAndCaptureSaved(stored, Map.of("System.AssignedTo", pedro));
 
