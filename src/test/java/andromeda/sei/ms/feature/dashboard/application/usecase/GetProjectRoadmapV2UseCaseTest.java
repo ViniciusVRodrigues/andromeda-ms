@@ -1,5 +1,10 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
+import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
@@ -37,6 +42,7 @@ import org.mockito.quality.Strictness;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -46,6 +52,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -68,6 +76,8 @@ class GetProjectRoadmapV2UseCaseTest {
     @Mock private AzureProjectBindingRepository bindingRepository;
     @Mock private UserRepository userRepository;
     @Mock private ConnectorTokenRepository connectorTokenRepository;
+    @Mock private AiUsageAllocationRepository allocationRepository;
+    @Mock private AIUsageRepository aiUsageRepository;
 
     private final List<WorkItem> items = new ArrayList<>();
     private GetProjectRoadmapV2UseCase useCase;
@@ -76,7 +86,8 @@ class GetProjectRoadmapV2UseCaseTest {
     void setUp() {
         useCase = new GetProjectRoadmapV2UseCase(projectRepository, workItemRepository, sprintRepository,
                 new EffortBearingLevelResolver(), bindingRepository,
-                new DashboardPeopleDirectory(userRepository, connectorTokenRepository), Clock.fixed(NOW, ZoneOffset.UTC));
+                new DashboardPeopleDirectory(userRepository, connectorTokenRepository), allocationRepository, aiUsageRepository,
+                Clock.fixed(NOW, ZoneOffset.UTC));
         when(projectRepository.findActiveByIdAndOrganizationId(PROJECT, ORG)).thenReturn(Optional.of(
                 new Project(PROJECT, ORG, "Orion", "orion", null, true, List.of("user-a"), 0L, NOW, NOW)));
         when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(items);
@@ -186,7 +197,7 @@ class GetProjectRoadmapV2UseCaseTest {
 
         assertThat(out.calibration().byEffort()).hasSize(2);
         assertThat(out.calibration().byEffort().getFirst())
-                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, new DurationStat(10.0, 30.0, 2)));
+                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, new DurationStat(10.0, 30.0, 2), null, null, 0));
         assertThat(out.calibration().byComplexity().getFirst().label()).isEqualTo("2");
         assertThat(out.calibration().byComplexity().getFirst().avgEffort()).isEqualTo(3.0);
         assertThat(out.calibration().overrides()).extracting(ManualOverride::field, ManualOverride::by)
@@ -194,6 +205,55 @@ class GetProjectRoadmapV2UseCaseTest {
                         org.assertj.core.groups.Tuple.tuple("Esforço", "Ana"));
         assertThat(out.calibration().overridePct()).isEqualTo(66.67);
         assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0));
+    }
+
+    @Test
+    void should_addAllocatedAiToEachBand_withPartialSplitAndNullWhenNothingIsAllocated() {
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of(
+                sprint("s1", Sprint.TimeFrame.PAST, "2026-09-01", "2026-09-14")));
+        WorkItem c1 = inSprint(calibrated("c1", 3.0, 2.0, 10.0, List.of()), "s1");
+        WorkItem c2 = inSprint(calibrated("c2", 3.0, 2.0, 30.0, List.of()), "s1");
+        WorkItem c3 = inSprint(calibrated("c3", 5.0, 5.0, 50.0, List.of()), "s1");
+        items.addAll(List.of(c1, c2, c3));
+        AiUsageAllocation partial = new AiUsageAllocation("al1", ORG, "user-a", java.time.LocalDate.parse("2026-09-05"),
+                List.of("u1"), List.of(new AllocationSplit("c1", "Item", new BigDecimal("0.8")),
+                new AllocationSplit("elsewhere", "Other", new BigDecimal("0.2"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(eq(ORG), anyCollection()))
+                .thenReturn(List.of(partial));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(
+                new AIUsage("u1", ORG, "user-a", "gh", "ds", java.time.LocalDate.parse("2026-09-05"), "claude", "w", "w",
+                        "m", "m", 600, 400, 2, "vscode", "al1", new BigDecimal("10.00"), NOW, true, 0L, NOW, NOW)));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        var effort3 = out.calibration().byEffort().get(0);
+        assertThat(effort3.aiCostUsd()).isEqualByComparingTo("8");
+        assertThat(effort3.aiTokens()).isEqualTo(800L);
+        assertThat(effort3.itemsWithAi()).isEqualTo(1);
+        var effort5 = out.calibration().byEffort().get(1);
+        assertThat(effort5.aiCostUsd()).isNull();
+        assertThat(effort5.aiTokens()).isNull();
+        assertThat(effort5.itemsWithAi()).isZero();
+        var complexity2 = out.calibration().byComplexity().get(0);
+        assertThat(complexity2.aiCostUsd()).isEqualByComparingTo("8");
+        assertThat(complexity2.aiTokens()).isEqualTo(800L);
+        assertThat(complexity2.itemsWithAi()).isEqualTo(1);
+        assertThat(out.calibration().byComplexity().get(1).itemsWithAi()).isZero();
+    }
+
+    @Test
+    void should_reportNoAi_when_noBandHasAllocation() {
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of(
+                sprint("s1", Sprint.TimeFrame.PAST, "2026-09-01", "2026-09-14")));
+        items.add(inSprint(calibrated("c1", 3.0, 2.0, 10.0, List.of()), "s1"));
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(eq(ORG), anyCollection())).thenReturn(List.of());
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().byEffort().getFirst().aiCostUsd()).isNull();
+        assertThat(out.calibration().byEffort().getFirst().aiTokens()).isNull();
+        assertThat(out.calibration().byEffort().getFirst().itemsWithAi()).isZero();
     }
 
     @Test

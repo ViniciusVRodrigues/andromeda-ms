@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.dashboard.presentation.dto.v2;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.Ai;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.DataQuality;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.Dora;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.DoraRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.FlowRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.People;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.Period;
@@ -30,6 +31,7 @@ public record ProjectOverviewV2Response(
         @Schema(description = "Indicadores do período") PeriodStats kpis,
         @Schema(description = "Mesmos indicadores no período anterior de mesmo tamanho; stalePrs null") PeriodStats previous,
         @Schema(description = "Métricas de entrega (proxies): notas ELITE/HIGH/MEDIUM/LOW") Dora dora,
+        List<DoraRow> doraSeries,
         @Schema(description = "Itens STORY/BUG/TASK concluídos por intervalo") List<ThroughputRow> throughput,
         @Schema(description = "Sprints passadas encerradas no período: comprometido × entregue") List<SprintRow> sprints,
         @Schema(description = "Lead e cycle time {p50, p90, n} em horas por intervalo") List<FlowRow> flow,

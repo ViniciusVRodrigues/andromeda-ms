@@ -397,10 +397,12 @@ public class GetTeamDashboardV2UseCase {
 
     private List<HistoryPoint> history(Context ctx, SprintSelection selection) {
         return selection.history().stream().map(sprint -> {
-            SprintStats s = teamSprint(ctx, sprint).stats();
+            TeamSprint ts = teamSprint(ctx, sprint);
+            SprintStats s = ts.stats();
+            Long tokens = ts.hasAiUsage() ? ts.aiCost().allocatedTokens() : null;
             return new HistoryPoint(sprint.getId(), DashboardV2Views.historyLabel(sprint), sprint.getName(),
                     sprint.getId().equals(selection.selected().getId()), DashboardV2Views.isCurrent(sprint),
-                    s.spPlanned(), s.spDelivered(), predictability(s), s.cycleTimeHours(), s.aiCostUsd(), s.aiCostPerSp());
+                    s.spPlanned(), s.spDelivered(), predictability(s), s.cycleTimeHours(), s.aiCostUsd(), s.aiCostPerSp(), tokens);
         }).toList();
     }
 

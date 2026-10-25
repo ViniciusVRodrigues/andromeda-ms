@@ -16,7 +16,7 @@ import java.time.Instant;
 public class ProjectDashboardsV2Mapper {
 
     public ProjectOverviewV2Response toResponse(ProjectOverviewV2Output out, DataFreshness freshness) {
-        return new ProjectOverviewV2Response(out.project(), out.period(), out.kpis(), out.previous(), out.dora(),
+        return new ProjectOverviewV2Response(out.project(), out.period(), out.kpis(), out.previous(), out.dora(), out.doraSeries(),
                 out.throughput(), out.sprints(), out.flow(), out.quality(), out.prFlow(), out.repos(), out.ai(),
                 out.people(), out.dataQuality(), iso(out.asOf()), freshness);
     }

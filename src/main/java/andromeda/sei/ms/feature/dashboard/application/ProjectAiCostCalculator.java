@@ -38,9 +38,32 @@ public class ProjectAiCostCalculator {
 
     public ProjectAiCost calculate(String organizationId, Set<String> projectWorkItemIds,
                                    Collection<String> memberUserIds, LocalDate from, LocalDate to) {
+        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
+        Map<String, AIUsage> usageById = allocations.isEmpty() ? Map.of() : usageById(organizationId, allocations);
         return new ProjectAiCost(
-                allocatedByUser(organizationId, projectWorkItemIds, from, to),
-                unallocatedByUser(organizationId, memberUserIds, from, to));
+                allocatedByUser(allocations, usageById, projectWorkItemIds),
+                unallocatedByUser(organizationId, memberUserIds, from, to),
+                allocatedTokens(allocations, usageById, projectWorkItemIds));
+    }
+
+    /**
+     * Tokens (input + output) behind the allocated cost, same allocations and same share weighting;
+     * {@code null} when nothing is allocated to the project in the window.
+     */
+    private static Long allocatedTokens(List<AiUsageAllocation> allocations, Map<String, AIUsage> usageById,
+                                        Set<String> projectWorkItemIds) {
+        if (allocations.isEmpty()) return null;
+        BigDecimal total = BigDecimal.ZERO;
+        for (AiUsageAllocation allocation : allocations) {
+            if (allocation.getAiUsageIds() == null) continue;
+            BigDecimal share = projectShare(allocation, projectWorkItemIds);
+            for (String id : allocation.getAiUsageIds()) {
+                AIUsage usage = usageById.get(id);
+                if (usage == null) continue;
+                total = total.add(share.multiply(BigDecimal.valueOf(usage.getInputTokens() + usage.getOutputTokens())));
+            }
+        }
+        return total.setScale(0, java.math.RoundingMode.HALF_UP).longValue();
     }
 
     /**
@@ -83,31 +106,21 @@ public class ProjectAiCostCalculator {
                 .collect(Collectors.toMap(AIUsage::getId, u -> u, (first, second) -> first));
     }
 
-    private Map<String, BigDecimal> allocatedByUser(String organizationId, Set<String> projectWorkItemIds,
-                                                    LocalDate from, LocalDate to) {
-        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
+    private static Map<String, BigDecimal> allocatedByUser(List<AiUsageAllocation> allocations,
+                                                           Map<String, AIUsage> usageById,
+                                                           Set<String> projectWorkItemIds) {
         if (allocations.isEmpty()) return Map.of();
-        Map<String, BigDecimal> costByUsageId = costByUsageId(organizationId, allocations);
-
         Map<String, BigDecimal> byUser = new HashMap<>();
         for (AiUsageAllocation allocation : allocations) {
             BigDecimal basis = allocation.getAiUsageIds() == null ? BigDecimal.ZERO : allocation.getAiUsageIds()
-                    .stream().map(id -> costByUsageId.getOrDefault(id, BigDecimal.ZERO))
+                    .stream().map(usageById::get)
+                    .filter(u -> u != null && u.getId() != null && u.getCostUsd() != null)
+                    .map(AIUsage::getCostUsd)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             byUser.merge(allocation.getUserId(), basis.multiply(projectShare(allocation, projectWorkItemIds)),
                     BigDecimal::add);
         }
         return byUser;
-    }
-
-    private Map<String, BigDecimal> costByUsageId(String organizationId, List<AiUsageAllocation> allocations) {
-        Set<String> usageIds = allocations.stream()
-                .filter(a -> a.getAiUsageIds() != null)
-                .flatMap(a -> a.getAiUsageIds().stream())
-                .collect(Collectors.toSet());
-        return aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(organizationId, usageIds).stream()
-                .filter(u -> u.getId() != null && u.getCostUsd() != null)
-                .collect(Collectors.toMap(AIUsage::getId, AIUsage::getCostUsd, BigDecimal::add));
     }
 
     private static BigDecimal projectShare(AiUsageAllocation allocation, Set<String> projectWorkItemIds) {
@@ -136,7 +149,12 @@ public class ProjectAiCostCalculator {
     }
 
     /** Allocated (project) and not-yet-allocated cost per user. */
-    public record ProjectAiCost(Map<String, BigDecimal> allocatedByUser, Map<String, BigDecimal> unallocatedByUser) {
+    public record ProjectAiCost(Map<String, BigDecimal> allocatedByUser, Map<String, BigDecimal> unallocatedByUser,
+                                Long allocatedTokens) {
+
+        public ProjectAiCost(Map<String, BigDecimal> allocatedByUser, Map<String, BigDecimal> unallocatedByUser) {
+            this(allocatedByUser, unallocatedByUser, null);
+        }
 
         public BigDecimal allocatedOf(String userId) {
             return allocatedByUser.getOrDefault(userId, BigDecimal.ZERO);

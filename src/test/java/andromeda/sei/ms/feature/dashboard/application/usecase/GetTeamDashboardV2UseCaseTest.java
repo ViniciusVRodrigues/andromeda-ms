@@ -174,6 +174,7 @@ class GetTeamDashboardV2UseCaseTest {
         for (int i = 1; i <= 10; i++) previousDone.add(done("p" + i, 1.0, i * 10.0));
         sprintItems("s1", previousDone.toArray(WorkItem[]::new));
         WorkItem old = inProgress("b1", "2026-10-03T12:00:00Z");
+        old.setComplexity(5.0);
         WorkItem fresh = inProgress("b2", "2026-10-07T12:00:00Z");
         sprintItems("s2", fresh, old);
 
@@ -182,6 +183,8 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.p85CycleHours()).isEqualTo(90.0);
         assertThat(out.agingItems()).extracting(ItemView::id).containsExactly("b1", "b2");
         assertThat(out.agingItems().get(0).daysInProgress()).isEqualTo(5.0);
+        assertThat(out.agingItems().get(0).complexity()).isEqualTo(5.0);
+        assertThat(out.agingItems().get(1).complexity()).isNull();
     }
 
     @Test
@@ -231,6 +234,9 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.ai().allocation().unallocatedDays()).isEqualTo(1);
         assertThat(member(out, ME).aiCostUsd()).isEqualByComparingTo("5.00");
         assertThat(member(out, OTHER).aiCostUsd()).isNull();
+        // 100 + 50 tokens of the allocated record, 50% of it carried by the project; the unallocated day is out
+        assertThat(out.history().get(1).aiTokens()).isEqualTo(75L);
+        assertThat(out.history().get(0).aiTokens()).isNull();
     }
 
     @Test
@@ -248,6 +254,7 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.history()).allSatisfy(h -> {
             assertThat(h.aiCostUsd()).isNull();
             assertThat(h.aiCostPerSp()).isNull();
+            assertThat(h.aiTokens()).isNull();
         });
         assertThat(out.ai().unallocatedCostUsd()).isNull();
     }
@@ -266,6 +273,7 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.kpis().unallocatedAiCostUsd()).isEqualByComparingTo("7.00");
         assertThat(out.history().get(1).aiCostUsd()).isEqualByComparingTo("0");
         assertThat(out.history().get(0).aiCostUsd()).isNull();
+        assertThat(out.history().get(1).aiTokens()).isNull();
         assertThat(out.ai().unallocatedCostUsd()).isEqualByComparingTo("7.00");
     }
 

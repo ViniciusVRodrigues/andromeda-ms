@@ -1,5 +1,10 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
+import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
@@ -48,6 +53,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -86,20 +94,25 @@ public class GetProjectRoadmapV2UseCase {
     private final EffortBearingLevelResolver effortResolver;
     private final AzureProjectBindingRepository bindingRepository;
     private final DashboardPeopleDirectory peopleDirectory;
+    private final AiUsageAllocationRepository allocationRepository;
+    private final AIUsageRepository aiUsageRepository;
     private final Clock clock;
 
     @Autowired
     public GetProjectRoadmapV2UseCase(ProjectRepository projectRepository, WorkItemRepository workItemRepository,
                                       SprintRepository sprintRepository, EffortBearingLevelResolver effortResolver,
                                       AzureProjectBindingRepository bindingRepository,
-                                      DashboardPeopleDirectory peopleDirectory) {
+                                      DashboardPeopleDirectory peopleDirectory,
+                                      AiUsageAllocationRepository allocationRepository,
+                                      AIUsageRepository aiUsageRepository) {
         this(projectRepository, workItemRepository, sprintRepository, effortResolver, bindingRepository,
-                peopleDirectory, Clock.systemUTC());
+                peopleDirectory, allocationRepository, aiUsageRepository, Clock.systemUTC());
     }
 
     GetProjectRoadmapV2UseCase(ProjectRepository projectRepository, WorkItemRepository workItemRepository,
                                SprintRepository sprintRepository, EffortBearingLevelResolver effortResolver,
                                AzureProjectBindingRepository bindingRepository, DashboardPeopleDirectory peopleDirectory,
+                               AiUsageAllocationRepository allocationRepository, AIUsageRepository aiUsageRepository,
                                Clock clock) {
         this.projectRepository = projectRepository;
         this.workItemRepository = workItemRepository;
@@ -107,6 +120,8 @@ public class GetProjectRoadmapV2UseCase {
         this.effortResolver = effortResolver;
         this.bindingRepository = bindingRepository;
         this.peopleDirectory = peopleDirectory;
+        this.allocationRepository = allocationRepository;
+        this.aiUsageRepository = aiUsageRepository;
         this.clock = clock;
     }
 
@@ -120,13 +135,68 @@ public class GetProjectRoadmapV2UseCase {
         List<Sprint> sprints = sprintRepository.findAllByOrganizationIdAndProjectId(orgId, projectId);
         ProjectPeriodItems items = ProjectPeriodItems.of(
                 workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId), sprints, effortResolver);
-        Context ctx = new Context(period.current(), now, items, items.effort().scope(), childrenIndex(items.all()));
+        Context ctx = new Context(period.current(), now, items, items.effort().scope(), childrenIndex(items.all()),
+                itemAi(orgId, items.doneUnitsIn(period.current())));
         List<FeatureRow> features = features(ctx);
         return new ProjectRoadmapV2Output(
                 new ProjectRoadmapV2Output.Period(periodDays, period.current().first().toString(),
                         period.current().last().toString()),
                 config(orgId, projectId, items), epics(ctx, features), features, backlog(ctx, futureSprintIds(sprints)),
                 tagShares(ctx, items.doneUnitsIn(ctx.range())), calibration(ctx, peopleDirectory.people(orgId)), now);
+    }
+
+    /**
+     * AI behind each completed unit: every VALIDATED allocation that splits to it, in one query,
+     * weighted by the split percentage (cost and input + output tokens of the usage records the
+     * allocation covers) - the base of the item's {@code aiCostUsd}. Units without it are absent.
+     */
+    private Map<String, ItemAi> itemAi(String orgId, List<WorkItem> units) {
+        Set<String> ids = units.stream().map(WorkItem::getId).filter(Objects::nonNull).collect(Collectors.toSet());
+        if (ids.isEmpty()) return Map.of();
+        List<AiUsageAllocation> allocations = allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(orgId, ids);
+        if (allocations.isEmpty()) return Map.of();
+        Set<String> usageIds = allocations.stream().filter(a -> a.getAiUsageIds() != null)
+                .flatMap(a -> a.getAiUsageIds().stream()).collect(Collectors.toSet());
+        Map<String, AIUsage> usageById = usageIds.isEmpty() ? Map.of()
+                : aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(orgId, usageIds).stream()
+                        .filter(u -> u.getId() != null)
+                        .collect(Collectors.toMap(AIUsage::getId, Function.identity(), (a, b) -> a));
+        Map<String, ItemAi> byItem = new HashMap<>();
+        for (AiUsageAllocation allocation : allocations) {
+            if (allocation.getSplits() == null || allocation.getAiUsageIds() == null) continue;
+            BigDecimal cost = BigDecimal.ZERO;
+            BigDecimal tokens = BigDecimal.ZERO;
+            for (String usageId : allocation.getAiUsageIds()) {
+                AIUsage usage = usageById.get(usageId);
+                if (usage == null) continue;
+                if (usage.getCostUsd() != null) cost = cost.add(usage.getCostUsd());
+                tokens = tokens.add(BigDecimal.valueOf(usage.getInputTokens() + usage.getOutputTokens()));
+            }
+            for (AllocationSplit split : allocation.getSplits()) {
+                if (split.getPercentage() == null || !ids.contains(split.getWorkItemId())) continue;
+                ItemAi add = new ItemAi(cost.multiply(split.getPercentage()), tokens.multiply(split.getPercentage()));
+                byItem.merge(split.getWorkItemId(), add, ItemAi::plus);
+            }
+        }
+        byItem.values().removeIf(a -> a.costUsd().signum() <= 0 && a.tokens().signum() <= 0);
+        return byItem;
+    }
+
+    private record ItemAi(BigDecimal costUsd, BigDecimal tokens) {
+        ItemAi plus(ItemAi other) {
+            return new ItemAi(costUsd.add(other.costUsd()), tokens.add(other.tokens()));
+        }
+    }
+
+    /** AI totals of the units of a band; {@code null} cost and tokens when none has allocation. */
+    private record BandAi(BigDecimal costUsd, Long tokens, int itemsWithAi) {
+        static BandAi of(List<WorkItem> band, Map<String, ItemAi> ai) {
+            List<ItemAi> with = band.stream().map(i -> ai.get(i.getId())).filter(Objects::nonNull).toList();
+            if (with.isEmpty()) return new BandAi(null, null, 0);
+            return new BandAi(with.stream().map(ItemAi::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add),
+                    with.stream().map(ItemAi::tokens).reduce(BigDecimal.ZERO, BigDecimal::add)
+                            .setScale(0, RoundingMode.HALF_UP).longValue(), with.size());
+        }
     }
 
     private static Map<String, List<WorkItem>> childrenIndex(List<WorkItem> items) {
@@ -267,24 +337,28 @@ public class GetProjectRoadmapV2UseCase {
         List<WorkItem> done = ctx.items().doneUnitsIn(ctx.range());
         List<WorkItem> sprintUnits = ctx.items().sprintsOverlapping(ctx.range()).stream()
                 .flatMap(f -> f.summary().units().stream()).toList();
-        return new Calibration(byEffort(done), byComplexity(done), overrides(ctx, people),
+        return new Calibration(byEffort(done, ctx.ai()), byComplexity(done, ctx.ai()), overrides(ctx, people),
                 Ratios.percent(sprintUnits.stream().filter(GetProjectRoadmapV2UseCase::isOverridden).count(),
                         sprintUnits.size()));
     }
 
-    private static List<EffortRow> byEffort(List<WorkItem> done) {
-        return groupedBy(done, WorkItem::getEffort).entrySet().stream()
-                .map(e -> new EffortRow(number(e.getKey()) + SP_SUFFIX, e.getKey(), e.getValue().size(),
-                        Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList())))
-                .toList();
+    private static List<EffortRow> byEffort(List<WorkItem> done, Map<String, ItemAi> ai) {
+        return groupedBy(done, WorkItem::getEffort).entrySet().stream().map(e -> {
+            BandAi band = BandAi.of(e.getValue(), ai);
+            return new EffortRow(number(e.getKey()) + SP_SUFFIX, e.getKey(), e.getValue().size(),
+                    Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
+                    band.costUsd(), band.tokens(), band.itemsWithAi());
+        }).toList();
     }
 
-    private static List<ComplexityRow> byComplexity(List<WorkItem> done) {
-        return groupedBy(done, WorkItem::getComplexity).entrySet().stream()
-                .map(e -> new ComplexityRow(number(e.getKey()), e.getKey(), e.getValue().size(),
-                        Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
-                        DashboardV2Views.averageOrNull(e.getValue().stream().map(WorkItem::getEffort).toList())))
-                .toList();
+    private static List<ComplexityRow> byComplexity(List<WorkItem> done, Map<String, ItemAi> ai) {
+        return groupedBy(done, WorkItem::getComplexity).entrySet().stream().map(e -> {
+            BandAi band = BandAi.of(e.getValue(), ai);
+            return new ComplexityRow(number(e.getKey()), e.getKey(), e.getValue().size(),
+                    Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
+                    DashboardV2Views.averageOrNull(e.getValue().stream().map(WorkItem::getEffort).toList()),
+                    band.costUsd(), band.tokens(), band.itemsWithAi());
+        }).toList();
     }
 
     /** Items by a value of their own field, ascending; items without it are left out. */
@@ -356,5 +430,5 @@ public class GetProjectRoadmapV2UseCase {
     }
 
     private record Context(DayRange range, Instant now, ProjectPeriodItems items, EffortScope scope,
-                           Map<String, List<WorkItem>> children) {}
+                           Map<String, List<WorkItem>> children, Map<String, ItemAi> ai) {}
 }

@@ -23,6 +23,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Ou
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.ProjectInfo;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.QualityRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.RepoRow;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.DoraRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.SprintRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.Subscription;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.ThroughputRow;
@@ -172,7 +173,7 @@ public class GetProjectOverviewV2UseCase {
         return new ProjectOverviewV2Output(projectInfo(ctx), periodInfo(period, buckets),
                 stats(ctx, period.current(), currentDelivery, true),
                 stats(ctx, period.previous(), delivery(ctx, period.previous()), false),
-                dora(currentDelivery), throughput(ctx, buckets), sprintRows(ctx), flow(ctx, buckets),
+                dora(currentDelivery), doraSeries(ctx, buckets, currentDelivery), throughput(ctx, buckets), sprintRows(ctx), flow(ctx, buckets),
                 quality(ctx, buckets), prFlow(ctx, buckets), repos(ctx), ai(ctx, buckets), people(ctx),
                 dataQuality(ctx), now);
     }
@@ -320,6 +321,22 @@ public class GetProjectOverviewV2UseCase {
                         delivery.method() != DeliveryMethod.VCS_PROXY));
     }
 
+    /**
+     * One DORA point per bucket, from the changes already read for the period (no extra query): the
+     * same {@link DeliveryMetricsCalculator} rule as {@code dora}, restricted to the bucket. A bucket
+     * without merges inside a period that has them counts 0 deploys; the failure rate stays null.
+     */
+    private static List<DoraRow> doraSeries(Context ctx, PeriodBuckets buckets, DeliveryMetrics period) {
+        return buckets.buckets().stream().map(b -> {
+            DeliveryMetrics d = delivery(ctx, b.range());
+            DeliveryMethod method = d.method() == DeliveryMethod.UNAVAILABLE ? period.method() : d.method();
+            boolean noDeploys = d.deploymentsPerWeek() == null && method != DeliveryMethod.UNAVAILABLE;
+            return new DoraRow(b.start(), b.label(), d.changeLeadTime() == null ? null : d.changeLeadTime().p50(),
+                    noDeploys ? Double.valueOf(0d) : d.deploymentsPerWeek(), d.changeFailRatePercent(),
+                    method.name(), method != DeliveryMethod.VCS_PROXY);
+        }).toList();
+    }
+
     private static String grade(PerformanceClass performanceClass) {
         return performanceClass == null ? null : performanceClass.name();
     }
@@ -338,9 +355,11 @@ public class GetProjectOverviewV2UseCase {
 
     private static List<SprintRow> sprintRows(Context ctx) {
         return ctx.items().sprintsEndingIn(ctx.period().current()).stream().map(f -> {
-            BigDecimal cost = ctx.allocated().total(new DayRange(f.window().startDay(), f.window().endDay()));
+            DayRange window = new DayRange(f.window().startDay(), f.window().endDay());
+            BigDecimal cost = ctx.allocated().total(window);
             return new SprintRow(f.sprint().getId(), DashboardV2Views.historyLabel(f.sprint()), f.sprint().getName(),
-                    f.planned(), f.delivered(), f.predictabilityPct(), cost, perSp(cost, f.delivered()));
+                    f.planned(), f.delivered(), f.predictabilityPct(), cost, perSp(cost, f.delivered()),
+                    ctx.allocated().tokens(window));
         }).toList();
     }
 
@@ -451,16 +470,29 @@ public class GetProjectOverviewV2UseCase {
      * response is then a sum over a few hundred days instead of a pass over every usage record.
      * The model key may be {@code null} (a record without model): it counts in totals, not in models.
      */
-    private record AllocatedCost(Map<LocalDate, Map<String, BigDecimal>> byDayAndModel) {
+    private record AllocatedCost(Map<LocalDate, Map<String, BigDecimal>> byDayAndModel,
+                                 Map<LocalDate, BigDecimal> tokensByDay) {
 
         static AllocatedCost of(List<AllocatedUsage> allocated) {
             Map<LocalDate, Map<String, BigDecimal>> byDay = new HashMap<>();
+            Map<LocalDate, BigDecimal> tokens = new HashMap<>();
             for (AllocatedUsage usage : allocated) {
                 if (usage.usage().getDay() == null) continue;
+                tokens.merge(usage.usage().getDay(), usage.share().multiply(BigDecimal.valueOf(
+                        usage.usage().getInputTokens() + usage.usage().getOutputTokens())), BigDecimal::add);
                 byDay.computeIfAbsent(usage.usage().getDay(), d -> new HashMap<>())
                         .merge(usage.usage().getModel(), usage.allocatedCostUsd(), BigDecimal::add);
             }
-            return new AllocatedCost(byDay);
+            return new AllocatedCost(byDay, tokens);
+        }
+
+        /** Allocated tokens (input + output, weighted by the project's share) in the range; null without usage. */
+        Long tokens(DayRange range) {
+            BigDecimal total = null;
+            for (Map.Entry<LocalDate, BigDecimal> day : tokensByDay.entrySet()) {
+                if (range.containsDay(day.getKey())) total = total == null ? day.getValue() : total.add(day.getValue());
+            }
+            return total == null ? null : total.setScale(0, RoundingMode.HALF_UP).longValue();
         }
 
         BigDecimal total(DayRange range) {
