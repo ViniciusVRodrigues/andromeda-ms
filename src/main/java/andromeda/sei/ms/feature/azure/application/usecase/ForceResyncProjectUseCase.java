@@ -42,7 +42,9 @@ public class ForceResyncProjectUseCase {
         String authHeader = authStrategyResolver.resolve(connection);
         WorkflowConfig config = binding.getWorkflowConfig();
 
-        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId);
+        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId).stream()
+                .filter(WorkItem::isActive)
+                .toList();
         log.info("ForceResync: rebuilding transition history for {} work items in org={} project={}",
                 items.size(), organizationId, projectId);
 
@@ -62,7 +64,9 @@ public class ForceResyncProjectUseCase {
         calculateWorkItemMetricsUseCase.execute(organizationId, projectId);
 
         // Re-query to count items with populated metrics
-        List<WorkItem> refreshed = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId);
+        List<WorkItem> refreshed = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId).stream()
+                .filter(WorkItem::isActive)
+                .toList();
         int itemsWithCycleTime = (int) refreshed.stream()
                 .filter(wi -> wi.getCycleTimeHours() != null)
                 .count();

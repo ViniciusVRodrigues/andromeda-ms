@@ -658,4 +658,23 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(result.sprintContext().sprintId()).isNull();
         org.mockito.Mockito.verify(sprintRepository, org.mockito.Mockito.never()).findById(any());
     }
+
+    @Test
+    void should_ignoreInactiveWorkItems_inSprintItemsAndHistory() {
+        Sprint sprint = sprint(SPRINT_START, SPRINT_END);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
+        WorkItem active = workItem("wi-active", WorkItem.ResolvedStatus.IN_PROGRESS, 3.0, null, null);
+        WorkItem removed = workItem("wi-removed", WorkItem.ResolvedStatus.IN_PROGRESS, 5.0, null, null);
+        removed.setActive(false);
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
+                .thenReturn(List.of(active, removed));
+        lenient().when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(any(), any(), any(), any(), any()))
+                .thenReturn(List.of());
+
+        DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
+
+        assertThat(output.inProgressItems()).extracting(WorkItem::getId).containsExactly("wi-active");
+        assertThat(output.totalSprintItems()).isEqualTo(1);
+        assertThat(output.totalSpInSprint()).isEqualTo(3.0);
+    }
 }

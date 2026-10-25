@@ -84,7 +84,9 @@ public class AutoAssignAllocationUseCase {
                 .flatMap(sprint -> {
                     List<WorkItem> items = workItemRepository
                             .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                                    organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS);
+                                    organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS).stream()
+                            .filter(WorkItem::isActive)
+                            .toList();
                     // Auto-assignment has to target the same level the team books work at, or teams
                     // that track effort on Tasks would never get an automatic allocation.
                     var level = effortBearingLevelResolver.resolve(null, items);

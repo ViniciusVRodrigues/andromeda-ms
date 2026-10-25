@@ -61,4 +61,32 @@ class GetAllocationCandidatesUseCaseTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).workItemId()).isEqualTo("wi-feat");
     }
+
+    @Test
+    void should_ignoreInactiveWorkItems() {
+        Sprint sprint = new Sprint("sprint-1", ORG, "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                "ext-1", "team-1", "Team A", "Sprint 23", "/path",
+                Instant.now().minusSeconds(86400), Instant.now().plusSeconds(86400),
+                Sprint.TimeFrame.CURRENT, true, 1L, Instant.now(), Instant.now());
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint));
+        WorkItem active = story("wi-active", true);
+        WorkItem removed = story("wi-removed", false);
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
+                .thenReturn(List.of(active, removed));
+
+        List<WorkItemCandidateOutput> result = useCase.execute(ORG, USER, DAY);
+
+        assertThat(result).extracting(WorkItemCandidateOutput::workItemId).containsExactly("wi-active");
+    }
+
+    private WorkItem story(String id, boolean active) {
+        return new WorkItem(id, ORG, "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                id, Instant.now(), "Title " + id,
+                "Story", WorkItem.ResolvedType.STORY,
+                "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                "Medium", 3.0, List.of(),
+                "sprint-1", "ext-user", USER, null, null,
+                Instant.now(), Instant.now(), null,
+                null, null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
 }

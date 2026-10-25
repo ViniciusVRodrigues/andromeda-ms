@@ -69,6 +69,24 @@ class ListWorkItemChildrenUseCaseTest {
     }
 
     @Test
+    void shouldIgnoreInactiveChildren() {
+        WorkItem parent = workItem("parent-1", "Epic", null);
+        WorkItem child = workItem("child-1", "Task", "parent-1");
+        WorkItem removed = workItem("child-2", "Task", "parent-1");
+        removed.setActive(false);
+        when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
+        when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
+                .thenReturn(Optional.empty());
+        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
+                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
+                .thenReturn(List.of(child, removed));
+
+        var result = useCase.execute("parent-1");
+
+        assertThat(result.children()).containsExactly(child);
+    }
+
+    @Test
     void shouldReturnEmptyListForLeaf() {
         WorkItem parent = workItem("parent-1", "Task", null);
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));

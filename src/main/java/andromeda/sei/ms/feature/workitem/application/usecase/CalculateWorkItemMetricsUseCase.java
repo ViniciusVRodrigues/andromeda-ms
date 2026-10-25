@@ -19,7 +19,9 @@ public class CalculateWorkItemMetricsUseCase {
     private final WorkItemRepository workItemRepository;
 
     public void execute(String organizationId, String projectId) {
-        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId);
+        List<WorkItem> items = workItemRepository.findAllByOrganizationIdAndProjectId(organizationId, projectId).stream()
+                .filter(WorkItem::isActive)
+                .toList();
 
         for (WorkItem item : items) {
             Double cycleTimeHours = computeCycleTime(item);

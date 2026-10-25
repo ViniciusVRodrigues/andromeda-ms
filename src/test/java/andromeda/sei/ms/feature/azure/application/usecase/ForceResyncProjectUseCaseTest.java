@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -145,5 +146,28 @@ class ForceResyncProjectUseCaseTest {
                 Instant.now(), startedAt, completedAt,
                 null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
         return wi;
+    }
+
+    @Test
+    void should_skipInactiveItems_when_rebuilding() {
+        AzureConnection connection = connection();
+        when(connectionRepository.findByOrganizationIdAndActiveTrue(ORG)).thenReturn(Optional.of(connection));
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT))
+                .thenReturn(Optional.of(binding(null)));
+        when(authStrategyResolver.resolve(connection)).thenReturn(AUTH_HEADER);
+
+        WorkItem active = workItem("wi-active", 4.0, Instant.now().minusSeconds(3600), Instant.now());
+        WorkItem removed = workItem("wi-removed", 4.0, Instant.now().minusSeconds(3600), Instant.now());
+        removed.setActive(false);
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT))
+                .thenReturn(List.of(active, removed));
+
+        ForceResyncProjectUseCase.ResyncSummaryResponse summary = useCase.execute(ORG, PROJECT);
+
+        verify(syncAzureWorkItemsUseCase, times(1))
+                .rebuildTransitionHistory(eq(active), any(), eq(ORG_URL), eq(AUTH_HEADER));
+        verify(syncAzureWorkItemsUseCase, never())
+                .rebuildTransitionHistory(eq(removed), any(), any(), any());
+        assertThat(summary.itemsProcessed()).isEqualTo(1);
     }
 }

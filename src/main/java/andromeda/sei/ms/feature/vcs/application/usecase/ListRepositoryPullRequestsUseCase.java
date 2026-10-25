@@ -62,6 +62,7 @@ public class ListRepositoryPullRequestsUseCase {
         return workItemRepository
                 .findAllByOrganizationIdAndExternalIdInAndSource(orgId, externalIds, WorkItem.Source.AZURE_DEVOPS)
                 .stream()
+                .filter(WorkItem::isActive)
                 .collect(Collectors.toMap(WorkItem::getExternalId, Function.identity(), (first, second) -> first));
     }
 
