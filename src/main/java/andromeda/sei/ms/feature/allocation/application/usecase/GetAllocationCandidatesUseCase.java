@@ -33,7 +33,9 @@ public class GetAllocationCandidatesUseCase {
                 .flatMap(sprint -> {
                     List<WorkItem> sprintItems = workItemRepository
                             .findByOrganizationIdAndAssigneeUserIdAndSprintId(
-                                    organizationId, userId, sprint.getId());
+                                    organizationId, userId, sprint.getId()).stream()
+                            .filter(WorkItem::isActive)
+                            .toList();
                     // Candidates must match the level the team actually books work at: when effort
                     // lives on Tasks, offering only Stories left the developer with nothing to
                     // attribute their AI usage to.

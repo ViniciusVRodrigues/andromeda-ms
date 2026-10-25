@@ -69,6 +69,7 @@ public class GetDeveloperDashboardUseCase {
                                 orgId, userId, sprint.getId(), projectId)
                         : workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(
                                 orgId, userId, sprint.getId()))
+                .map(list -> list.stream().filter(WorkItem::isActive).toList())
                 .orElse(List.of());
 
         // Which level carries effort depends on how the team models it (all effort on the Story,
@@ -249,6 +250,7 @@ public class GetDeveloperDashboardUseCase {
                             orgId, userId, s.getId(), projectId)
                     : workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(
                             orgId, userId, s.getId());
+            items = items.stream().filter(WorkItem::isActive).toList();
             EffortBearingLevelResolver.EffortSummary summary = effortBearingLevelResolver.summarize(items);
             List<WorkItem> done = summary.doneUnits();
             Double planned = summary.planned();
@@ -391,8 +393,9 @@ public class GetDeveloperDashboardUseCase {
                 .sorted(Comparator.comparing(Sprint::getStartDate, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(SharedIterations.CANONICAL_ORDER))
                 .toList();
-        return current.stream().filter(s -> !workItemRepository
-                .findByOrganizationIdAndAssigneeUserIdAndSprintId(orgId, userId, s.getId()).isEmpty()).findFirst();
+        return current.stream().filter(s -> workItemRepository
+                .findByOrganizationIdAndAssigneeUserIdAndSprintId(orgId, userId, s.getId()).stream()
+                .anyMatch(WorkItem::isActive)).findFirst();
     }
 
     private Double average(double[] values) {

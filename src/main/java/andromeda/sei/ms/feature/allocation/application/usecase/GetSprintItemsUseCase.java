@@ -30,7 +30,9 @@ public class GetSprintItemsUseCase {
         for (Sprint sprint : currentSprints) {
             List<WorkItem> items = workItemRepository
                     .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
-                            organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS);
+                            organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS).stream()
+                    .filter(WorkItem::isActive)
+                    .toList();
             for (WorkItem item : items) {
                 String sprintName = sprintNameById.getOrDefault(item.getSprintId(), sprint.getName());
                 results.add(new SprintItemOutput(
