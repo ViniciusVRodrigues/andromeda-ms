@@ -642,11 +642,15 @@ public class SyncAzureWorkItemsUseCase {
     private void resolveAssigneeUserId(String orgId, WorkItem workItem) {
         String externalId = workItem.getAssigneeExternalId();
         String email = workItem.getAssigneeEmail();
+        // Azure is the source of truth: a reassignment to someone without an Andromeda
+        // user (or no assignee) must not keep the previous user.
+        workItem.setAssigneeUserId(null);
         if (externalId != null) {
             userRepository.findByOrganizationIdAndAzureId(orgId, externalId)
                     .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
-        } else if (email != null) {
-            userRepository.findByEmail(email)
+        }
+        if (workItem.getAssigneeUserId() == null && email != null && !email.isBlank()) {
+            userRepository.findByEmail(email.trim().toLowerCase())
                     .filter(user -> orgId.equals(user.getOrganizationId()))
                     .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
         }
