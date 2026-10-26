@@ -30,9 +30,16 @@ public final class PermissionCatalog {
     public static final String AI_READ_ALL = "AI_READ_ALL";
     public static final String WORK_ITEM_MANAGE = "WORK_ITEM_MANAGE";
 
+    /** Codes only the global ADMIN preset holds: never assignable to (or cloned into) organization roles. */
+    public static final java.util.Set<String> NON_ASSIGNABLE_TO_ROLES = java.util.Set.of(ORGANIZATION_DELETE);
+
     private static final Map<String, PermissionScope> SCOPES = build();
 
     private PermissionCatalog() {}
+
+    public static boolean isAssignableToRole(String code) {
+        return !NON_ASSIGNABLE_TO_ROLES.contains(code);
+    }
 
     private static Map<String, PermissionScope> build() {
         Map<String, PermissionScope> scopes = new LinkedHashMap<>();

@@ -89,6 +89,18 @@ class RoleUseCaseTest {
     }
 
     @Test
+    void cloneRole_shouldNotCopyNonAssignableOrganizationDelete() {
+        var source = new Role("role-admin", null, "ADMIN", "ADMIN", true, null,
+                new java.util.ArrayList<>(List.of("USER_MANAGE", "ORGANIZATION_DELETE")), true, 0L, NOW, NOW);
+        when(roleRepository.findById("role-admin")).thenReturn(Optional.of(source));
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        RoleOutput output = cloneRoleUseCase.execute(new CloneRoleInput("role-admin", "Copy"), ORG_ID);
+
+        assertThat(output.permissionCodes()).containsExactly("USER_MANAGE");
+    }
+
+    @Test
     void cloneRole_shouldThrowRoleNotFoundWhenSourceDoesNotExist() {
         when(roleRepository.findById("nonexistent")).thenReturn(Optional.empty());
 

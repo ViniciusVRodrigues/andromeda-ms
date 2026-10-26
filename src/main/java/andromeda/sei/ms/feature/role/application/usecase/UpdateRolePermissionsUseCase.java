@@ -6,6 +6,8 @@ import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.role.domain.exception.DefaultRoleModificationException;
 import andromeda.sei.ms.feature.role.domain.exception.RoleNotFoundException;
+import andromeda.sei.ms.feature.role.domain.exception.RolePermissionNotAssignableException;
+import andromeda.sei.ms.shared.domain.security.PermissionCatalog;
 import andromeda.sei.ms.shared.domain.security.PermissionAliasResolver;
 import andromeda.sei.ms.shared.application.security.RoleChanged;
 import lombok.RequiredArgsConstructor;
@@ -41,8 +43,12 @@ public class UpdateRolePermissionsUseCase {
         // remove is normalized to the current code the same way. The legacy mirrors are re-derived
         // on write by RoleDocumentMapper (PermissionAliasResolver.withLegacyMirrors).
         Set<String> codes = new LinkedHashSet<>(PermissionAliasResolver.canonicalize(role.getPermissionCodes()));
-        codes.addAll(PermissionAliasResolver.canonicalize(input.add()));
+        List<String> toAdd = PermissionAliasResolver.canonicalize(input.add());
+        toAdd.stream().filter(c -> !PermissionCatalog.isAssignableToRole(c)).findFirst()
+                .ifPresent(c -> { throw new RolePermissionNotAssignableException(c); });
+        codes.addAll(toAdd);
         PermissionAliasResolver.canonicalize(input.remove()).forEach(codes::remove);
+        codes.removeAll(PermissionCatalog.NON_ASSIGNABLE_TO_ROLES); // defense: never inherited by an organization role
         role.setPermissionCodes(new ArrayList<>(codes));
 
         Role saved = roleRepository.save(role);

@@ -63,6 +63,29 @@ class RoleModificationUseCaseTest {
     // ── UpdateRolePermissionsUseCase ─────────────────────────────────────────
 
     @Test
+    void updatePermissions_shouldReject422WhenAddingOrganizationDelete() {
+        when(roleRepository.findById("role-1")).thenReturn(Optional.of(customRole("role-1", List.of("ROLE_MANAGE"))));
+
+        assertThatThrownBy(() -> updateRolePermissionsUseCase.execute(
+                new UpdateRolePermissionsInput("role-1", List.of("ORGANIZATION_DELETE"), List.of()), ORG_ID))
+                .isInstanceOf(andromeda.sei.ms.feature.role.domain.exception.RolePermissionNotAssignableException.class);
+        org.mockito.Mockito.verify(roleRepository, org.mockito.Mockito.never()).save(any());
+        org.mockito.Mockito.verify(eventPublisher, org.mockito.Mockito.never()).publishEvent(any(Object.class));
+    }
+
+    @Test
+    void updatePermissions_shouldStripInheritedOrganizationDelete() {
+        var role = customRole("role-1", List.of("ROLE_MANAGE", "ORGANIZATION_DELETE"));
+        when(roleRepository.findById("role-1")).thenReturn(Optional.of(role));
+        when(roleRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var output = updateRolePermissionsUseCase.execute(
+                new UpdateRolePermissionsInput("role-1", List.of("AI_READ_OWN"), List.of()), ORG_ID);
+
+        assertThat(output.permissionCodes()).contains("ROLE_MANAGE", "AI_READ_OWN").doesNotContain("ORGANIZATION_DELETE");
+    }
+
+    @Test
     void updatePermissions_shouldAddAndRemovePermissions() {
         var role = customRole("role-1", List.of("AZURE_READ", "REPOS_READ"));
         var updated = customRole("role-1", List.of("AZURE_READ", "AI_READ_OWN"));
