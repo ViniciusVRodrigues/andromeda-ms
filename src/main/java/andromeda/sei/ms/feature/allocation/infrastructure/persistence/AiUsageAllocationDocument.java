@@ -38,6 +38,7 @@ public class AiUsageAllocationDocument {
 
     private AiUsageAllocation.Status status;
     private AiUsageAllocation.AssignedBy assignedBy;
+    private AiUsageAllocation.SuggestionSource suggestionSource;
 
     @lombok.Builder.Default
     private boolean active = true;

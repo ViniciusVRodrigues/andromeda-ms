@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
+import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
@@ -80,9 +81,22 @@ public class ManualAllocateUseCase {
 
     private void createNewAllocation(String organizationId, String userId,
                                      LocalDate day, List<AllocationSplit> splits) {
+        List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
+        if (ofTheDay.stream().anyMatch(a -> a.getStatus() == AiUsageAllocation.Status.VALIDATED)) {
+            throw new AllocationAlreadyValidatedException(day.toString());
+        }
+
         List<String> usageIds = aiUsageRepository
                 .findUnallocatedByOrganizationIdAndUserIdAndDay(organizationId, userId, day)
                 .stream().map(AIUsage::getId).toList();
+        if (usageIds.isEmpty()) {
+            throw new AllocationNothingToAllocateException(day);
+        }
+
+        // The manual allocation replaces the day's suggestion, like /{id}/manual does.
+        ofTheDay.stream()
+                .filter(a -> a.getStatus() == AiUsageAllocation.Status.PENDING_VALIDATION)
+                .forEach(a -> allocationRepository.deleteById(a.getId()));
 
         Instant now = Instant.now();
         AiUsageAllocation allocation = new AiUsageAllocation(

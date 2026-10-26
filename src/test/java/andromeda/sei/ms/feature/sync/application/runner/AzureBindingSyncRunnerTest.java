@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.sync.application.runner;
 
+import andromeda.sei.ms.feature.allocation.application.usecase.RefreshAllocationSuggestionsUseCase;
+import andromeda.sei.ms.feature.azure.application.dto.ActivityDay;
 import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureSprintsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureWorkItemsUseCase;
@@ -28,6 +30,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -56,6 +60,7 @@ class AzureBindingSyncRunnerTest {
     @Mock private SyncAzureSprintsUseCase syncAzureSprintsUseCase;
     @Mock private SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
     @Mock private ConnectionHealthUpdater connectionHealthUpdater;
+    @Mock private RefreshAllocationSuggestionsUseCase refreshAllocationSuggestionsUseCase;
 
     @InjectMocks
     private AzureBindingSyncRunner runner;
@@ -86,6 +91,57 @@ class AzureBindingSyncRunnerTest {
             assertThat(o.status()).isEqualTo(SyncStatus.SUCCESS);
             assertThat(o.itemsProcessed()).isEqualTo(5);
         });
+    }
+
+    @Test
+    void shouldRefreshAllocationSuggestionsOnceWithTheUnionOfEveryBindingsActivityDays() {
+        AzureConnection connection = connection(AzureConnectionStatus.CONNECTED, AzureAuthMethod.PAT);
+        givenConnection(connection);
+        AzureProjectBinding b1 = binding("bind-1");
+        AzureProjectBinding b2 = binding("bind-2");
+        givenBinding(b1);
+        givenBinding(b2);
+        ActivityDay d1 = new ActivityDay("u1", LocalDate.of(2026, 9, 30));
+        ActivityDay d2 = new ActivityDay("u2", LocalDate.of(2026, 9, 30));
+        when(syncAzureSprintsUseCase.execute(connection, b1, SyncTrigger.MANUAL)).thenReturn(b1);
+        when(syncAzureSprintsUseCase.execute(connection, b2, SyncTrigger.MANUAL)).thenReturn(b2);
+        when(syncAzureWorkItemsUseCase.sync(eq(connection), same(b1), any(), any())).thenReturn(
+                new AzureWorkItemsSyncResult(b1, SyncStatus.SUCCESS, 1, 0, 0, 0, false, Set.of(d1)));
+        when(syncAzureWorkItemsUseCase.sync(eq(connection), same(b2), any(), any())).thenReturn(
+                new AzureWorkItemsSyncResult(b2, SyncStatus.SUCCESS, 1, 0, 0, 0, false, Set.of(d1, d2)));
+
+        runner.run(batch(SyncTrigger.MANUAL, false, target("bind-1"), target("bind-2")), outcomes::add);
+
+        verify(refreshAllocationSuggestionsUseCase, org.mockito.Mockito.times(1)).execute(ORG, Set.of(d1, d2));
+    }
+
+    @Test
+    void shouldNotFailTheSyncWhenTheAllocationRefreshThrows() {
+        AzureConnection connection = connection(AzureConnectionStatus.CONNECTED, AzureAuthMethod.PAT);
+        givenConnection(connection);
+        AzureProjectBinding b1 = binding("bind-1");
+        givenBinding(b1);
+        ActivityDay d1 = new ActivityDay("u1", LocalDate.of(2026, 9, 30));
+        when(syncAzureSprintsUseCase.execute(connection, b1, SyncTrigger.MANUAL)).thenReturn(b1);
+        when(syncAzureWorkItemsUseCase.sync(any(), any(), any(), any())).thenReturn(
+                new AzureWorkItemsSyncResult(b1, SyncStatus.SUCCESS, 1, 0, 0, 0, false, Set.of(d1)));
+        org.mockito.Mockito.doThrow(new RuntimeException("boom")).when(refreshAllocationSuggestionsUseCase)
+                .execute(any(), any());
+
+        runner.run(batch(SyncTrigger.MANUAL, false, target("bind-1")), outcomes::add);
+
+        assertThat(outcomes).singleElement().satisfies(o -> assertThat(o.status()).isEqualTo(SyncStatus.SUCCESS));
+    }
+
+    @Test
+    void shouldNotCallRefreshWhenNoNewActivity() {
+        AzureConnection connection = connection(AzureConnectionStatus.CONNECTED, AzureAuthMethod.PAT);
+        givenConnection(connection);
+        givenSuccessfulSync(connection, binding("bind-1"));
+
+        runner.run(batch(SyncTrigger.MANUAL, false, target("bind-1")), outcomes::add);
+
+        verifyNoInteractions(refreshAllocationSuggestionsUseCase);
     }
 
     @Test

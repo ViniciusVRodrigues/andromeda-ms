@@ -20,8 +20,10 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboard
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Ai;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.HistoryPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Kpis;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AllocationSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.PendingAllocation;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.PendingSplit;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.UnallocatedDay;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.Person;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.ReviewsGiven;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.SprintStats;
@@ -283,8 +285,15 @@ public class GetIndividualDashboardV2UseCase {
         Set<String> validated = allocationsInWindow(ctx, AiUsageAllocation.Status.VALIDATED).stream()
                 .map(a -> DashboardV2Views.personDay(ctx.userId(), a.getDay())).collect(Collectors.toSet());
         List<String> editors = usage.stream().map(AIUsage::getEditor).filter(Objects::nonNull).distinct().toList();
-        return new Ai(aiByDay(dev, ctx), aiByModel(ctx), DashboardV2Views.allocationSummary(usage, validated),
-                pendingAllocations(dev, ctx, usage), editors);
+        List<PendingAllocation> pendingList = pendingAllocations(dev, ctx, usage, validated);
+        Set<String> pendingDays = pendingList.stream().map(p -> DashboardV2Views.personDay(ctx.userId(),
+                LocalDate.parse(p.day()))).collect(Collectors.toSet());
+        List<UnallocatedDay> unallocatedList = unallocatedDays(ctx, usage, validated, pendingDays);
+        // The summary counts what the lists show, so the ui never sees a count and a list disagree.
+        AllocationSummary summary = new AllocationSummary(
+                DashboardV2Views.allocationSummary(usage, validated).validatedDays(),
+                pendingList.size(), unallocatedList.size());
+        return new Ai(aiByDay(dev, ctx), aiByModel(ctx), summary, pendingList, unallocatedList, editors);
     }
 
     private static List<AiDay> aiByDay(DeveloperDashboardOutput dev, Context ctx) {
@@ -312,15 +321,25 @@ public class GetIndividualDashboardV2UseCase {
     }
 
     /** Days of the sprint whose automatic split awaits the person's validation, newest first. */
-    private List<PendingAllocation> pendingAllocations(DeveloperDashboardOutput dev, Context ctx, List<AIUsage> usage) {
+    private List<PendingAllocation> pendingAllocations(DeveloperDashboardOutput dev, Context ctx, List<AIUsage> usage,
+                                                       Set<String> validatedPersonDays) {
         Map<String, AIUsage> usageById = usage.stream().filter(u -> u.getId() != null)
                 .collect(Collectors.toMap(AIUsage::getId, Function.identity(), (a, b) -> a));
+        List<AiUsageAllocation> pending = allocationsInWindow(ctx, AiUsageAllocation.Status.PENDING_VALIDATION).stream()
+                .filter(a -> !validatedPersonDays.contains(DashboardV2Views.personDay(ctx.userId(), a.getDay())))
+                .sorted(Comparator.comparing(AiUsageAllocation::getDay).reversed())
+                .toList();
         Map<String, String> externalIdByItem = activeUnits(dev).stream().filter(wi -> wi.getExternalId() != null)
                 .collect(Collectors.toMap(WorkItem::getId, WorkItem::getExternalId, (a, b) -> a));
-        return allocationsInWindow(ctx, AiUsageAllocation.Status.PENDING_VALIDATION).stream()
-                .sorted(Comparator.comparing(AiUsageAllocation::getDay).reversed())
-                .map(a -> pendingAllocation(a, usageById, externalIdByItem))
-                .toList();
+        // A suggestion from Azure activity can point at an item outside this sprint's own list.
+        pending.stream().flatMap(a -> a.getSplits() == null ? java.util.stream.Stream.<AllocationSplit>empty()
+                        : a.getSplits().stream())
+                .map(AllocationSplit::getWorkItemId).filter(id -> id != null && !externalIdByItem.containsKey(id))
+                .distinct()
+                .forEach(id -> workItemRepository.findById(id)
+                        .filter(wi -> ctx.orgId().equals(wi.getOrganizationId()) && wi.getExternalId() != null)
+                        .ifPresent(wi -> externalIdByItem.put(id, wi.getExternalId())));
+        return pending.stream().map(a -> pendingAllocation(a, usageById, externalIdByItem)).toList();
     }
 
     private static PendingAllocation pendingAllocation(AiUsageAllocation allocation, Map<String, AIUsage> usageById,
@@ -329,15 +348,38 @@ public class GetIndividualDashboardV2UseCase {
                 : allocation.getAiUsageIds().stream().map(usageById::get).filter(Objects::nonNull).toList();
         List<PendingSplit> splits = allocation.getSplits() == null ? List.of() : allocation.getSplits().stream()
                 .map(s -> pendingSplit(s, externalIdByItem)).toList();
-        return new PendingAllocation(allocation.getDay().toString(), DashboardV2Views.label(allocation.getDay()),
+        BigDecimal cost = records.stream().map(AIUsage::getCostUsd).filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String day = allocation.getDay().toString();
+        return new PendingAllocation(allocation.getId(), day, day, DashboardV2Views.label(allocation.getDay()),
                 records.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
-                records.stream().map(AIUsage::getCostUsd).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add),
-                splits);
+                cost, cost, allocation.suggestionSourceOrDefault().name(), splits);
     }
 
     private static PendingSplit pendingSplit(AllocationSplit split, Map<String, String> externalIdByItem) {
-        return new PendingSplit(externalIdByItem.get(split.getWorkItemId()), split.getWorkItemTitle(),
-                split.getPercentage() == null ? null : split.getPercentage().doubleValue() * PERCENT);
+        Double fraction = split.getPercentage() == null ? null : split.getPercentage().doubleValue();
+        return new PendingSplit(split.getWorkItemId(), externalIdByItem.get(split.getWorkItemId()),
+                split.getWorkItemTitle(), fraction == null ? null : fraction * PERCENT, fraction);
+    }
+
+    /**
+     * Days of the window with usage not yet claimed by an allocation, that have neither a validated
+     * allocation nor a pending suggestion, newest first.
+     */
+    private static List<UnallocatedDay> unallocatedDays(Context ctx, List<AIUsage> usage, Set<String> validatedPersonDays,
+                                                        Set<String> pendingPersonDays) {
+        Map<LocalDate, List<AIUsage>> unclaimedByDay = usage.stream()
+                .filter(u -> u.getDay() != null && u.getAllocationId() == null)
+                .filter(u -> !validatedPersonDays.contains(DashboardV2Views.personDay(ctx.userId(), u.getDay())))
+                .filter(u -> !pendingPersonDays.contains(DashboardV2Views.personDay(ctx.userId(), u.getDay())))
+                .collect(Collectors.groupingBy(AIUsage::getDay));
+        return unclaimedByDay.entrySet().stream()
+                .sorted(Map.Entry.<LocalDate, List<AIUsage>>comparingByKey().reversed())
+                .map(e -> new UnallocatedDay(e.getKey().toString(),
+                        e.getValue().stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
+                        e.getValue().stream().map(AIUsage::getCostUsd).filter(Objects::nonNull)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add)))
+                .toList();
     }
 
     private List<AiUsageAllocation> allocationsInWindow(Context ctx, AiUsageAllocation.Status status) {

@@ -27,7 +27,8 @@ public class AiUsageAllocationDocumentMapper {
                 doc.isActive(),
                 doc.getVersion(),
                 doc.getCreatedAt(),
-                doc.getUpdatedAt()
+                doc.getUpdatedAt(),
+                doc.getSuggestionSource()
         );
     }
 
@@ -50,6 +51,7 @@ public class AiUsageAllocationDocumentMapper {
                 .splits(splitDocs)
                 .status(allocation.getStatus())
                 .assignedBy(allocation.getAssignedBy())
+                .suggestionSource(allocation.getSuggestionSource())
                 .active(allocation.isActive())
                 .version(allocation.getVersion())
                 .createdAt(allocation.getCreatedAt())

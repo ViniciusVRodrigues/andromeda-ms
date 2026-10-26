@@ -59,6 +59,7 @@ class AzureReposSyncDispatchTest {
     @Mock private AzureTokenRefreshService azureTokenRefreshService;
     @Mock private SyncAzureSprintsUseCase syncAzureSprintsUseCase;
     @Mock private SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
+    @Mock private andromeda.sei.ms.feature.allocation.application.usecase.RefreshAllocationSuggestionsUseCase refreshAllocationSuggestionsUseCase;
     @Mock private GithubConnectionRepository githubConnectionRepository;
 
     private InMemorySyncLogRepository syncLogs;
@@ -77,7 +78,7 @@ class AzureReposSyncDispatchTest {
                 syncRepositoryUseCase, connectionHealthUpdater);
         AzureBindingSyncRunner boards = new AzureBindingSyncRunner(azureConnectionRepository,
                 azureProjectBindingRepository, azureTokenRefreshService, syncAzureSprintsUseCase,
-                syncAzureWorkItemsUseCase, connectionHealthUpdater);
+                syncAzureWorkItemsUseCase, connectionHealthUpdater, refreshAllocationSuggestionsUseCase);
 
         assertThat(List.of(boards, azureRepos, github)).extracting(BindingSyncRunner::integration,
                 BindingSyncRunner::kind).containsExactly(

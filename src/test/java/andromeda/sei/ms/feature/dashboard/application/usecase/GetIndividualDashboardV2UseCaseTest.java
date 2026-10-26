@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output.PendingSplit;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
@@ -303,6 +304,58 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(day.tokens()).isEqualTo(30);
         assertThat(day.splits().get(0).pct()).isEqualTo(25.0);
         assertThat(out.ai().editors()).containsExactly("vscode");
+    }
+
+    @Test
+    void should_countPendingSuggestionWithoutStampedUsage_andListUnallocatedDays() {
+        AIUsage validated = usage("u1", "2026-10-01", "a-valid");
+        AIUsage pending = usage("u2", "2026-10-02", null);
+        AIUsage freeNew = usage("u3", "2026-10-05", null);
+        AIUsage freeOld = usage("u4", "2026-10-03", null);
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(eq(ORG), eq(ME), any(), any()))
+                .thenReturn(List.of(validated, pending, freeNew, freeOld));
+        when(allocationRepository.findByOrgUserAndStatus(ORG, ME, AiUsageAllocation.Status.VALIDATED))
+                .thenReturn(List.of(allocation("a-valid", "2026-10-01", "u1", AiUsageAllocation.Status.VALIDATED)));
+        AiUsageAllocation suggestion = allocation("a-pending", "2026-10-02", "u2",
+                AiUsageAllocation.Status.PENDING_VALIDATION);
+        suggestion.setSuggestionSource(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+        when(allocationRepository.findByOrgUserAndStatus(ORG, ME, AiUsageAllocation.Status.PENDING_VALIDATION))
+                .thenReturn(List.of(suggestion));
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
+
+        assertThat(out.ai().allocation().validatedDays()).isEqualTo(1);
+        assertThat(out.ai().allocation().pendingDays()).isEqualTo(1);
+        assertThat(out.ai().allocation().unallocatedDays()).isEqualTo(2);
+        assertThat(out.ai().allocation().pendingDays()).isEqualTo(out.ai().pendingAllocations().size());
+        assertThat(out.ai().allocation().unallocatedDays()).isEqualTo(out.ai().unallocatedDayList().size());
+        var day = out.ai().pendingAllocations().get(0);
+        assertThat(day.allocationId()).isEqualTo("a-pending");
+        assertThat(day.day()).isEqualTo("2026-10-02");
+        assertThat(day.cost()).isEqualByComparingTo("2.00");
+        assertThat(day.suggestionSource()).isEqualTo("AZURE_ACTIVITY");
+        assertThat(day.splits()).extracting(PendingSplit::workItemId).containsExactly("wi-1", "wi-2");
+        assertThat(day.splits().get(0).percentage()).isEqualTo(0.25);
+        assertThat(out.ai().unallocatedDayList()).extracting(IndividualDashboardV2Output.UnallocatedDay::day)
+                .containsExactly("2026-10-05", "2026-10-03");
+        assertThat(out.ai().unallocatedDayList().get(0).tokens()).isEqualTo(30);
+        assertThat(out.ai().unallocatedDayList().get(0).cost()).isEqualByComparingTo("2.00");
+    }
+
+    @Test
+    void should_readLegacySuggestionWithoutSourceAsInProgress() {
+        AIUsage pending = usage("u2", "2026-10-02", null);
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(eq(ORG), eq(ME), any(), any()))
+                .thenReturn(List.of(pending));
+        when(allocationRepository.findByOrgUserAndStatus(ORG, ME, AiUsageAllocation.Status.PENDING_VALIDATION))
+                .thenReturn(List.of(allocation("a-pending", "2026-10-02", "u2",
+                        AiUsageAllocation.Status.PENDING_VALIDATION)));
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
+
+        assertThat(out.ai().pendingAllocations()).singleElement()
+                .satisfies(p -> assertThat(p.suggestionSource()).isEqualTo("IN_PROGRESS"));
+        assertThat(out.ai().unallocatedDayList()).isEmpty();
     }
 
     @Test
