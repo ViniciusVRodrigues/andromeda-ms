@@ -58,6 +58,7 @@ import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
@@ -83,7 +84,6 @@ public class GetProjectRoadmapV2UseCase {
     private static final List<Integer> PRIORITIES = List.of(1, 2, 3, 4);
     private static final String EFFORT_LABEL = "Esforço";
     private static final String COMPLEXITY_LABEL = "Complexidade";
-    private static final String SP_SUFFIX = " SP";
     private static final List<StaleBandSpec> STALE_BANDS = List.of(new StaleBandSpec("até 30 dias", 0, 30),
             new StaleBandSpec("30–60 dias", 30, 60), new StaleBandSpec("60–90 dias", 60, 90),
             new StaleBandSpec("mais de 90 dias", 90, null));
@@ -205,16 +205,25 @@ public class GetProjectRoadmapV2UseCase {
     }
 
     private Config config(String orgId, String projectId, ProjectPeriodItems items) {
-        String effortField = bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
-                .map(GetProjectRoadmapV2UseCase::effortField).orElse(null);
-        return new Config(effortField, new EffortLevel(EffortBearingLevel.AUTO.name(),
-                effortResolver.resolve(null, items.all()).name()));
+        Optional<AzureProjectBinding> binding = bindingRepository
+                .findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId);
+        return new Config(binding.map(b -> fieldOf(b, FieldMapping.InternalFieldTarget.EFFORT,
+                        WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME)).orElse(null),
+                new EffortLevel(EffortBearingLevel.AUTO.name(), effortResolver.resolve(null, items.all()).name()),
+                binding.map(b -> fieldOf(b, FieldMapping.InternalFieldTarget.COMPLEXITY,
+                        WorkflowConfig.DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME)).orElse(null));
     }
 
-    private static String effortField(AzureProjectBinding binding) {
+    /**
+     * The Azure field mapped to {@code target}: the wildcard or implicit default, else the first per-type
+     * mapping (the migration writes EFFORT per Task type, which the no-type lookup does not see); the
+     * {@code fallback} without a workflow config; {@code null} when nothing is mapped.
+     */
+    private static String fieldOf(AzureProjectBinding binding, FieldMapping.InternalFieldTarget target, String fallback) {
         WorkflowConfig config = binding.getWorkflowConfig();
-        if (config == null) return WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME;
-        return config.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT)
+        if (config == null) return fallback;
+        return config.resolveFieldMapping(target).or(() -> config.getFieldMappings() == null ? Optional.empty()
+                        : config.getFieldMappings().stream().filter(f -> f.getInternalField() == target).findFirst())
                 .map(FieldMapping::getAzureFieldReferenceName).orElse(null);
     }
 
@@ -256,11 +265,18 @@ public class GetProjectRoadmapV2UseCase {
         double recent = orZero(ctx.scope().totalEffort(filter(done, c -> c.getCompletedAt() != null
                 && !c.getCompletedAt().isBefore(paceFrom) && !c.getCompletedAt().isAfter(ctx.now()))));
         Double pace = recent > 0 ? recent / PACE_WEEKS : null;
+        Double complexityTotal = ctx.scope().totalComplexity(children);
+        Double complexityDone = complexityTotal == null ? null : orZero(ctx.scope().totalComplexity(done));
+        double recentPoints = orZero(ctx.scope().totalComplexity(filter(done, c -> c.getCompletedAt() != null
+                && !c.getCompletedAt().isBefore(paceFrom) && !c.getCompletedAt().isAfter(ctx.now()))));
         return new Progress(total, doneEffort, total == null || total <= 0 ? null : doneEffort / total * 100.0,
                 children.size(), done.size(),
                 (int) children.stream().filter(c -> ctx.scope().effectiveEffort(c) == null).count(),
                 total == null ? null : orZero(ctx.scope().totalEffort(filter(done, c -> ctx.range().contains(c.getCompletedAt())))),
-                pace, forecast(total, doneEffort, pace), lastActivity(children));
+                pace, forecast(total, doneEffort, pace), lastActivity(children), complexityTotal, complexityDone,
+                recentPoints > 0 ? recentPoints / PACE_WEEKS : null,
+                complexityTotal == null ? null : orZero(ctx.scope().totalComplexity(
+                        filter(done, c -> ctx.range().contains(c.getCompletedAt())))));
     }
 
     private static Double forecast(Double total, Double done, Double pace) {
@@ -297,7 +313,7 @@ public class GetProjectRoadmapV2UseCase {
                 PRIORITIES.stream().map(p -> priorityRow(ctx, backlog, p)).toList(),
                 dated.stream().sorted(Comparator.comparing(GetProjectRoadmapV2UseCase::changedAt)).limit(TOP_LIMIT)
                         .map(i -> forgotten(ctx, i)).toList(),
-                tagShares(ctx, backlog));
+                tagShares(ctx, backlog), ctx.scope().totalComplexity(backlog));
     }
 
     private static PriorityRow priorityRow(Context ctx, List<WorkItem> backlog, int priority) {
@@ -309,7 +325,8 @@ public class GetProjectRoadmapV2UseCase {
     private static ForgottenItem forgotten(Context ctx, WorkItem item) {
         return new ForgottenItem(item.getExternalId(), item.getTitle(),
                 item.getResolvedType() != null ? item.getResolvedType().name() : null, ProjectPeriodItems.priority(item),
-                ctx.scope().effectiveEffort(item), ageDays(ctx, item), tags(item));
+                ctx.scope().effectiveEffort(item), ageDays(ctx, item), tags(item),
+                ctx.scope().effectiveComplexity(item), ctx.scope().taskEffortRolledUp(item));
     }
 
     private static double ageDays(Context ctx, WorkItem item) {
@@ -317,19 +334,24 @@ public class GetProjectRoadmapV2UseCase {
     }
 
 
-    /** Count and effective effort per tag, by effort then count, top {@value #TOP_LIMIT}. */
+    /** Count, effective effort and effective complexity per tag, by points, effort, then count, top {@value #TOP_LIMIT}. */
     private static List<TagShare> tagShares(Context ctx, Collection<WorkItem> items) {
         Map<String, double[]> byTag = new LinkedHashMap<>();
         for (WorkItem item : items) {
             double effort = orZero(ctx.scope().effectiveEffort(item));
+            double points = orZero(ctx.scope().effectiveComplexity(item));
             for (String tag : tags(item)) {
-                double[] acc = byTag.computeIfAbsent(tag, t -> new double[2]);
+                double[] acc = byTag.computeIfAbsent(tag, t -> new double[3]);
                 acc[0] += 1;
                 acc[1] += effort;
+                acc[2] += points;
             }
         }
-        return byTag.entrySet().stream().map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1]))
-                .sorted(Comparator.comparingDouble(TagShare::sp).reversed().thenComparing(TagShare::count, Comparator.reverseOrder()))
+        return byTag.entrySet().stream()
+                .map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1], e.getValue()[2]))
+                .sorted(Comparator.comparingDouble(TagShare::points).reversed()
+                        .thenComparing(Comparator.comparingDouble(TagShare::sp).reversed())
+                        .thenComparing(TagShare::count, Comparator.reverseOrder()))
                 .limit(TOP_LIMIT).toList();
     }
 
@@ -337,26 +359,33 @@ public class GetProjectRoadmapV2UseCase {
         List<WorkItem> done = ctx.items().doneUnitsIn(ctx.range());
         List<WorkItem> sprintUnits = ctx.items().sprintsOverlapping(ctx.range()).stream()
                 .flatMap(f -> f.summary().units().stream()).toList();
-        return new Calibration(byEffort(done, ctx.ai()), byComplexity(done, ctx.ai()), overrides(ctx, people),
+        return new Calibration(byEffort(done, ctx.ai()), byComplexity(storyDone(ctx, done), ctx.ai(), ctx.scope()),
+                overrides(ctx, people),
                 Ratios.percent(sprintUnits.stream().filter(GetProjectRoadmapV2UseCase::isOverridden).count(),
                         sprintUnits.size()));
+    }
+
+    /** The story-tier units delivered in the period (complexity is measured there), else the deliverable units. */
+    private static List<WorkItem> storyDone(Context ctx, List<WorkItem> done) {
+        List<WorkItem> stories = ctx.items().doneComplexityUnitsIn(ctx.range());
+        return ctx.items().effort().complexityUnits().isEmpty() ? done : stories;
     }
 
     private static List<EffortRow> byEffort(List<WorkItem> done, Map<String, ItemAi> ai) {
         return groupedBy(done, WorkItem::getEffort).entrySet().stream().map(e -> {
             BandAi band = BandAi.of(e.getValue(), ai);
-            return new EffortRow(number(e.getKey()) + SP_SUFFIX, e.getKey(), e.getValue().size(),
+            return new EffortRow(number(e.getKey()), e.getKey(), e.getValue().size(),
                     Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
                     band.costUsd(), band.tokens(), band.itemsWithAi());
         }).toList();
     }
 
-    private static List<ComplexityRow> byComplexity(List<WorkItem> done, Map<String, ItemAi> ai) {
+    private static List<ComplexityRow> byComplexity(List<WorkItem> done, Map<String, ItemAi> ai, EffortScope scope) {
         return groupedBy(done, WorkItem::getComplexity).entrySet().stream().map(e -> {
             BandAi band = BandAi.of(e.getValue(), ai);
             return new ComplexityRow(number(e.getKey()), e.getKey(), e.getValue().size(),
                     Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
-                    DashboardV2Views.averageOrNull(e.getValue().stream().map(WorkItem::getEffort).toList()),
+                    DashboardV2Views.averageOrNull(e.getValue().stream().map(scope::taskEffort).toList()),
                     band.costUsd(), band.tokens(), band.itemsWithAi());
         }).toList();
     }

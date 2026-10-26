@@ -152,6 +152,57 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.team()).isEqualTo(new TeamDashboardV2Output.TeamInfo("Core", 2));
     }
 
+    /** complexity-effort 3.1: Story 3 pts (Tasks 4 h + 8 h), Bug without points, cost US$ 6. */
+    @Test
+    void should_reportComplexityEffortAndAiRatios_fromTheCommonFixture() {
+        WorkItem story = done("st", 20.0, 5.0);
+        story.setComplexity(3.0);
+        story.setAssigneeUserId(ME);
+        WorkItem task1 = WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 4.0, "ext-st");
+        WorkItem task2 = WorkItemFixture.item("t2", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 8.0, "ext-st");
+        WorkItem bug = WorkItemFixture.item("bg", WorkItem.ResolvedType.BUG, WorkItem.ResolvedStatus.TODO);
+        List<WorkItem> all = List.of(story, task1, task2, bug);
+        sprintItems("s2", all.toArray(WorkItem[]::new));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(all);
+        AIUsage allocated = usage("u1", ME, "2026-10-02", "a1", "6.00", "claude");
+        AiUsageAllocation a1 = new AiUsageAllocation("a1", ORG, ME, LocalDate.parse("2026-10-02"), List.of("u1"),
+                List.of(new AllocationSplit("st", "Story", BigDecimal.ONE)),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
+                eq(ORG), anyCollection(), eq(S2_START), eq(S2_END))).thenReturn(List.of(a1));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(allocated));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.kpis().complexityPlanned()).isEqualTo(3.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
+        // the Tasks' hours only: the Story's own 20 is never summed (mutation: including it)
+        assertThat(out.kpis().effortLogged()).isEqualTo(12.0);
+        assertThat(out.kpis().itemsWithComplexity()).isEqualTo(1);
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.kpis().aiCostPerHour()).isEqualByComparingTo("0.5");
+        assertThat(out.history().get(1).complexityDelivered()).isEqualTo(3.0);
+        assertThat(out.history().get(1).aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(member(out, ME).complexityDelivered()).isEqualTo(3.0);
+        assertThat(member(out, OTHER).complexityDelivered()).isNull();
+        // old fields keep their values (D6)
+        assertThat(out.kpis().spDelivered()).isNotNull();
+    }
+
+    @Test
+    void should_leaveRatiosNull_notDivideByZero_when_noComplexityNorEffortWasDelivered() {
+        WorkItem story = todo("st", 5.0);
+        sprintItems("s2", story);
+        when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of(story));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(0.0);
+        assertThat(out.kpis().effortLogged()).isNull();
+        assertThat(out.kpis().aiCostPerPoint()).isNull();
+        assertThat(out.kpis().aiCostPerHour()).isNull();
+    }
+
     @Test
     void should_returnNulls_notZeros_when_sprintHasNoItems() {
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
@@ -185,6 +236,26 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.agingItems().get(0).daysInProgress()).isEqualTo(5.0);
         assertThat(out.agingItems().get(0).complexity()).isEqualTo(5.0);
         assertThat(out.agingItems().get(1).complexity()).isNull();
+    }
+
+    @Test
+    void should_ageTheStoryWithRolledUpHours_notItsTasks_andKeepAnOrphanTask() {
+        WorkItem story = inProgress("st", "2026-10-03T12:00:00Z");
+        story.setEffort(null);
+        story.setComplexity(3.0);
+        WorkItem t1 = WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.IN_PROGRESS, 4.0, "ext-st");
+        t1.setStartedAt(Instant.parse("2026-10-04T12:00:00Z"));
+        WorkItem t2 = WorkItemFixture.item("t2", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.IN_PROGRESS, 8.0, "ext-st");
+        t2.setStartedAt(Instant.parse("2026-10-04T12:00:00Z"));
+        WorkItem orphan = WorkItemFixture.item("or", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.IN_PROGRESS, 2.0, null);
+        orphan.setStartedAt(Instant.parse("2026-10-05T12:00:00Z"));
+        sprintItems("s2", story, t1, t2, orphan);
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.agingItems()).extracting(ItemView::id).containsExactly("st", "or");
+        assertThat(out.agingItems().get(0).complexity()).isEqualTo(3.0);
+        assertThat(out.agingItems().get(0).effortRolledUp()).isEqualTo(12.0);
     }
 
     @Test
@@ -376,12 +447,15 @@ class GetTeamDashboardV2UseCaseTest {
     private static WorkItem done(String id, Double effort, Double cycleHours) {
         WorkItem item = WorkItemFixture.item(id, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, effort, null);
         item.setCycleTimeHours(cycleHours);
+        item.setComplexity(effort);
         item.setCompletedAt(Instant.parse("2026-10-02T12:00:00Z"));
         return item;
     }
 
     private static WorkItem todo(String id, Double effort) {
-        return WorkItemFixture.item(id, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, effort, null);
+        WorkItem item = WorkItemFixture.item(id, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, effort, null);
+        item.setComplexity(effort);
+        return item;
     }
 
     private static WorkItem inProgress(String id, String startedAt) {

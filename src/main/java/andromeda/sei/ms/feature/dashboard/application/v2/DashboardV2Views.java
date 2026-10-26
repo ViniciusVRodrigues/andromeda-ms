@@ -15,6 +15,7 @@ import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.shared.domain.metrics.Ratios;
@@ -81,7 +82,8 @@ public final class DashboardV2Views {
     }
 
     public static ItemView itemView(WorkItem item, Map<String, PersonInfo> people, BigDecimal aiCostUsd,
-                                    VcsPullRequest linkedPr, Map<String, String> repositoryNames, Instant now) {
+                                    VcsPullRequest linkedPr, Map<String, String> repositoryNames, Instant now,
+                                    EffortBearingLevelResolver.EffortScope scope) {
         return new ItemView(item.getId(), item.getExternalId(), item.getTitle(),
                 enumName(item.getResolvedType()), enumName(item.getResolvedStatus()), item.getRawStatus(),
                 item.getPriority(), item.getEffort(), assignee(item, people), item.getStartedAt(),
@@ -90,7 +92,8 @@ public final class DashboardV2Views {
                 linkedPr == null ? null : new ItemPullRequest(linkedPr.getNumber(),
                         repositoryNames.get(linkedPr.getRepositoryId()), enumName(linkedPr.getStatus()),
                         StalePullRequestPolicy.isStale(linkedPr, now)),
-                item.getComplexity());
+                item.getComplexity(), scope == null ? null : scope.taskEffortRolledUp(item),
+                item.getTokensPerPoint(), item.getTokensPerHour());
     }
 
     /** Days since the item started, only while it is in progress. */

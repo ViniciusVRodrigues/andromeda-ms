@@ -120,7 +120,9 @@ public class GetTeamFlowV2UseCase {
         Context ctx = context(orgId, projectId, selection, now);
         EffortSummary current = effortResolver.summarize(ctx.sprintItems(selection.selected()));
         return new TeamFlowV2Output(DashboardV2Views.sprintMeta(ctx.sprint(), ctx.window(), ctx.today()), null,
-                List.of(), cfd(ctx), stateTimes(ctx, selection, current), rework(ctx), scope(ctx, current),
+                List.of(), cfd(ctx), stateTimes(ctx, selection, current), rework(ctx, effortResolver.scope(java.util.stream.Stream.concat(
+                ctx.sprintItems(selection.selected()).stream(), ctx.doneInWindow().stream()).distinct().toList())),
+                scope(ctx, current),
                 reviewQueue(ctx), now);
     }
 
@@ -229,7 +231,7 @@ public class GetTeamFlowV2UseCase {
         return item.getStartedAt().isBefore(entry) ? null : Ratios.hours(entry, item.getStartedAt());
     }
 
-    private static Rework rework(Context ctx) {
+    private static Rework rework(Context ctx, EffortBearingLevelResolver.EffortScope effortScope) {
         Map<String, Integer> reopens = WorkItemReopens.byWorkItem(ctx.doneInWindow().stream()
                 .flatMap(wi -> ctx.transitionsOf(wi).stream()).toList());
         Map<String, VcsPullRequest> prByItem = DashboardV2Views.latestPullRequestByWorkItem(ctx.pullRequests());
@@ -241,19 +243,33 @@ public class GetTeamFlowV2UseCase {
         /* a lista para a tela é limitada; a taxa usa o total */
         List<ItemView> reopened = reopenedItems.stream().limit(REOPENED_LIST_LIMIT)
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), null, prByItem.get(wi.getExternalId()),
-                        repoNames, ctx.now()))
+                        repoNames, ctx.now(), effortScope))
                 .toList();
         int done = ctx.doneInWindow().size();
         return new Rework(reopened, done, done == 0 ? null : Ratios.percent(reopenedItems.size(), done));
     }
 
-    /** Effort of the units not done yet, for the current sprint; {@code null} when nothing carries effort. */
+    /**
+     * Effort ({@code atRiskSp}) and complexity ({@code points}) of the units not done yet, for the current sprint;
+     * each {@code null} when nothing carries it.
+     */
     private static Scope scope(Context ctx, EffortSummary current) {
-        if (!DashboardV2Views.isCurrent(ctx.sprint()) || current.planned() == null) return new Scope(null);
-        List<WorkItem> notDone = current.units().stream()
-                .filter(wi -> wi.getResolvedStatus() != ResolvedStatus.DONE).toList();
-        Double effort = current.scope().totalEffort(notDone);
-        return new Scope(effort == null ? Double.valueOf(0d) : effort);
+        if (!DashboardV2Views.isCurrent(ctx.sprint())) return new Scope(null, null);
+        Double effort = null;
+        if (current.planned() != null) {
+            List<WorkItem> notDone = current.units().stream()
+                    .filter(wi -> wi.getResolvedStatus() != ResolvedStatus.DONE).toList();
+            Double sum = current.scope().totalEffort(notDone);
+            effort = sum == null ? Double.valueOf(0d) : sum;
+        }
+        Double points = null;
+        if (current.plannedComplexity() != null) {
+            List<WorkItem> notDoneStories = current.complexityUnits().stream()
+                    .filter(wi -> wi.getResolvedStatus() != ResolvedStatus.DONE).toList();
+            Double sum = current.scope().totalComplexity(notDoneStories);
+            points = sum == null ? Double.valueOf(0d) : sum;
+        }
+        return new Scope(effort, points);
     }
 
     private static ReviewQueue reviewQueue(Context ctx) {

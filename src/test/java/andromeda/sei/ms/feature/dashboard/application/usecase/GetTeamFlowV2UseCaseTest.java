@@ -314,6 +314,22 @@ class GetTeamFlowV2UseCaseTest {
     }
 
     @Test
+    void should_sumThePointsNotDoneYet_inTheCurrentSprint_andKeepEffortAtRisk() {
+        WorkItem todo = item("t", ResolvedStatus.TODO, 2.0, "2026-10-01T00:00:00Z");
+        todo.setComplexity(3.0);
+        WorkItem doing = item("i", ResolvedStatus.IN_PROGRESS, 5.0, "2026-10-01T00:00:00Z");
+        doing.setComplexity(5.0);
+        WorkItem finished = doneItem("d", "2026-10-01T00:00:00Z", "2026-10-01T10:00:00Z", "2026-10-02T10:00:00Z", 24.0);
+        finished.setComplexity(8.0);
+        sprintItems("s2", finished, todo, doing);
+
+        var scope = useCase.execute(ORG, PROJECT, "s2").scope();
+
+        assertThat(scope.points()).isEqualTo(8.0);
+        assertThat(scope.atRiskSp()).isEqualTo(7.0);
+    }
+
+    @Test
     void should_returnEmptyListsAndNulls_when_sprintHasNoItems() {
         TeamFlowV2Output out = useCase.execute(ORG, PROJECT, "s2");
 

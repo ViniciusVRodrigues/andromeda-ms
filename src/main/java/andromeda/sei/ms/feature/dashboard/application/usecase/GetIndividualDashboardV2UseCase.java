@@ -31,6 +31,7 @@ import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirector
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory.PersonInfo;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver.SprintSelection;
+import andromeda.sei.ms.feature.dashboard.application.v2.ComplexityEffortFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectVcsActivity;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
@@ -161,6 +162,7 @@ public class GetIndividualDashboardV2UseCase {
         boolean hasUsage = dev.aiSprintSummary() != null;
         PrStats prs = prStats(ctx, ctx.window());
         List<WorkItem> units = activeUnits(dev);
+        ComplexityEffortFigures f = dev.figures();
         return new Kpis(dev.totalSpInSprint(),
                 DashboardV2Views.deliveredOf(dev.totalSpInSprint(), dev.storyPointsDelivered()),
                 (int) units.stream().filter(wi -> wi.getResolvedStatus() == WorkItem.ResolvedStatus.DONE).count(),
@@ -169,7 +171,9 @@ public class GetIndividualDashboardV2UseCase {
                 dev.avgTokensPerSp(),
                 DashboardV2Views.isCurrent(ctx.sprint())
                         ? (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count()
-                        : null);
+                        : null,
+                f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
+                f.avgTokensPerHour(), f.unitsWithoutComplexity());
     }
 
     /** Delivery of {@code sprint} for the person, with the rules the developer dashboard uses. */
@@ -178,6 +182,7 @@ public class GetIndividualDashboardV2UseCase {
         List<WorkItem> items = workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(
                 ctx.orgId(), ctx.userId(), sprint.getId(), ctx.projectId()).stream().filter(WorkItem::isActive).toList();
         EffortBearingLevelResolver.EffortSummary summary = effortResolver.summarize(items);
+        ComplexityEffortFigures f = ComplexityEffortFigures.of(summary);
         List<AIUsage> usage = aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(
                 ctx.orgId(), ctx.userId(), window.startDay(), window.endDay());
         PrStats prs = prStats(ctx, window);
@@ -188,7 +193,9 @@ public class GetIndividualDashboardV2UseCase {
                 prs.review(), usage.isEmpty() ? null : DashboardV2Views.sumOrNull(usage.stream()
                         .map(AIUsage::getCostUsd).toList()),
                 usage.isEmpty() ? null : usage.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
-                DashboardV2Views.averageOrNull(summary.units().stream().map(WorkItem::getTokensPerSp).toList()));
+                DashboardV2Views.averageOrNull(summary.units().stream().map(WorkItem::getTokensPerSp).toList()),
+                f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
+                f.avgTokensPerHour(), f.unitsWithoutComplexity());
     }
 
     /** Merged in the window, and the review rule over the person's pull requests created in it. */
@@ -204,7 +211,7 @@ public class GetIndividualDashboardV2UseCase {
             return new HistoryPoint(sprint.getId(), DashboardV2Views.historyLabel(sprint), sprint.getName(),
                     sprint.getId().equals(selection.selected().getId()), DashboardV2Views.isCurrent(sprint),
                     stats.spPlanned(), stats.spDelivered(), stats.cycleTimeHours(), stats.aiCostUsd(),
-                    stats.aiTokens());
+                    stats.aiTokens(), stats.complexityPlanned(), stats.complexityDelivered(), stats.effortLogged());
         }).toList();
     }
 
@@ -221,26 +228,27 @@ public class GetIndividualDashboardV2UseCase {
         LocalDate last = dev.burndownSeries().getLast().date();
         double total = noEffort ? 0d : dev.burndownSeries().getFirst().idealSp();
         for (LocalDate day : DashboardV2Views.days(last.plusDays(1), ctx.window().endDay())) {
-            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null,
-                    BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day)));
+            double ideal = BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day);
+            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null, ideal, null, ideal));
         }
         return days;
     }
 
     private static BurndownDay burndownDay(BurndownPoint point, boolean noEffort) {
         return new BurndownDay(point.date().toString(), DashboardV2Views.label(point.date()),
-                noEffort ? null : point.remainingSp(), point.idealSp());
+                noEffort ? null : point.remainingSp(), point.idealSp(),
+                noEffort ? null : point.remainingPoints(), point.idealPoints());
     }
 
     /** In progress first, then to do, then done; larger effort first. */
     private List<ItemView> items(DeveloperDashboardOutput dev, Context ctx) {
         Map<String, VcsPullRequest> prByItem = DashboardV2Views.latestPullRequestByWorkItem(ctx.vcs().pullRequests());
         Map<String, String> repoNames = ctx.vcs().repositoryNames();
-        return activeUnits(dev).stream()
+        return effortResolver.listedUnits(activeUnits(dev)).stream()
                 .sorted(Comparator.comparing((WorkItem wi) -> ITEM_ORDER.getOrDefault(wi.getResolvedStatus(), ITEM_ORDER.size()))
                         .thenComparing(WorkItem::getEffort, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), dev.aiCostByWorkItemId().get(wi.getId()),
-                        prByItem.get(wi.getExternalId()), repoNames, ctx.now()))
+                        prByItem.get(wi.getExternalId()), repoNames, ctx.now(), dev.effortScope()))
                 .toList();
     }
 

@@ -17,8 +17,18 @@ public final class DashboardV2Parts {
     public record SprintMeta(String id, String name, String teamName, String startDate, String endDate,
                              String timeFrame, int dayIndex, int dayCount) {}
 
-    /** {@code remaining} is {@code null} for days still to come and when no unit carries effort. */
-    public record BurndownDay(String date, String label, Double remaining, Double ideal) {}
+    /**
+     * {@code remaining} is {@code null} for days still to come and when no unit carries complexity.
+     * {@code remainingPoints}/{@code idealPoints} repeat {@code remaining}/{@code ideal} under the names of the
+     * complexity contract (complexity-effort D6); the burndown is in points of complexity.
+     */
+    public record BurndownDay(String date, String label, Double remaining, Double ideal,
+                              Double remainingPoints, Double idealPoints) {
+
+        public BurndownDay(String date, String label, Double remaining, Double ideal) {
+            this(date, label, remaining, ideal, remaining, ideal);
+        }
+    }
 
     public record Assignee(String id, String name) {}
 
@@ -27,12 +37,14 @@ public final class DashboardV2Parts {
     /**
      * A work item of the sprint. {@code effort} is the item's own field; {@code daysInProgress} only
      * for items in progress with a start date; {@code aiCostUsd} is the validated allocation cost.
+     * {@code complexity} is the item's own field; {@code effortRolledUp} the hours of its Task children (null
+     * without Tasks); {@code tokensPerPoint}/{@code tokensPerHour} the AI ratios (complexity-effort D2/D3).
      */
     public record ItemView(String id, String externalId, String title, String type, String status,
                            String rawStatus, String priority, Double effort, Assignee assignee,
                            Instant startedAt, Instant completedAt, Double cycleTimeHours, Double leadTimeHours,
                            Double daysInProgress, BigDecimal aiCostUsd, Double tokensPerSp, ItemPullRequest pr,
-                           Double complexity) {}
+                           Double complexity, Double effortRolledUp, Double tokensPerPoint, Double tokensPerHour) {}
 
     public record WorkItemRef(String externalId, String title) {}
 

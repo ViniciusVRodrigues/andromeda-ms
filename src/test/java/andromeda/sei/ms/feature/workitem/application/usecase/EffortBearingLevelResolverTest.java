@@ -258,6 +258,19 @@ class EffortBearingLevelResolverTest {
     }
 
     @Test
+    void taskEffortRolledUp_shouldSumOnlyTaskDescendants_andBeNullWithoutThem() {
+        WorkItem story = story("1", null, 100.0, 3.0);
+        WorkItem t1 = task("2", "1", 4.0);
+        WorkItem t2 = task("3", "1", 8.0);
+        WorkItem lone = story("4", null, 9.0, 2.0);
+
+        var scope = resolver.scope(List.of(story, t1, t2, lone));
+
+        assertThat(scope.taskEffortRolledUp(story)).isEqualTo(12.0);
+        assertThat(scope.taskEffortRolledUp(lone)).isNull();
+    }
+
+    @Test
     void taskEffort_shouldBeNull_when_nothingAtAll() {
         WorkItem story = story("1", null, null, 3.0);
         WorkItem emptyTask = task("2", "1", null);

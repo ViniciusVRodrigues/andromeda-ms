@@ -36,6 +36,7 @@ import andromeda.sei.ms.feature.dashboard.application.v2.DayRange;
 import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets;
 import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets.Bucket;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems;
+import andromeda.sei.ms.feature.dashboard.application.v2.AiRatios;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems.SprintFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectVcsActivity;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
@@ -104,7 +105,6 @@ import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.
 @Service
 public class GetProjectOverviewV2UseCase {
 
-    private static final int MONEY_SCALE = 6;
     private static final int SUBSCRIPTION_SCALE = 2;
     private static final BigDecimal DAYS_PER_MONTH = BigDecimal.valueOf(30);
     private static final Set<WorkItem.ResolvedType> THROUGHPUT_TYPES =
@@ -275,16 +275,19 @@ public class GetProjectOverviewV2UseCase {
         List<WorkItem> done = doneOfThroughputTypes(ctx, range);
         List<WorkItem> units = ctx.items().doneUnitsIn(range);
         Double sp = ctx.items().effort().scope().totalEffort(units);
+        Double points = ctx.items().complexityDeliveredIn(range);
+        Double hours = ctx.items().effortLoggedIn(range);
         BigDecimal cost = ctx.allocated().total(range);
         List<VcsPullRequest> merged = filter(ctx.vcs().pullRequests(), pr -> range.contains(pr.getMergedAt()));
         return new PeriodStats(done.size(), delivery.deploymentsPerWeek(), sp, predictability(ctx, range),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
-                delivery.changeFailRatePercent(), bugShare(done), cost, perSp(cost, sp), merged.size(),
+                delivery.changeFailRatePercent(), bugShare(done), cost, AiRatios.per(cost, sp), merged.size(),
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()),
                 timeToFirstReview(ctx, range), current ? staleCount(ctx) : null,
                 (int) (current ? ctx.currentCommits() : ctx.previousCommits()).values().stream()
-                        .mapToLong(Long::longValue).sum());
+                        .mapToLong(Long::longValue).sum(),
+                points, hours, AiRatios.per(cost, points), AiRatios.per(cost, hours));
     }
 
     private static Double predictability(Context ctx, DayRange range) {
@@ -358,8 +361,9 @@ public class GetProjectOverviewV2UseCase {
             DayRange window = new DayRange(f.window().startDay(), f.window().endDay());
             BigDecimal cost = ctx.allocated().total(window);
             return new SprintRow(f.sprint().getId(), DashboardV2Views.historyLabel(f.sprint()), f.sprint().getName(),
-                    f.planned(), f.delivered(), f.predictabilityPct(), cost, perSp(cost, f.delivered()),
-                    ctx.allocated().tokens(window));
+                    f.planned(), f.delivered(), f.predictabilityPct(), cost, AiRatios.per(cost, f.delivered()),
+                    ctx.allocated().tokens(window), f.complexityPlanned(), f.complexityDelivered(),
+                    AiRatios.per(cost, f.complexityDelivered()), AiRatios.per(cost, f.summary().effortLogged()));
         }).toList();
     }
 
@@ -422,7 +426,12 @@ public class GetProjectOverviewV2UseCase {
                 .filter(Objects::nonNull).distinct().count(), ctx.project().getMemberIds().size());
         Double tokensPerSp = DashboardV2Views.averageOrNull(ctx.items().sprintsEndingIn(current).stream()
                 .flatMap(f -> f.summary().units().stream()).map(WorkItem::getTokensPerSp).toList());
-        return new Ai(models, costByBucket, adoption, subscription(ctx), tokensPerSp);
+        List<WorkItem> pool = ctx.items().sprintsEndingIn(current).stream()
+                .flatMap(f -> (f.summary().complexityUnits().isEmpty() ? f.summary().units()
+                        : f.summary().complexityUnits()).stream()).toList();
+        return new Ai(models, costByBucket, adoption, subscription(ctx), tokensPerSp,
+                DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerPoint).toList()),
+                DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerHour).toList()));
     }
 
     private static CostBucket costBucket(AllocatedCost allocated, List<String> models, Bucket bucket) {
@@ -455,8 +464,13 @@ public class GetProjectOverviewV2UseCase {
                 .filter(u -> f.summary().scope().effectiveEffort(u) != null).count()).sum();
         List<VcsPullRequest> created = filter(ctx.vcs().pullRequests(), pr -> current.contains(pr.getCreatedAt()));
         long linked = created.stream().filter(pr -> pr.getLinkedWorkItemExternalId() != null).count();
+        int withComplexity = sprints.stream().mapToInt(f -> f.summary().complexityUnits().size()
+                - f.summary().unitsWithoutComplexity()).sum();
+        int tasksWithEffort = (int) sprints.stream().flatMap(f -> f.items().stream())
+                .filter(i -> (i.getResolvedType() == WorkItem.ResolvedType.TASK
+                        || i.getResolvedType() == WorkItem.ResolvedType.SUB_TASK) && i.getEffort() != null).count();
         return new DataQuality(Ratios.percent(estimated, units), Ratios.percent(linked, created.size()),
-                aiDaysAllocated(ctx, current));
+                aiDaysAllocated(ctx, current), withComplexity, tasksWithEffort);
     }
 
     private Double aiDaysAllocated(Context ctx, DayRange current) {
@@ -525,11 +539,6 @@ public class GetProjectOverviewV2UseCase {
             }
             return total;
         }
-    }
-
-    private static BigDecimal perSp(BigDecimal cost, Double delivered) {
-        if (cost == null || delivered == null || delivered <= 0) return null;
-        return cost.divide(BigDecimal.valueOf(delivered), MONEY_SCALE, RoundingMode.HALF_UP);
     }
 
     private static <T> List<T> filter(Collection<T> values, Predicate<T> predicate) {

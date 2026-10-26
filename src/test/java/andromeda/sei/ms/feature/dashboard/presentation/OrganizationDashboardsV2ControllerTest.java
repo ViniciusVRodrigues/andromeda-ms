@@ -128,9 +128,9 @@ class OrganizationDashboardsV2ControllerTest {
     }
 
     private static OrganizationDashboardV2Output organization() {
-        OrgStats kpis = new OrgStats(1, 3, 4, 8.0, EMPTY, EMPTY, null, 0, 0, EMPTY, BigDecimal.ZERO, 0, null, 0);
+        OrgStats kpis = new OrgStats(1, 3, 4, 8.0, EMPTY, EMPTY, null, 0, 0, EMPTY, BigDecimal.ZERO, 0, null, 0, 4.0, BigDecimal.ONE, BigDecimal.TEN);
         PortfolioRow row = new PortfolioRow("p-a", "Andromeda", "Core", 3, null, null, 60.0, null, 4, 8.0, EMPTY,
-                null, EMPTY, 0, BigDecimal.ZERO, null, List.of(2), new Health("attention", List.of("x")));
+                null, EMPTY, 0, BigDecimal.ZERO, null, List.of(2), new Health("attention", List.of("x")), 4.0, 5.0, BigDecimal.ONE, BigDecimal.TEN);
         return new OrganizationDashboardV2Output(
                 new Period(90, "2026-07-14", "2026-10-11", "2026-04-15", "2026-07-13", "semana"), kpis, kpis,
                 List.of(row), new OrganizationDashboardV2Output.Delivery(

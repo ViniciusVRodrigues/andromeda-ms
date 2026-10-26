@@ -50,15 +50,20 @@ public record OrganizationDashboardV2Output(
      * (the single velocity definition); {@code cfrPct}: the delivery-metrics proxy over the union of
      * the projects' merges; {@code prsMerged}/{@code commits}/{@code timeToFirstReviewHours}: each
      * pull request and commit once even when its repository is bound to two projects.
+     * {@code complexityDelivered}: points of the story-tier units completed, summed over the projects;
+     * {@code aiCostPerPoint}/{@code aiCostPerHour}: allocated cost over that and over the Task hours behind it
+     * (complexity-effort D1-D3).
      * {@code projects} and {@code people} only in {@code kpis} ({@code null} in {@code previous}).
      */
     public record OrgStats(Integer projects, Integer people, int itemsDone, Double spDelivered,
                            DurationStat leadTimeHours, DurationStat cycleTimeHours, Double cfrPct, int prsMerged,
                            int commits, DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, long aiTokens,
-                           BigDecimal aiCostPerSp, int activeAiUsers) {}
+                           BigDecimal aiCostPerSp, int activeAiUsers, Double complexityDelivered,
+                           BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /**
-     * One visible project. {@code currentSprint}/{@code currentProgressGapPct} {@code null} without a
+     * One visible project. {@code complexityDelivered}: points completed in the period;
+     * {@code complexityPlanned}: points planned in the sprints that ended in it. {@code currentSprint}/{@code currentProgressGapPct} {@code null} without a
      * current sprint; {@code lastPredictabilityPct}: the latest past sprint; the other figures are of
      * the period. {@code stalePrs} is the current state. {@code aiCostUsd} is allocated to the project.
      */
@@ -67,11 +72,13 @@ public record OrganizationDashboardV2Output(
                                Double lastPredictabilityPct, Double predictabilityPct, int throughput,
                                Double spDelivered, DurationStat leadTimeHours, Double cfrPct,
                                DurationStat prCycleTimeHours, int stalePrs, BigDecimal aiCostUsd,
-                               BigDecimal aiCostPerSp, List<Integer> throughputTrend, Health health) {}
+                               BigDecimal aiCostPerSp, List<Integer> throughputTrend, Health health,
+                               Double complexityDelivered, Double complexityPlanned,
+                               BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /** {@code progressPct} = done ÷ planned × 100 ({@code null} without planned effort); {@code elapsedPct} in working days. */
     public record CurrentSprint(String id, String name, Double spDone, Double spPlanned, Double progressPct,
-                                Double elapsedPct) {}
+                                Double elapsedPct, Double pointsDone, Double pointsPlanned) {}
 
     /** {@code level} {@code ok}, {@code attention} (1 reason) or {@code risk} (2+); reasons in pt-BR. */
     public record Health(String level, List<String> reasons) {}

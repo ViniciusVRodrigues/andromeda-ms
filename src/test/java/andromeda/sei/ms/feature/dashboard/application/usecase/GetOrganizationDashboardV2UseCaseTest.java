@@ -322,6 +322,36 @@ class GetOrganizationDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_reportComplexityDeliveredAndRatios_perProject_withoutDividingByZero() {
+        WorkItem story = done("a1", A, WorkItem.ResolvedType.STORY, 20.0, "2026-08-04T10:00:00Z");
+        story.setComplexity(3.0);
+        WorkItem t1 = done("t1", A, WorkItem.ResolvedType.TASK, 4.0, "2026-08-04T10:00:00Z");
+        t1.setParentExternalId(story.getExternalId());
+        WorkItem t2 = done("t2", A, WorkItem.ResolvedType.TASK, 8.0, "2026-08-04T10:00:00Z");
+        t2.setParentExternalId(story.getExternalId());
+        itemsByProject.get(A).addAll(List.of(story, t1, t2));
+        WorkItem noPoints = done("b1", B, WorkItem.ResolvedType.STORY, null, "2026-08-04T10:00:00Z");
+        noPoints.setComplexity(null);
+        itemsByProject.get(B).add(noPoints);
+        usage.add(usage("au1", "u-a", "2026-08-04", "al1", "6.00", "claude"));
+        allocations(allocation("al1", "u-a", "2026-08-04", "au1", split("a1", "1.00")));
+
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A, B), 90);
+
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.kpis().aiCostPerHour()).isEqualByComparingTo("0.5");
+        PortfolioRow rowA = out.portfolio().stream().filter(r -> r.projectId().equals(A)).findFirst().orElseThrow();
+        assertThat(rowA.complexityDelivered()).isEqualTo(3.0);
+        assertThat(rowA.aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(rowA.aiCostPerHour()).isEqualByComparingTo("0.5");
+        PortfolioRow rowB = out.portfolio().stream().filter(r -> r.projectId().equals(B)).findFirst().orElseThrow();
+        assertThat(rowB.complexityDelivered()).isNull();
+        assertThat(rowB.aiCostPerPoint()).isNull();
+        assertThat(rowB.aiCostPerHour()).isNull();
+    }
+
+    @Test
     void should_splitTheAllocatedCostByProject_andReportTheUnclaimedCostApart_toACallerWhoSeesEverything() {
         itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 4.0, "2026-08-04T10:00:00Z"));
         itemsByProject.get(B).add(done("b1", B, WorkItem.ResolvedType.STORY, 1.0, "2026-08-04T10:00:00Z"));
@@ -492,6 +522,7 @@ class GetOrganizationDashboardV2UseCaseTest {
                                  Double effort) {
         WorkItem item = WorkItemFixture.item(id, type, status, effort, null);
         item.setProjectId(projectId);
+        if (type == WorkItem.ResolvedType.STORY) item.setComplexity(effort);
         return item;
     }
 

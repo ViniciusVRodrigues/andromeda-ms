@@ -157,9 +157,9 @@ class ProjectDashboardsV2ControllerTest {
 
     private static ProjectOverviewV2Output overview() {
         var stats = new ProjectOverviewV2Output.PeriodStats(3, null, null, null, EMPTY, EMPTY, null, null,
-                BigDecimal.ZERO, null, 0, EMPTY, EMPTY, 0, 0);
+                BigDecimal.ZERO, null, 0, EMPTY, EMPTY, 0, 0, 4.0, 12.0, BigDecimal.ONE, BigDecimal.TEN);
         var previous = new ProjectOverviewV2Output.PeriodStats(0, null, null, null, EMPTY, EMPTY, null, null,
-                BigDecimal.ZERO, null, 0, EMPTY, EMPTY, null, 0);
+                BigDecimal.ZERO, null, 0, EMPTY, EMPTY, null, 0, null, null, null, null);
         return new ProjectOverviewV2Output(
                 new ProjectOverviewV2Output.ProjectInfo("p1", "Orion", null, 0, List.of()),
                 new ProjectOverviewV2Output.Period(90, "2026-07-14", "2026-10-11", "2026-04-15", "2026-07-13", "semana"),
@@ -170,25 +170,25 @@ class ProjectDashboardsV2ControllerTest {
                 List.of(new ProjectOverviewV2Output.DoraRow("2026-07-20", "20/07", 31.5, 4.0, null, "VCS_PROXY", false)),
                 List.of(new ThroughputRow("2026-07-20", "20/07", 2, 1, 0)),
                 List.of(new ProjectOverviewV2Output.SprintRow("s1", "S1", "Sprint 1", 10.0, 8.0, 80.0,
-                        BigDecimal.ONE, null, 15000L)),
+                        BigDecimal.ONE, null, 15000L, 5.0, 4.0, BigDecimal.ONE, BigDecimal.TEN)),
                 List.of(), List.of(), List.of(),
                 List.of(),
                 new Ai(List.of("claude"), List.of(new CostBucket("2026-07-20", "20/07", Map.of("claude", new BigDecimal("1.5")))),
                         new ProjectOverviewV2Output.Adoption(0, 0),
-                        new ProjectOverviewV2Output.Subscription(BigDecimal.ZERO, null, null), null),
+                        new ProjectOverviewV2Output.Subscription(BigDecimal.ZERO, null, null), null, 100.0, 8.0),
                 new ProjectOverviewV2Output.People(0, 0, 0, 0),
-                new ProjectOverviewV2Output.DataQuality(null, null, null), AS_OF);
+                new ProjectOverviewV2Output.DataQuality(null, null, null, 0, 0), AS_OF);
     }
 
     private static ProjectRoadmapV2Output roadmap() {
-        var progress = new ProjectRoadmapV2Output.Progress(16.0, 8.0, 50.0, 3, 2, 0, 8.0, 0.625, 12.8, AS_OF);
+        var progress = new ProjectRoadmapV2Output.Progress(16.0, 8.0, 50.0, 3, 2, 0, 8.0, 0.625, 12.8, AS_OF, 6.0, 4.0, 0.5, 3.0);
         return new ProjectRoadmapV2Output(new ProjectRoadmapV2Output.Period(180, "2026-04-15", "2026-10-11"),
-                new ProjectRoadmapV2Output.Config(null, new ProjectRoadmapV2Output.EffortLevel("AUTO", "STORY")),
+                new ProjectRoadmapV2Output.Config(null, new ProjectRoadmapV2Output.EffortLevel("AUTO", "STORY"), null),
                 List.of(new ProjectRoadmapV2Output.EpicRow("E-1", "Épico", "IN_PROGRESS", List.of(), 1, 0, progress)),
                 List.of(),
-                new ProjectRoadmapV2Output.Backlog(0, null, null, null, List.of(), List.of(), List.of(), List.of()),
+                new ProjectRoadmapV2Output.Backlog(0, null, null, null, List.of(), List.of(), List.of(), List.of(), 6.0),
                 List.of(), new ProjectRoadmapV2Output.Calibration(
-                        List.of(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, EMPTY, new BigDecimal("2.5"), 15000L, 1)),
+                        List.of(new ProjectRoadmapV2Output.EffortRow("3", 3.0, 2, EMPTY, new BigDecimal("2.5"), 15000L, 1)),
                         List.of(new ProjectRoadmapV2Output.ComplexityRow("2", 2.0, 2, EMPTY, 3.0, null, null, 0)),
                         List.of(), null), AS_OF);
     }

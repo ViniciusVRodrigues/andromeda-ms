@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.BurndownCalculator;
+import andromeda.sei.ms.feature.dashboard.application.v2.ComplexityEffortFigures;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
@@ -192,7 +193,9 @@ public class GetDeveloperDashboardUseCase {
                 sprintHistory,
                 context,
                 Percentiles.of(doneItems.stream().map(WorkItem::getCycleTimeHours).toList()),
-                Percentiles.of(doneItems.stream().map(WorkItem::getLeadTimeHours).toList())
+                Percentiles.of(doneItems.stream().map(WorkItem::getLeadTimeHours).toList()),
+                ComplexityEffortFigures.of(effortBearingLevelResolver.summarize(currentSprintItems)),
+                effortScope
         );
     }
 

@@ -61,7 +61,9 @@ public record TeamDashboardV2Output(
     public record SprintStats(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
                               int itemsWithPoints, int unassigned, DurationStat cycleTimeHours,
                               DurationStat leadTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
-                              DurationStat timeToFirstReviewHours, int prsMerged) {}
+                              DurationStat timeToFirstReviewHours, int prsMerged,
+                              Double complexityPlanned, Double complexityDelivered, Double effortLogged,
+                              int itemsWithComplexity, BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /**
      * {@link SprintStats} of the selected sprint; {@code openPrs}/{@code stalePrs} are the current
@@ -70,7 +72,9 @@ public record TeamDashboardV2Output(
     public record Kpis(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal, int itemsWithPoints,
                        int unassigned, DurationStat cycleTimeHours, DurationStat leadTimeHours,
                        BigDecimal aiCostUsd, BigDecimal aiCostPerSp, DurationStat timeToFirstReviewHours,
-                       int prsMerged, Integer openPrs, Integer stalePrs, BigDecimal unallocatedAiCostUsd) {}
+                       int prsMerged, Integer openPrs, Integer stalePrs, BigDecimal unallocatedAiCostUsd,
+                       Double complexityPlanned, Double complexityDelivered, Double effortLogged,
+                       int itemsWithComplexity, BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     public record StatusByType(String type, int todo, int inProgress, int done) {}
 
@@ -82,7 +86,9 @@ public record TeamDashboardV2Output(
     public record Member(String userId, String name, @JsonProperty("isMe") boolean isMe, boolean githubLinked,
                          boolean vcsLinked, int itemsDone, int itemsTotal, Double spPlanned, Double spDelivered,
                          int wip, DurationStat cycleTimeHours, Integer prsOpened, Integer prsMerged,
-                         Integer reviewsGiven, BigDecimal aiCostUsd, Double avgTokensPerSp) {}
+                         Integer reviewsGiven, BigDecimal aiCostUsd, Double avgTokensPerSp,
+                         Double complexityPlanned, Double complexityDelivered, Double effortLogged,
+                         Double avgTokensPerPoint, Double avgTokensPerHour) {}
 
     /**
      * Health of one bound repository over the sprint window ({@code ListProjectRepositoriesUseCase}
@@ -97,11 +103,12 @@ public record TeamDashboardV2Output(
         public static final Ai EMPTY = new Ai(List.of(), List.of(), new AllocationSummary(0, 0, 0), 0, null);
     }
 
-    /** {@code predictabilityPct} = delivered / planned × 100, {@code null} without planned effort. */
+    /** {@code predictabilityPct} = delivered / planned complexity × 100 (complexity-effort D1), {@code null} without planned complexity. */
     public record HistoryPoint(String sprintId, String label, String name,
                                @JsonProperty("isSelected") boolean isSelected,
                                @JsonProperty("isCurrent") boolean isCurrent,
                                Double spPlanned, Double spDelivered, Double predictabilityPct,
                                DurationStat cycleTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
-                               Long aiTokens) {}
+                               Long aiTokens, Double complexityPlanned, Double complexityDelivered,
+                               BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 }

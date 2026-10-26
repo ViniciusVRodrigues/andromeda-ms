@@ -43,6 +43,7 @@ import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets;
 import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets.Bucket;
 import andromeda.sei.ms.feature.dashboard.application.v2.PortfolioHealth;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems;
+import andromeda.sei.ms.feature.dashboard.application.v2.AiRatios;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems.SprintFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
 import andromeda.sei.ms.feature.dashboard.application.v2.SyncRunsSummary;
@@ -178,6 +179,10 @@ public class GetOrganizationDashboardV2UseCase {
         Indexed ix = ctx.indexed();
         List<WorkItem> units = ix.unitsIn(range);
         Double sp = spDelivered(ix, range);
+        Double points = ix.projects().values().stream().map(p -> p.items().complexityDeliveredIn(range))
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
+        Double hours = ix.projects().values().stream().map(p -> p.items().effortLoggedIn(range))
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         AiFigures ai = current ? AiFigures.of(usageIn(ctx, range)) : AiFigures.ofTotals(s.ai().previous());
         // the cost allocated (validated) to the visible projects, for every caller (coordinator's decision)
         BigDecimal cost = sum(ix.allocatedIn(current).values());
@@ -188,7 +193,8 @@ public class GetOrganizationDashboardV2UseCase {
                 cfr(ctx, s.vcs().changes(), ix.completed(), range),
                 (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAt())).count(),
                 (int) s.vcs().commitsIn(range), timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
-                ai.tokens(), perSp(cost, sp), ai.activeUsers());
+                ai.tokens(), AiRatios.per(cost, sp), ai.activeUsers(), points, AiRatios.per(cost, points),
+                AiRatios.per(cost, hours));
     }
 
     /** The people's AI cost, tokens and active users of one period. */
@@ -237,6 +243,10 @@ public class GetOrganizationDashboardV2UseCase {
         DayRange range = ctx.period().current();
         List<WorkItem> units = within(view.units(), range);
         Double sp = items.effort().scope().totalEffort(units);
+        Double points = items.complexityDeliveredIn(range);
+        Double hours = items.effortLoggedIn(range);
+        Double plannedPoints = items.sprintsEndingIn(range).stream().map(SprintFigures::complexityPlanned)
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         BigDecimal cost = ctx.indexed().allocatedIn(true).getOrDefault(project.getId(), BigDecimal.ZERO);
         CurrentSprint current = currentSprint(items, ctx.today());
         Double gap = current == null || current.elapsedPct() == null || current.progressPct() == null ? null
@@ -253,8 +263,9 @@ public class GetOrganizationDashboardV2UseCase {
                 count(view.doneThroughput(), range), sp,
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()), cfr,
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()), stale, cost,
-                perSp(cost, sp), bucketCounts(ctx, view.doneThroughput()),
-                PortfolioHealth.of(lastPredictability, stale, cfr, gap));
+                AiRatios.per(cost, sp), bucketCounts(ctx, view.doneThroughput()),
+                PortfolioHealth.of(lastPredictability, stale, cfr, gap), points, plannedPoints,
+                AiRatios.per(cost, points), AiRatios.per(cost, hours));
     }
 
     /** The current sprint (latest start among those covering today); {@code null} without one. */
@@ -268,7 +279,7 @@ public class GetOrganizationDashboardV2UseCase {
                             : f.delivered() / f.planned() * PERCENT;
                     Double elapsed = meta.dayCount() == 0 ? null : (double) meta.dayIndex() / meta.dayCount() * PERCENT;
                     return new CurrentSprint(f.sprint().getId(), f.sprint().getName(), f.delivered(), f.planned(),
-                            progress, elapsed);
+                            progress, elapsed, f.complexityDelivered(), f.complexityPlanned());
                 })
                 .orElse(null);
     }
@@ -596,11 +607,6 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static BigDecimal sum(Collection<BigDecimal> values) {
         return values.stream().filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private static BigDecimal perSp(BigDecimal cost, Double delivered) {
-        if (cost == null || delivered == null || delivered <= 0) return null;
-        return cost.divide(BigDecimal.valueOf(delivered), MONEY_SCALE, RoundingMode.HALF_UP);
     }
 
     private static int count(List<WorkItem> items, DayRange range) {

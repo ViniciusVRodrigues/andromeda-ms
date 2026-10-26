@@ -15,6 +15,7 @@ import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.ItemView;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboardV2Output;
+import andromeda.sei.ms.feature.dashboard.application.v2.ComplexityEffortFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectVcsActivity;
@@ -189,6 +190,44 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(delivered.pr().repo()).isEqualTo("owner/orion");
         assertThat(delivered.pr().stale()).isFalse();
         assertThat(out.kpis().itemsDone()).isEqualTo(1);
+    }
+
+    /** complexity-effort 3.1: the person's figures reach the kpis and the burndown carries points. */
+    @Test
+    void should_exposeComplexityEffortAndAiRatios_inKpis_andPointsInTheBurndown() {
+        figures = new ComplexityEffortFigures(3.0, 3.0, 12.0, 2000.0, 500.0, 0, 1);
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
+
+        assertThat(out.kpis().complexityPlanned()).isEqualTo(3.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
+        assertThat(out.kpis().effortLogged()).isEqualTo(12.0);
+        assertThat(out.kpis().avgTokensPerPoint()).isEqualTo(2000.0);
+        assertThat(out.kpis().avgTokensPerHour()).isEqualTo(500.0);
+        assertThat(out.kpis().unitsWithoutComplexity()).isZero();
+        assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
+        assertThat(out.burndown().get(0).remainingPoints()).isEqualTo(out.burndown().get(0).remaining());
+        assertThat(out.burndown().get(0).idealPoints()).isEqualTo(out.burndown().get(0).ideal());
+    }
+
+    /** complexity-effort D1: the list shows the Story (points + summed Task hours), not its Tasks; orphan Tasks stay. */
+    @Test
+    void should_listTheStoryWithPointsAndRolledUpHours_notItsTasks_andKeepOrphanTasks() {
+        WorkItem story = WorkItemFixture.item("st", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.IN_PROGRESS);
+        story.setComplexity(3.0);
+        story.setStartedAt(Instant.parse("2026-10-06T12:00:00Z"));
+        WorkItem t1 = WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 4.0, "ext-st");
+        WorkItem t2 = WorkItemFixture.item("t2", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 8.0, "ext-st");
+        WorkItem orphan = WorkItemFixture.item("or", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.TODO, 2.0, null);
+        devItems.addAll(List.of(story, t1, t2, orphan));
+        when(developerDashboard.execute(ORG, ME, PROJECT, "s2", null, null, null))
+                .thenAnswer(inv -> devOutput(3.0, 0.0, Map.of()));
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
+
+        assertThat(out.items()).extracting(ItemView::id).containsExactlyInAnyOrder("st", "or");
+        ItemView row = out.items().stream().filter(i -> i.id().equals("st")).findFirst().orElseThrow();
+        assertThat(row.complexity()).isEqualTo(3.0);
     }
 
     @Test
@@ -462,8 +501,10 @@ class GetIndividualDashboardV2UseCaseTest {
         return new DeveloperDashboardOutput(List.copyOf(devItems), 15.0, 20.0, delivered, planned, List.of(),
                 BigDecimal.ZERO, null, 0, 0, List.of(), devItems.size(), burndown, null,
                 aiCostByItem == null ? Map.of() : aiCostByItem, null, List.of(), null,
-                new DurationStat(12.0, 30.0, 3), new DurationStat(20.0, 40.0, 3));
+                new DurationStat(12.0, 30.0, 3), new DurationStat(20.0, 40.0, 3), figures, null);
     }
+
+    private ComplexityEffortFigures figures = ComplexityEffortFigures.EMPTY;
 
     private static Sprint sprint(String id, String name, Sprint.TimeFrame timeFrame, String start, String end) {
         return new Sprint(id, ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS, "ext-" + id, "team-1", "Core", name,

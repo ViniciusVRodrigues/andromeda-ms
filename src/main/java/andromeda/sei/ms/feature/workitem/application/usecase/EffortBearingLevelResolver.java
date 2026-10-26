@@ -81,6 +81,23 @@ public class EffortBearingLevelResolver {
         return storyTier(items);
     }
 
+    /**
+     * The rows of a dashboard's item list, whatever the effort level (complexity-effort D1): the story-tier
+     * items (Story, Feature, Bug), whose rows carry the complexity and the Tasks' summed hours, plus the
+     * Task-tier items that sit under no story-tier item of the scope (orphans: their work must not vanish).
+     */
+    public List<WorkItem> listedUnits(List<WorkItem> items) {
+        List<WorkItem> stories = storyTier(items);
+        EffortScope scope = scope(items);
+        java.util.Set<WorkItem> covered = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (WorkItem story : stories) covered.addAll(scope.descendantsOf(story));
+        List<WorkItem> out = new ArrayList<>(stories);
+        for (WorkItem item : items) {
+            if (isTaskTier(item.getResolvedType()) && !covered.contains(item)) out.add(item);
+        }
+        return out;
+    }
+
     /** Resolves the level from {@code items} and returns their deliverable units. */
     public List<WorkItem> deliverableUnits(List<WorkItem> items) {
         return deliverableUnits(resolve(null, items), items);
@@ -267,6 +284,21 @@ public class EffortBearingLevelResolver {
             return item.getEffort();
         }
 
+        /**
+         * The Task hours rolled up into a unit for display (complexity-effort D2): the sum of the own effort of
+         * its Task-tier descendants, {@code null} when it has none carrying effort (a Task shows its own effort).
+         */
+        public Double taskEffortRolledUp(WorkItem item) {
+            double sum = 0;
+            int count = 0;
+            for (WorkItem descendant : descendantsOf(item)) {
+                if (!isTaskType(descendant.getResolvedType()) || descendant.getEffort() == null) continue;
+                sum += descendant.getEffort();
+                count++;
+            }
+            return count == 0 ? null : sum;
+        }
+
         public Double totalTaskEffort(List<WorkItem> units) {
             double sum = 0;
             int count = 0;
@@ -297,7 +329,7 @@ public class EffortBearingLevelResolver {
             return count == 0 ? null : sum;
         }
 
-        private List<WorkItem> descendantsOf(WorkItem item) {
+        List<WorkItem> descendantsOf(WorkItem item) {
             List<WorkItem> out = new ArrayList<>();
             if (item.getExternalId() == null) return out;
             Set<String> visited = new HashSet<>();

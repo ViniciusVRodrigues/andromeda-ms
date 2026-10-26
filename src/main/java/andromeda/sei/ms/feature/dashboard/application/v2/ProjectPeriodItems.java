@@ -107,6 +107,30 @@ public final class ProjectPeriodItems {
                 .toList();
     }
 
+    /**
+     * Story-tier units (complexity-effort D1) completed in a range, containers left out like in
+     * {@link #doneUnitsIn}; empty when the project has no story tier.
+     */
+    public List<WorkItem> doneComplexityUnitsIn(DayRange range) {
+        return effort.complexityUnits().stream()
+                .filter(u -> WorkItem.ResolvedStatus.DONE.equals(u.getResolvedStatus()))
+                .filter(u -> !isContainer(u) && range.contains(u.getCompletedAt()))
+                .toList();
+    }
+
+    /** Complexity delivered in a range; {@code null} when no unit of the project carries complexity. */
+    public Double complexityDeliveredIn(DayRange range) {
+        if (effort.plannedComplexity() == null) return null;
+        Double sum = effort.scope().totalComplexity(doneComplexityUnitsIn(range));
+        return sum == null ? Double.valueOf(0d) : sum;
+    }
+
+    /** Hours logged on the Tasks of the units delivered in a range (complexity-effort D2). */
+    public Double effortLoggedIn(DayRange range) {
+        List<WorkItem> units = effort.complexityUnits().isEmpty() ? doneUnitsIn(range) : doneComplexityUnitsIn(range);
+        return effort.scope().totalTaskEffort(units);
+    }
+
     /** Past sprints whose last day falls in {@code range}, oldest first. */
     public List<SprintFigures> sprintsEndingIn(DayRange range) {
         return sprints.stream()
@@ -127,18 +151,24 @@ public final class ProjectPeriodItems {
 
     /**
      * Committed × delivered of one sprint: {@code planned}/{@code delivered} by
-     * {@link EffortBearingLevelResolver#summarize}; {@code predictabilityPct} = delivered ÷ planned × 100,
-     * {@code null} without planned effort.
+     * {@link EffortBearingLevelResolver#summarize}; {@code complexityPlanned}/{@code complexityDelivered} are the
+     * same in complexity and {@code predictabilityPct} = complexity delivered ÷ planned × 100 (complexity-effort D1),
+     * {@code null} without planned complexity.
      */
     public record SprintFigures(Sprint sprint, SprintWindow window, List<WorkItem> items, EffortSummary summary,
-                                Double planned, Double delivered, Double predictabilityPct) {
+                                Double planned, Double delivered, Double predictabilityPct,
+                                Double complexityPlanned, Double complexityDelivered) {
 
         static SprintFigures of(Sprint sprint, List<WorkItem> items, EffortBearingLevelResolver resolver) {
             EffortSummary summary = resolver.summarize(items);
             Double delivered = DashboardV2Views.deliveredOf(summary.planned(), summary.delivered());
-            Double pct = summary.planned() == null || summary.planned() <= 0 || delivered == null ? null
-                    : delivered / summary.planned() * PERCENT;
-            return new SprintFigures(sprint, SprintWindow.of(sprint), items, summary, summary.planned(), delivered, pct);
+            Double complexityDelivered = DashboardV2Views.deliveredOf(summary.plannedComplexity(),
+                    summary.deliveredComplexity());
+            Double pct = summary.plannedComplexity() == null || summary.plannedComplexity() <= 0
+                    || complexityDelivered == null ? null
+                    : complexityDelivered / summary.plannedComplexity() * PERCENT;
+            return new SprintFigures(sprint, SprintWindow.of(sprint), items, summary, summary.planned(), delivered,
+                    pct, summary.plannedComplexity(), complexityDelivered);
         }
     }
 }

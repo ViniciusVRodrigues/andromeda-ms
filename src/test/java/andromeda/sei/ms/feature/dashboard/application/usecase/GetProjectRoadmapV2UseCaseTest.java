@@ -99,6 +99,35 @@ class GetProjectRoadmapV2UseCaseTest {
     }
 
     @Test
+    void should_reportComplexityDoneInThePeriod_nextToTheEffortOne() {
+        WorkItem c1 = child("c1", 3.0, ResolvedStatus.DONE, "f1", daysAgo(10));
+        c1.setComplexity(2.0);
+        WorkItem c2 = child("c2", 5.0, ResolvedStatus.DONE, "f1", daysAgo(200));
+        c2.setComplexity(5.0);
+        WorkItem c3 = child("c3", 8.0, ResolvedStatus.TODO, "f1", null);
+        c3.setComplexity(1.0);
+        items.addAll(List.of(node("e1", ResolvedType.EPIC, ResolvedStatus.IN_PROGRESS, null),
+                node("f1", ResolvedType.FEATURE, ResolvedStatus.IN_PROGRESS, "e1"), c1, c2, c3));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.features().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
+        assertThat(out.features().getFirst().progress().spDoneInPeriod()).isEqualTo(3.0);
+        assertThat(out.epics().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
+    }
+
+    @Test
+    void should_leaveComplexityDoneInThePeriodNull_when_noChildCarriesComplexity() {
+        items.addAll(List.of(node("e1", ResolvedType.EPIC, ResolvedStatus.IN_PROGRESS, null),
+                node("f1", ResolvedType.FEATURE, ResolvedStatus.IN_PROGRESS, "e1"),
+                child("c1", 3.0, ResolvedStatus.DONE, "f1", daysAgo(10))));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.features().getFirst().progress().complexityDoneInPeriod()).isNull();
+    }
+
+    @Test
     void should_measureFeatureProgress_andForecastFromTheLast8WeeksPace() {
         items.addAll(List.of(node("e1", ResolvedType.EPIC, ResolvedStatus.IN_PROGRESS, null),
                 node("f1", ResolvedType.FEATURE, ResolvedStatus.IN_PROGRESS, "e1"),
@@ -173,7 +202,7 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(backlog.forgotten().getFirst().externalId()).isEqualTo("ext-b3");
         assertThat(backlog.forgotten().getFirst().daysWithoutChange()).isEqualTo(100.0);
         assertThat(backlog.forgotten().getFirst().priority()).isEqualTo(1);
-        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0), new TagShare("ui", 1, 2.0));
+        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0, 0.0), new TagShare("ui", 1, 2.0, 0.0));
     }
 
     @Test
@@ -197,14 +226,14 @@ class GetProjectRoadmapV2UseCaseTest {
 
         assertThat(out.calibration().byEffort()).hasSize(2);
         assertThat(out.calibration().byEffort().getFirst())
-                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, new DurationStat(10.0, 30.0, 2), null, null, 0));
+                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3", 3.0, 2, new DurationStat(10.0, 30.0, 2), null, null, 0));
         assertThat(out.calibration().byComplexity().getFirst().label()).isEqualTo("2");
         assertThat(out.calibration().byComplexity().getFirst().avgEffort()).isEqualTo(3.0);
         assertThat(out.calibration().overrides()).extracting(ManualOverride::field, ManualOverride::by)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("Complexidade", "user-z"),
                         org.assertj.core.groups.Tuple.tuple("Esforço", "Ana"));
         assertThat(out.calibration().overridePct()).isEqualTo(66.67);
-        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0));
+        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0, 2.0));
     }
 
     @Test
@@ -269,6 +298,37 @@ class GetProjectRoadmapV2UseCaseTest {
 
         assertThat(out.config().effortField()).isEqualTo("Custom.Effort");
         assertThat(out.config().effortBearingLevel()).isEqualTo(new ProjectRoadmapV2Output.EffortLevel("AUTO", "STORY"));
+    }
+
+    @Test
+    void should_reportThePerTypeEffortField_andTheComplexityField_fromTheBinding() {
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(
+                new AzureProjectBinding("b1", ORG, PROJECT, "az", "Orion", true, NOW,
+                        new WorkflowConfig(List.of(), List.of(),
+                                List.of(new FieldMapping(FieldMapping.InternalFieldTarget.EFFORT, "Task",
+                                                "Microsoft.VSTS.Scheduling.CompletedWork", "double"),
+                                        new FieldMapping(FieldMapping.InternalFieldTarget.COMPLEXITY,
+                                                "Custom.Points", "double")),
+                                null, WorkflowConfig.ConfigSource.CUSTOM),
+                        true, NOW, NOW, 0L)));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.config().effortField()).isEqualTo("Microsoft.VSTS.Scheduling.CompletedWork");
+        assertThat(out.config().complexityField()).isEqualTo("Custom.Points");
+    }
+
+    @Test
+    void should_reportTheDefaultFields_when_theBindingHasNoWorkflowConfig_andNullWithoutBinding() {
+        assertThat(useCase.execute(ORG, PROJECT, 90).config().effortField()).isNull();
+        assertThat(useCase.execute(ORG, PROJECT, 90).config().complexityField()).isNull();
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(
+                new AzureProjectBinding("b1", ORG, PROJECT, "az", "Orion", true, NOW, null, true, NOW, NOW, 0L)));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.config().effortField()).isEqualTo(WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME);
+        assertThat(out.config().complexityField()).isEqualTo(WorkflowConfig.DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME);
     }
 
     @Test

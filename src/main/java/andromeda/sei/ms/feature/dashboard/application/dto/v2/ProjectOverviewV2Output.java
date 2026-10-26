@@ -54,8 +54,11 @@ public record ProjectOverviewV2Output(
      *       {@code bugSharePct} is the BUG share among them.</li>
      *   <li>{@code spDelivered}, {@code leadTimeHours}, {@code cycleTimeHours}: deliverable units
      *       completed in the period (the single velocity definition), epics and features excluded.</li>
-     *   <li>{@code predictabilityPct}: average of delivered ÷ planned of the past sprints that ended
-     *       in the period.</li>
+     *   <li>{@code predictabilityPct}: average of delivered ÷ planned complexity of the past sprints that
+     *       ended in the period.</li>
+     *   <li>{@code complexityDelivered}, {@code effortLogged}: points of the story-tier units completed in the
+     *       period and the Task hours behind them; {@code aiCostPerPoint}/{@code aiCostPerHour} divide the
+     *       allocated cost by each (complexity-effort D1-D3).</li>
      *   <li>{@code deployFreqPerWeek}, {@code cfrPct}: the delivery-metrics proxies (see {@code dora}).</li>
      *   <li>{@code stalePrs}: current state, so {@code null} in {@code previous}.</li>
      * </ul>
@@ -64,7 +67,8 @@ public record ProjectOverviewV2Output(
                               DurationStat leadTimeHours, DurationStat cycleTimeHours, Double cfrPct,
                               Double bugSharePct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp, int prsMerged,
                               DurationStat prCycleTimeHours, DurationStat timeToFirstReviewHours, Integer stalePrs,
-                              int commitsCount) {}
+                              int commitsCount, Double complexityDelivered, Double effortLogged,
+                              BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /**
      * Delivery metrics of the period ({@code DeliveryMetricsCalculator}): grades are the
@@ -87,7 +91,8 @@ public record ProjectOverviewV2Output(
     /** A past sprint that ended in the period: committed × delivered and the AI cost per SP. */
     public record SprintRow(String sprintId, String label, String name, Double spPlanned, Double spDelivered,
                             Double predictabilityPct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
-                            Long aiTokens) {}
+                            Long aiTokens, Double complexityPlanned, Double complexityDelivered,
+                            BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /**
      * DORA proxies of one bucket of {@code flow[]}: same calculation as {@link Dora}, restricted to the
@@ -123,13 +128,16 @@ public record ProjectOverviewV2Output(
     public record Subscription(BigDecimal consumptionUsd, BigDecimal subscriptionUsd, BigDecimal perUserMonthUsd) {}
 
     public record Ai(List<String> models, List<CostBucket> costByBucket, Adoption adoption, Subscription subscription,
-                     Double tokensPerSp) {}
+                     Double tokensPerSp, Double tokensPerPoint, Double tokensPerHour) {}
 
     public record People(int members, int azureLinked, int githubLinked, int aiConnected) {}
 
     /**
      * Coverage: deliverable units of the period's sprints with effort, pull requests opened in the
      * period that cite a work item, and (person, day) pairs of AI usage already allocated.
+     * {@code itemsWithComplexity}: story-tier units of those sprints with complexity;
+     * {@code tasksWithEffort}: their Tasks with logged hours.
      */
-    public record DataQuality(Double itemsWithEstimatePct, Double prsLinkedPct, Double aiDaysAllocatedPct) {}
+    public record DataQuality(Double itemsWithEstimatePct, Double prsLinkedPct, Double aiDaysAllocatedPct,
+                              int itemsWithComplexity, int tasksWithEffort) {}
 }
