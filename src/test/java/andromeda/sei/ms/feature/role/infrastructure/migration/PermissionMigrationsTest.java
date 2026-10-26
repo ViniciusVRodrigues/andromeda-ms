@@ -77,6 +77,24 @@ class PermissionMigrationsTest {
     }
 
     @Test
+    void should_addOrganizationDelete_onlyToGlobalAdmin_idempotently() {
+        new OrganizationDeleteMigration(mongoTemplate).run(null);
+
+        ArgumentCaptor<Query> query = ArgumentCaptor.forClass(Query.class);
+        ArgumentCaptor<Update> update = ArgumentCaptor.forClass(Update.class);
+        verify(mongoTemplate).updateMulti(query.capture(), update.capture(), eq("roles"));
+
+        Document filter = query.getValue().getQueryObject();
+        assertThat(filter).containsEntry("organizationId", null); // only the global ADMIN, never an organization role
+        assertThat(filter).containsEntry("name", "ADMIN");
+        Document codes = filter.get("permissionCodes", Document.class);
+        assertThat(codes.get("$nin", List.class)).containsExactly("ORGANIZATION_DELETE");
+        Document operations = update.getValue().getUpdateObject();
+        assertThat(operations.get("$addToSet", Document.class)).containsEntry("permissionCodes", "ORGANIZATION_DELETE");
+        assertThat(operations.get("$inc", Document.class)).containsEntry("version", 1);
+    }
+
+    @Test
     void should_setScopeOfEveryCatalogCode_onlyWhereItDiffers() {
         new PermissionScopesMigration(mongoTemplate).run(null);
 

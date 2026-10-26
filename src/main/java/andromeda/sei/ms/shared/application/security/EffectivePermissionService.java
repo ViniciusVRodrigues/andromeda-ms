@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.application.security;
 
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.role.domain.Role;
@@ -38,9 +39,10 @@ public class EffectivePermissionService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final ProjectRepository projectRepository;
+    private final OrganizationRepository organizationRepository;
     private final PermissionSnapshotCache cache;
 
-    /** Empty when the user does not exist, is inactive or belongs to another organization. */
+    /** Empty when the user does not exist, is inactive, belongs to another organization or the organization is inactive. */
     public Optional<UserPermissionSnapshot> snapshot(String organizationId, String userId) {
         if (organizationId == null || userId == null) return Optional.empty();
         return cache.get(organizationId, userId, () -> load(organizationId, userId));
@@ -56,6 +58,8 @@ public class EffectivePermissionService {
     }
 
     private Optional<UserPermissionSnapshot> load(String organizationId, String userId) {
+        // findById hides inactive organizations: a deleted organization has no valid session (401).
+        if (organizationRepository.findById(organizationId).isEmpty()) return Optional.empty();
         return userRepository.findByIdAndOrganizationId(userId, organizationId)
                 .filter(User::isActive)
                 .map(user -> toSnapshot(organizationId, user));

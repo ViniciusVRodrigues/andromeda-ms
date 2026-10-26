@@ -58,7 +58,7 @@ class GetCurrentUserUseCaseTest {
         when(projectRepository.findAllActiveByOrganizationIdAndMemberId(ORG, "dev")).thenReturn(List.of(a, b));
         when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(a, b));
         EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
-                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+                projectRepository, organizationRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
 
         GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
                 roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of("USER_MANAGE")));
@@ -80,7 +80,7 @@ class GetCurrentUserUseCaseTest {
         when(roleRepository.findById("role-dev")).thenReturn(Optional.of(new Role("role-dev", null, "DEVELOPER",
                 "Desenvolvedor", true, null, new ArrayList<>(List.of("DASHBOARD_INDIVIDUAL")), true, 1L, T, T)));
         EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
-                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+                projectRepository, organizationRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
 
         GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
                 roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of()));
@@ -101,7 +101,7 @@ class GetCurrentUserUseCaseTest {
         when(roleRepository.findById("role-custom")).thenReturn(Optional.of(new Role("role-custom", ORG, "Squad Lead",
                 null, false, null, new ArrayList<>(List.of("DASHBOARD_TEAM")), true, 1L, T, T)));
         EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
-                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+                projectRepository, organizationRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
 
         GetCurrentUserOutput output = new GetCurrentUserUseCase(userRepository, organizationRepository, service,
                 roleRepository).execute(new GetCurrentUserInput("dev", ORG, List.of()));

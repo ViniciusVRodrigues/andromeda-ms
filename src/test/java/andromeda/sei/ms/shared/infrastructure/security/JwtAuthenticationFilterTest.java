@@ -54,6 +54,7 @@ class JwtAuthenticationFilterTest {
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;
     @Mock private ProjectRepository projectRepository;
+    @Mock private andromeda.sei.ms.feature.organization.domain.OrganizationRepository organizationRepository;
 
     private JwtService jwtService;
     private JwtAuthenticationFilter filter;
@@ -66,10 +67,13 @@ class JwtAuthenticationFilterTest {
                 Base64.getEncoder().encodeToString("0123456789abcdef0123456789abcdef0123456789abcdef".getBytes()));
         ReflectionTestUtils.setField(jwtService, "expirationMs", 60_000L);
         EffectivePermissionService service = new EffectivePermissionService(userRepository, roleRepository,
-                projectRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+                projectRepository, organizationRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
         filter = new JwtAuthenticationFilter(jwtService, service);
         listener = new PermissionCacheInvalidationListener(service);
         lenient().when(projectRepository.findAllActiveByOrganizationIdAndMemberId(any(), any())).thenReturn(List.of());
+        lenient().when(organizationRepository.findById(any())).thenAnswer(inv -> java.util.Optional.of(
+                new andromeda.sei.ms.feature.organization.domain.Organization(inv.getArgument(0), "Org", "org", null, null,
+                        null, null, null, true, 1L, java.time.Instant.now(), java.time.Instant.now())));
     }
 
     @AfterEach

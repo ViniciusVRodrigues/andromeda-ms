@@ -2,10 +2,12 @@ package andromeda.sei.ms.feature.organization.presentation;
 
 import andromeda.sei.ms.shared.infrastructure.web.ClientIpResolver;
 import andromeda.sei.ms.feature.organization.application.dto.UpdateAiPricesInput;
+import andromeda.sei.ms.feature.organization.application.usecase.DeleteOrganizationUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.GetOrganizationUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.OnboardOrganizationUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.UpdateAiPricesUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.UpdateOrganizationUseCase;
+import andromeda.sei.ms.feature.organization.presentation.dto.DeleteOrganizationRequest;
 import andromeda.sei.ms.feature.organization.presentation.dto.OnboardOrganizationRequest;
 import andromeda.sei.ms.feature.organization.presentation.dto.OnboardOrganizationResponse;
 import andromeda.sei.ms.feature.organization.presentation.dto.OrganizationResponse;
@@ -23,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -43,6 +46,7 @@ public class OrganizationController {
     private final GetOrganizationUseCase getOrganizationUseCase;
     private final UpdateOrganizationUseCase updateOrganizationUseCase;
     private final UpdateAiPricesUseCase updateAiPricesUseCase;
+    private final DeleteOrganizationUseCase deleteOrganizationUseCase;
     private final OrganizationPresentationMapper mapper;
     private final JwtService jwtService;
     private final andromeda.sei.ms.feature.organization.domain.OrganizationRepository organizationRepository;
@@ -85,6 +89,20 @@ public class OrganizationController {
         String orgId = TenantContextHolder.get();
         var output = updateOrganizationUseCase.execute(orgId, request.seniorities(), request.subscriptionCostPerUserUsd());
         return ResponseEntity.ok(mapper.toResponse(output));
+    }
+
+    @Operation(summary = "Excluir a organização do token (exclusão lógica)",
+            description = "Exige ORGANIZATION_DELETE. O corpo traz o slug da organização como confirmação; "
+                    + "depois da exclusão ninguém da organização entra nem usa token já emitido.")
+    @ApiResponse(responseCode = "204", description = "Organização excluída")
+    @ApiResponse(responseCode = "403", description = "Sem a permissão ORGANIZATION_DELETE")
+    @ApiResponse(responseCode = "404", description = "Organização não encontrada")
+    @ApiResponse(responseCode = "422", description = "Confirmação diferente do slug (ORGANIZATION_DELETE_CONFIRMATION_MISMATCH)")
+    @DeleteMapping("/me")
+    @PreAuthorize("hasAuthority('ORGANIZATION_DELETE')")
+    public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteOrganizationRequest request) {
+        deleteOrganizationUseCase.execute(TenantContextHolder.get(), request.confirmSlug());
+        return ResponseEntity.noContent().build();
     }
 
     @PutMapping("/ai-prices")

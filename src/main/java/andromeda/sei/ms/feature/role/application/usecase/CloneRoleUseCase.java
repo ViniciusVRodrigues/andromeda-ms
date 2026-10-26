@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.role.application.dto.RoleOutput;
 import andromeda.sei.ms.feature.role.domain.Role;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.role.domain.exception.RoleNotFoundException;
+import andromeda.sei.ms.shared.domain.security.PermissionCatalog;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -29,7 +30,8 @@ public class CloneRoleUseCase {
                 input.newName(),
                 false,
                 source.getId(),
-                new ArrayList<>(source.getPermissionCodes()),
+                source.getPermissionCodes().stream().filter(PermissionCatalog::isAssignableToRole)
+                        .collect(java.util.stream.Collectors.toCollection(ArrayList::new)),
                 true,
                 null,
                 now,

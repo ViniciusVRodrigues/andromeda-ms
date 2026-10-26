@@ -47,7 +47,7 @@ class GetIntegrationSyncLogsUseCaseTest {
     void setUp() {
         TenantContextHolder.set(ORG);
         useCase = new GetIntegrationSyncLogsUseCase(syncLogRepository,
-                new EffectivePermissionService(null, null, projectRepository, cache));
+                new EffectivePermissionService(null, null, projectRepository, null, cache));
         when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(project("A"), project("B")));
         when(syncLogRepository.findByOrganizationIdAndIntegration(eq(ORG), eq(Integration.AZURE_DEVOPS), isNull(), anyInt()))
                 .thenReturn(List.of(log("l-a", "A"), log("l-b", "B"), log("l-org", null)));

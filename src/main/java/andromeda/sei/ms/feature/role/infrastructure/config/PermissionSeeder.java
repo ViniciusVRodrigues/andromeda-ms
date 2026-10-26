@@ -34,7 +34,8 @@ public class PermissionSeeder implements ApplicationRunner {
             new String[]{"CONNECTOR_TOKEN_MANAGE_ALL",     "Gerenciar tokens de conector de toda a org",     "Conector"},
             new String[]{"PROJECT_MANAGE",                 "Gerenciar projetos da organização",               "Projetos"},
             new String[]{"WORK_ITEM_MANAGE",                "Editar manualmente campos de work items",         "Work Items"},
-            new String[]{"PROJECT_ACCESS_ALL",             "Acesso a dados de todos os projetos da organização", "Projetos"}
+            new String[]{"PROJECT_ACCESS_ALL",             "Acesso a dados de todos os projetos da organização", "Projetos"},
+            new String[]{"ORGANIZATION_DELETE",            "Excluir a organização",                          "Organização"}
     );
 
     /**

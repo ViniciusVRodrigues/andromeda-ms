@@ -41,7 +41,7 @@ class ListProjectsUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        EffectivePermissionService service = new EffectivePermissionService(null, null, projectRepository, cache);
+        EffectivePermissionService service = new EffectivePermissionService(null, null, projectRepository, null, cache);
         useCase = new ListProjectsUseCase(service);
         lenient().when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(a, b));
     }

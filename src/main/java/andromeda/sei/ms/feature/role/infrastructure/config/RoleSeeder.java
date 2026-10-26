@@ -28,7 +28,8 @@ public class RoleSeeder implements ApplicationRunner {
             "PRICE_TABLE_MANAGE",
             "CONNECTOR_TOKEN_MANAGE_OWN", "CONNECTOR_TOKEN_MANAGE_ALL",
             "PROJECT_MANAGE", "WORK_ITEM_MANAGE",
-            "PROJECT_ACCESS_ALL"
+            "PROJECT_ACCESS_ALL",
+            "ORGANIZATION_DELETE"
     );
 
     private record RoleSeed(String name, String label, List<String> permissionCodes) {}

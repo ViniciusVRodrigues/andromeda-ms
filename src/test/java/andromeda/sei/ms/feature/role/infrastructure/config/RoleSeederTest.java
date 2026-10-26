@@ -51,6 +51,20 @@ class RoleSeederTest {
     }
 
     @Test
+    void should_giveOrganizationDeleteOnlyToAdmin() {
+        when(roleMongoRepository.findByNameAndOrganizationIdIsNull(anyString())).thenReturn(Optional.empty());
+
+        seeder.run(null);
+
+        Map<String, RoleDocument> saved = captureSaved();
+        assertThat(saved.get("ADMIN").getPermissionCodes()).contains("ORGANIZATION_DELETE");
+        assertThat(saved.get("TECH_LEAD").getPermissionCodes()).doesNotContain("ORGANIZATION_DELETE");
+        assertThat(saved.get("MANAGER").getPermissionCodes()).doesNotContain("ORGANIZATION_DELETE");
+        assertThat(saved.get("DEVELOPER").getPermissionCodes()).doesNotContain("ORGANIZATION_DELETE");
+    }
+
+
+    @Test
     void should_backfillMissingMirrorsAndProjectManage_onExistingDefaultRoles() {
         RoleDocument admin = RoleDocument.builder().name("ADMIN").label("Administrador").isDefault(true)
                 .permissionCodes(new ArrayList<>(List.of("USER_MANAGE", "REPOS_READ"))).active(true).build();
