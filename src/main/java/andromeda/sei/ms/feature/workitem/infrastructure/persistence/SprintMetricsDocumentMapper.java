@@ -26,6 +26,8 @@ public class SprintMetricsDocumentMapper {
                 doc.getUpdatedAt()
         );
         metrics.setPlannedEffort(doc.getPlannedEffort());
+        metrics.setPlannedComplexity(doc.getPlannedComplexity());
+        metrics.setDeliveredComplexity(doc.getDeliveredComplexity());
         metrics.setCycleTimeP50(doc.getCycleTimeP50());
         metrics.setCycleTimeP90(doc.getCycleTimeP90());
         metrics.setLeadTimeP50(doc.getLeadTimeP50());
@@ -44,6 +46,8 @@ public class SprintMetricsDocumentMapper {
                 .avgCycleTime(metrics.getAvgCycleTime())
                 .avgLeadTime(metrics.getAvgLeadTime())
                 .plannedEffort(metrics.getPlannedEffort())
+                .plannedComplexity(metrics.getPlannedComplexity())
+                .deliveredComplexity(metrics.getDeliveredComplexity())
                 .cycleTimeP50(metrics.getCycleTimeP50())
                 .cycleTimeP90(metrics.getCycleTimeP90())
                 .leadTimeP50(metrics.getLeadTimeP50())

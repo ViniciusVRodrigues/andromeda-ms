@@ -46,7 +46,12 @@ public class WorkItem {
     private Instant completedAt;
     private Double cycleTimeHours;
     private Double leadTimeHours;
+    /** Legacy ratio, frozen: no longer recalculated (complexity-effort D3). */
     private Double tokensPerSp;
+    /** AI tokens allocated per point of effective complexity; null when there is no divisor. */
+    private Double tokensPerPoint;
+    /** AI tokens allocated per hour of Task effort; null when there is no divisor. */
+    private Double tokensPerHour;
     private boolean active;
     private Long version;
     private Instant updatedAt;
@@ -191,6 +196,10 @@ public class WorkItem {
     public Double getLeadTimeHours() { return leadTimeHours; }
     public void setLeadTimeHours(Double leadTimeHours) { this.leadTimeHours = leadTimeHours; }
 
+    public Double getTokensPerPoint() { return tokensPerPoint; }
+    public void setTokensPerPoint(Double tokensPerPoint) { this.tokensPerPoint = tokensPerPoint; }
+    public Double getTokensPerHour() { return tokensPerHour; }
+    public void setTokensPerHour(Double tokensPerHour) { this.tokensPerHour = tokensPerHour; }
     public Double getTokensPerSp() { return tokensPerSp; }
     public void setTokensPerSp(Double tokensPerSp) { this.tokensPerSp = tokensPerSp; }
 

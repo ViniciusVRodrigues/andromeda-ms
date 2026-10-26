@@ -14,8 +14,8 @@ import java.util.List;
 /**
  * The sprint burndown rule shared by the developer dashboard and the v2 dashboards: one point per
  * calendar day from the sprint start up to {@code min(sprintEnd, today)}; remaining = effective
- * effort of the deliverable units minus the effort of the units completed by the end of that day;
- * ideal = a straight line from the total effort on the first day to zero on the last.
+ * complexity of the story-tier units minus the complexity of the units completed by the end of that
+ * day (complexity-effort D1); ideal = a straight line from the total on the first day to zero on the last.
  */
 public final class BurndownCalculator {
 
@@ -27,13 +27,13 @@ public final class BurndownCalculator {
         if (sprintStart == null || sprintEnd == null) return List.of();
         if (ChronoUnit.DAYS.between(sprintStart, sprintEnd) <= 0) return List.of();
 
-        Double resolvedTotal = scope.totalEffort(units);
+        Double resolvedTotal = scope.totalComplexity(units);
         double totalSp = resolvedTotal == null ? 0d : resolvedTotal;
         LocalDate seriesEnd = sprintEnd.isBefore(today) ? sprintEnd : today;
 
         List<BurndownPoint> series = new ArrayList<>();
         for (LocalDate day = sprintStart; !day.isAfter(seriesEnd); day = day.plusDays(1)) {
-            Double completed = scope.totalEffort(completedBy(units, day));
+            Double completed = scope.totalComplexity(completedBy(units, day));
             double remaining = totalSp - (completed == null ? 0d : completed);
             series.add(new BurndownPoint(day, remaining, ideal(totalSp, sprintStart, sprintEnd, day)));
         }

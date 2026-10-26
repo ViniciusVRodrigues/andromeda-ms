@@ -16,6 +16,8 @@ public record SprintMetricsOutput(
         // deprecated since metrics-correctness: use leadTimeP50/leadTimeP90
         Double avgLeadTime,
         Double plannedEffort,
+        Double plannedComplexity,
+        Double deliveredComplexity,
         Double cycleTimeP50,
         Double cycleTimeP90,
         Double leadTimeP50,

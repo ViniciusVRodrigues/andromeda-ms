@@ -213,12 +213,13 @@ public class GetIndividualDashboardV2UseCase {
      * line only; {@code remaining} is {@code null} when no unit carries effort.
      */
     private List<BurndownDay> burndown(DeveloperDashboardOutput dev, Context ctx) {
-        boolean noEffort = dev.totalSpInSprint() == null;
+        // The series is in complexity (complexity-effort D1): a sprint total of zero means no unit has it.
+        boolean noEffort = dev.burndownSeries().isEmpty() || dev.burndownSeries().getFirst().idealSp() <= 0d;
         List<BurndownDay> days = new ArrayList<>(dev.burndownSeries().stream()
                 .map(p -> burndownDay(p, noEffort)).toList());
         if (dev.burndownSeries().isEmpty()) return days;
         LocalDate last = dev.burndownSeries().getLast().date();
-        double total = noEffort ? 0d : dev.totalSpInSprint();
+        double total = noEffort ? 0d : dev.burndownSeries().getFirst().idealSp();
         for (LocalDate day : DashboardV2Views.days(last.plusDays(1), ctx.window().endDay())) {
             days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null,
                     BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day)));

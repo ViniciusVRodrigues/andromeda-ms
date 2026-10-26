@@ -135,7 +135,9 @@ public class GetDeveloperDashboardUseCase {
                 .toArray());
 
         // Burndown series
-        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, effortScope, sprintStart, sprintEnd);
+        List<BurndownPoint> burndownSeries = computeBurndown(
+                effortBearingLevelResolver.deliverableUnits(andromeda.sei.ms.feature.workitem.domain.EffortBearingLevel.STORY,
+                        currentSprintItems), effortScope, sprintStart, sprintEnd);
 
         // AI sprint summary
         AiSprintSummary aiSprintSummary = computeAiSprintSummary(orgId, userId, sprintStart, sprintEnd);

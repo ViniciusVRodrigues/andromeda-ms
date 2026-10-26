@@ -10,7 +10,7 @@ import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundEx
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,7 +31,7 @@ public class ManualAllocateUseCase {
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
     private final WorkItemRepository workItemRepository;
-    private final CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
     public void execute(String organizationId, String userId, String allocationId,
                         LocalDate day, List<AllocationSplit> splits) {
@@ -76,7 +76,7 @@ public class ManualAllocateUseCase {
         allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
         resolveProjectId(organizationId, splits).ifPresent(projectId ->
-                calculateTokensPerSpUseCase.execute(organizationId, projectId));
+                calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
     private void createNewAllocation(String organizationId, String userId,
@@ -108,7 +108,7 @@ public class ManualAllocateUseCase {
         AiUsageAllocation saved = allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(usageIds, saved.getId());
         resolveProjectId(organizationId, splits).ifPresent(projectId ->
-                calculateTokensPerSpUseCase.execute(organizationId, projectId));
+                calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
     private Optional<String> resolveProjectId(String organizationId, List<AllocationSplit> splits) {

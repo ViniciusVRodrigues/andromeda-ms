@@ -318,17 +318,21 @@ public class AzureProjectBindingController {
                             .map(f -> new WorkflowConfigResponse.FieldMappingResponse(
                                     f.getInternalField(), f.getWorkItemType(), f.getAzureFieldReferenceName(), f.getAzureFieldType()))
                             .toList();
-            // Surface the implicit default EFFORT mapping for DEFAULT-config bindings so callers
-            // see the effective mapping without needing to know the default-fallback rule themselves.
-            if (wf.getConfigSource() == WorkflowConfig.ConfigSource.DEFAULT
-                    && fieldMappings.stream().noneMatch(f -> f.internalField() == FieldMapping.InternalFieldTarget.EFFORT)) {
-                var effective = wf.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT);
-                if (effective.isPresent()) {
-                    var m = effective.get();
-                    fieldMappings = new java.util.ArrayList<>(fieldMappings);
-                    fieldMappings.add(new WorkflowConfigResponse.FieldMappingResponse(
-                            m.getInternalField(), m.getWorkItemType(), m.getAzureFieldReferenceName(), m.getAzureFieldType()));
+            // Surface the implicit default mappings (complexity-effort D5) of DEFAULT-config bindings, one per
+            // mapped type, so callers see the effective mapping without knowing the default-fallback rule.
+            if (wf.getConfigSource() == WorkflowConfig.ConfigSource.DEFAULT && wf.getTypeMappings() != null) {
+                List<WorkflowConfigResponse.FieldMappingResponse> surfaced = new java.util.ArrayList<>(fieldMappings);
+                for (FieldMapping.InternalFieldTarget target : List.of(
+                        FieldMapping.InternalFieldTarget.COMPLEXITY, FieldMapping.InternalFieldTarget.EFFORT)) {
+                    if (surfaced.stream().anyMatch(f -> f.internalField() == target)) continue;
+                    for (var typeMapping : wf.getTypeMappings()) {
+                        wf.resolveFieldMapping(target, typeMapping.getRawType()).ifPresent(m ->
+                                surfaced.add(new WorkflowConfigResponse.FieldMappingResponse(
+                                        m.getInternalField(), typeMapping.getRawType(),
+                                        m.getAzureFieldReferenceName(), m.getAzureFieldType())));
+                    }
                 }
+                fieldMappings = surfaced;
             }
             WorkflowConfigResponse.WiqlFilterResponse syncFilter = wf.getSyncFilter() == null ? null :
                     new WorkflowConfigResponse.WiqlFilterResponse(

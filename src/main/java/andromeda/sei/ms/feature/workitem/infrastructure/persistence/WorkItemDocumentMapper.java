@@ -47,6 +47,8 @@ public class WorkItemDocumentMapper {
         );
         /* Fora do construtor de propósito: ele já tem 38 parâmetros posicionais e é
          * chamado de vários pontos; um 39º só aumentaria a chance de troca silenciosa. */
+        item.setTokensPerPoint(doc.getTokensPerPoint());
+        item.setTokensPerHour(doc.getTokensPerHour());
         item.setSprintName(doc.getSprintName());
         item.setDeactivatedAt(doc.getDeactivatedAt());
         item.setDeactivationReason(doc.getDeactivationReason());
@@ -81,6 +83,8 @@ public class WorkItemDocumentMapper {
                 .cycleTimeHours(item.getCycleTimeHours())
                 .leadTimeHours(item.getLeadTimeHours())
                 .tokensPerSp(item.getTokensPerSp())
+                .tokensPerPoint(item.getTokensPerPoint())
+                .tokensPerHour(item.getTokensPerHour())
                 .active(item.isActive())
                 .version(item.getVersion())
                 .updatedAt(item.getUpdatedAt())

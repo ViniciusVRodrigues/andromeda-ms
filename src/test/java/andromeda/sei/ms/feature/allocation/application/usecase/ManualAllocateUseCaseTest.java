@@ -8,7 +8,7 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ class ManualAllocateUseCaseTest {
     private WorkItemRepository workItemRepository;
 
     @Mock
-    private CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    private CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
     @InjectMocks
     private ManualAllocateUseCase useCase;

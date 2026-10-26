@@ -35,6 +35,8 @@ public class SprintMetricsDocument {
     private Double avgCycleTime;
     private Double avgLeadTime;
     private Double plannedEffort;
+    private Double plannedComplexity;
+    private Double deliveredComplexity;
     private Double cycleTimeP50;
     private Double cycleTimeP90;
     private Double leadTimeP50;

@@ -4,7 +4,7 @@ import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.application.usecase.CalculatePullRequestMetricsUseCase;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateSprintMetricsUseCase;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateWorkItemMetricsUseCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +27,7 @@ public class ProjectMetricsRecalculator {
 
     private final CalculateWorkItemMetricsUseCase calculateWorkItemMetricsUseCase;
     private final CalculateSprintMetricsUseCase calculateSprintMetricsUseCase;
-    private final CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
     private final CalculatePullRequestMetricsUseCase calculatePullRequestMetricsUseCase;
     private final VcsReadPort vcsReadPort;
 
@@ -36,8 +36,8 @@ public class ProjectMetricsRecalculator {
                 () -> calculateWorkItemMetricsUseCase.execute(organizationId, projectId));
         isolated("sprint metrics", organizationId, projectId,
                 () -> calculateSprintMetricsUseCase.execute(organizationId, projectId));
-        isolated("tokens per SP", organizationId, projectId,
-                () -> calculateTokensPerSpUseCase.execute(organizationId, projectId));
+        isolated("AI ratios", organizationId, projectId,
+                () -> calculateAiRatiosUseCase.execute(organizationId, projectId));
         isolated("pull request metrics", organizationId, projectId,
                 () -> recalculatePullRequestMetrics(organizationId, projectId));
     }

@@ -223,14 +223,14 @@ public class GetTeamDashboardV2UseCase {
 
     private List<BurndownDay> burndown(Context ctx, TeamSprint current) {
         EffortSummary summary = current.summary();
-        boolean noEffort = summary.planned() == null;
-        List<BurndownDay> days = new ArrayList<>(BurndownCalculator.compute(summary.units(), summary.scope(),
+        boolean noEffort = summary.plannedComplexity() == null;
+        List<BurndownDay> days = new ArrayList<>(BurndownCalculator.compute(summary.complexityUnits(), summary.scope(),
                         ctx.window().startDay(), ctx.window().endDay(), ctx.today()).stream()
                 .map(p -> new BurndownDay(p.date().toString(), DashboardV2Views.label(p.date()),
                         noEffort ? null : p.remainingSp(), p.idealSp()))
                 .toList());
         if (days.isEmpty()) return days;
-        double total = noEffort ? 0d : summary.planned();
+        double total = noEffort ? 0d : summary.plannedComplexity();
         LocalDate next = LocalDate.parse(days.getLast().date()).plusDays(1);
         for (LocalDate day : DashboardV2Views.days(next, ctx.window().endDay())) {
             days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null,

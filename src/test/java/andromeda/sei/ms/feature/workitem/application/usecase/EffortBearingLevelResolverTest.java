@@ -152,6 +152,136 @@ class EffortBearingLevelResolverTest {
         assertThat(resolver.totalEffort(List.of(story), List.of(story))).isNull();
     }
 
+    // ---- complexity-effort: complexity units, task effort ----
+
+    private WorkItem done(WorkItem wi) {
+        wi.setResolvedStatus(WorkItem.ResolvedStatus.DONE);
+        return wi;
+    }
+
+    @Test
+    void should_sumComplexityOfStoryTierUnits_regardlessOfEffortLevel() {
+        // Effort sits on Tasks only, so the inferred level is TASK; complexity must still be the Story's.
+        WorkItem story = done(story("1", null, null, 3.0));
+        WorkItem t1 = done(task("2", "1", 4.0));
+        WorkItem t2 = done(task("3", "1", 8.0));
+
+        var summary = resolver.summarize(List.of(story, t1, t2));
+
+        assertThat(summary.deliveredComplexity()).isEqualTo(3.0);
+        assertThat(summary.plannedComplexity()).isEqualTo(3.0);
+        // effort measures stay on the old units (tasks) for the legacy fields
+        assertThat(summary.delivered()).isEqualTo(12.0);
+    }
+
+    @Test
+    void should_notSumEffortInPlaceOfComplexity() {
+        WorkItem story = done(story("1", null, 99.0, 3.0));
+
+        var summary = resolver.summarize(List.of(story));
+
+        assertThat(summary.deliveredComplexity()).isEqualTo(3.0);
+        assertThat(summary.plannedComplexity()).isEqualTo(3.0);
+    }
+
+    @Test
+    void should_useComplexityBySum_when_storyHasNoOwnValue() {
+        WorkItem feature = done(workItem("1", null, "Feature", WorkItem.ResolvedType.FEATURE, null, null));
+        WorkItem child = story("2", "1", null, 2.0);
+        WorkItem child2 = story("3", "1", null, 3.0);
+
+        var scope = resolver.scope(List.of(feature, child, child2));
+
+        assertThat(scope.effectiveComplexity(feature)).isEqualTo(5.0);
+        assertThat(scope.totalComplexity(List.of(feature))).isEqualTo(5.0);
+    }
+
+    @Test
+    void should_countBugWithoutComplexityInCoverage_andAddZero() {
+        WorkItem story = done(story("1", null, null, 3.0));
+        WorkItem bug = done(workItem("2", null, "Bug", WorkItem.ResolvedType.BUG, null, null));
+
+        var summary = resolver.summarize(List.of(story, bug));
+
+        assertThat(summary.deliveredComplexity()).isEqualTo(3.0);
+        assertThat(summary.unitsWithoutComplexity()).isEqualTo(1);
+    }
+
+    @Test
+    void should_reportNullComplexity_when_noUnitHasComplexity() {
+        WorkItem story = done(story("1", null, 5.0, null));
+
+        var summary = resolver.summarize(List.of(story));
+
+        assertThat(summary.deliveredComplexity()).isNull();
+        assertThat(summary.plannedComplexity()).isNull();
+        assertThat(summary.unitsWithoutComplexity()).isEqualTo(1);
+    }
+
+    @Test
+    void should_logEffortOfTasksOfDeliveredStories() {
+        WorkItem story = done(story("1", null, null, 3.0));
+        WorkItem t1 = done(task("2", "1", 4.0));
+        WorkItem t2 = done(task("3", "1", 8.0));
+        WorkItem bug = done(workItem("4", null, "Bug", WorkItem.ResolvedType.BUG, null, null));
+
+        var summary = resolver.summarize(List.of(story, t1, t2, bug));
+
+        assertThat(summary.effortLogged()).isEqualTo(12.0);
+    }
+
+    @Test
+    void should_logNullEffort_when_nothingCarriesEffort() {
+        WorkItem story = done(story("1", null, null, 3.0));
+
+        assertThat(resolver.summarize(List.of(story)).effortLogged()).isNull();
+    }
+
+    @Test
+    void taskEffort_shouldIgnoreTheStoryOwnEffort() {
+        WorkItem story = story("1", null, 100.0, 3.0);
+        WorkItem t1 = task("2", "1", 4.0);
+        WorkItem t2 = task("3", "1", 8.0);
+
+        assertThat(resolver.scope(List.of(story, t1, t2)).taskEffort(story)).isEqualTo(12.0);
+    }
+
+    @Test
+    void taskEffort_shouldUseOwnEffort_when_noTaskChild() {
+        WorkItem story = story("1", null, 5.0, 3.0);
+        WorkItem task = task("2", null, 6.0);
+
+        var scope = resolver.scope(List.of(story, task));
+
+        assertThat(scope.taskEffort(story)).isEqualTo(5.0);
+        assertThat(scope.taskEffort(task)).isEqualTo(6.0);
+    }
+
+    @Test
+    void taskEffort_shouldBeNull_when_nothingAtAll() {
+        WorkItem story = story("1", null, null, 3.0);
+        WorkItem emptyTask = task("2", "1", null);
+
+        assertThat(resolver.scope(List.of(story, emptyTask)).taskEffort(story)).isNull();
+    }
+
+    @Test
+    void taskEffort_shouldReachTasksUnderNestedChildren() {
+        WorkItem feature = workItem("1", null, "Feature", WorkItem.ResolvedType.FEATURE, null, null);
+        WorkItem story = story("2", "1", null, 3.0);
+        WorkItem task = task("3", "2", 7.0);
+
+        assertThat(resolver.scope(List.of(feature, story, task)).taskEffort(feature)).isEqualTo(7.0);
+    }
+
+    @Test
+    void taskEffort_shouldSurviveCycles() {
+        WorkItem a = story("1", "2", 50.0, null);
+        WorkItem b = task("2", "1", 4.0);
+
+        assertThat(resolver.scope(List.of(a, b)).taskEffort(a)).isEqualTo(4.0);
+    }
+
     private WorkItem story(String externalId, String parentExternalId, Double effort, Double complexity) {
         return workItem(externalId, parentExternalId, "User Story", WorkItem.ResolvedType.STORY, effort, complexity);
     }

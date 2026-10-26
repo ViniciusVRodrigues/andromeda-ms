@@ -618,7 +618,7 @@ class GetDeveloperDashboardUseCaseTest {
                 "Medium", storyPoints, List.of(),
                 SPRINT_ID, "ext-user", USER, null, null,
                 Instant.now(), null, completedAt,
-                cycleTimeHours, null, null, true, 1L, Instant.now(), null, null, null, null, storyPoints, null, null, null);
+                cycleTimeHours, null, null, true, 1L, Instant.now(), storyPoints, null, null, null, storyPoints, null, null, null);
     }
 
     private AIUsage aiUsage(String id, LocalDate day, String allocationId,
