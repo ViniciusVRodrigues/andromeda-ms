@@ -26,6 +26,9 @@ class RoleUseCaseTest {
     @Mock
     private RoleRepository roleRepository;
 
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private ListRolesUseCase listRolesUseCase;
 

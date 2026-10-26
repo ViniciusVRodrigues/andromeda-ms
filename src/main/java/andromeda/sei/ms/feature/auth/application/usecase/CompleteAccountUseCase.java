@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.auth.application.dto.CompleteAccountInput;
 import andromeda.sei.ms.feature.azure.application.usecase.AutoLinkAzureIdentitiesUseCase;
 import andromeda.sei.ms.feature.auth.application.dto.CompleteAccountOutput;
 import andromeda.sei.ms.feature.auth.domain.exception.InvalidInviteTokenException;
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase;
 import andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase;
@@ -30,12 +31,18 @@ public class CompleteAccountUseCase {
     private final RecordLoginUseCase recordLoginUseCase;
     private final LinkFunnelUseCase linkFunnelUseCase;
     private final AutoLinkAzureIdentitiesUseCase autoLinkAzureIdentitiesUseCase;
+    private final OrganizationRepository organizationRepository;
 
     @Value("${security.jwt.expiration-ms:86400000}")
     private long expiresInMs;
 
     public CompleteAccountOutput execute(CompleteAccountInput input) {
         User user = userRepository.findByInviteToken(input.token())
+                .orElseThrow(InvalidInviteTokenException::new);
+
+        // findById hides inactive/deleted organizations: the invite of a deleted org (tombstone,
+        // purge possibly still running) answers like an unknown token and nothing is mutated.
+        organizationRepository.findById(user.getOrganizationId())
                 .orElseThrow(InvalidInviteTokenException::new);
 
         user.setName(input.name());

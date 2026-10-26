@@ -143,6 +143,22 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("UNSUPPORTED_MEDIA_TYPE", "Content-Type não suportado"));
     }
 
+    /* Rota existente com verbo errado (ex.: POST em /roles sem handler) e rota inexistente sao
+     * erro do cliente (405/404), nao falha do servidor: antes caiam no catch-all como 500. */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED)
+                .body(ErrorResponse.of("METHOD_NOT_ALLOWED", "Método não suportado nesta rota"));
+    }
+
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResource(
+            org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.of("NOT_FOUND", "Recurso não encontrado"));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleUnexpected(Exception ex) {
         // The response body is deliberately generic (no internals leaked to callers), so the

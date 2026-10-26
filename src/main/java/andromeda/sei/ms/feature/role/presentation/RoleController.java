@@ -2,15 +2,20 @@ package andromeda.sei.ms.feature.role.presentation;
 
 import andromeda.sei.ms.feature.role.application.dto.CloneRoleInput;
 import andromeda.sei.ms.feature.role.application.dto.UpdateRolePermissionsInput;
+import andromeda.sei.ms.feature.role.application.dto.CreateRoleInput;
 import andromeda.sei.ms.feature.role.application.usecase.CloneRoleUseCase;
+import andromeda.sei.ms.feature.role.application.usecase.CreateRoleUseCase;
 import andromeda.sei.ms.feature.role.application.usecase.DeleteRoleUseCase;
 import andromeda.sei.ms.feature.role.application.usecase.ListRolesUseCase;
 import andromeda.sei.ms.feature.role.application.usecase.UpdateRolePermissionsUseCase;
 import andromeda.sei.ms.feature.role.presentation.dto.CloneRoleRequest;
+import andromeda.sei.ms.feature.role.presentation.dto.CreateRoleRequest;
 import andromeda.sei.ms.feature.role.presentation.dto.RoleResponse;
 import andromeda.sei.ms.feature.role.presentation.dto.UpdateRolePermissionsRequest;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,6 +35,7 @@ import java.util.List;
 public class RoleController {
 
     private final ListRolesUseCase listRolesUseCase;
+    private final CreateRoleUseCase createRoleUseCase;
     private final CloneRoleUseCase cloneRoleUseCase;
     private final UpdateRolePermissionsUseCase updateRolePermissionsUseCase;
     private final DeleteRoleUseCase deleteRoleUseCase;
@@ -44,6 +50,14 @@ public class RoleController {
                 .map(mapper::toResponse)
                 .toList();
         return ResponseEntity.ok(roles);
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_MANAGE')")
+    public ResponseEntity<RoleResponse> createRole(@Valid @RequestBody CreateRoleRequest request) {
+        String orgId = TenantContextHolder.get();
+        CreateRoleInput input = new CreateRoleInput(request.name(), request.permissionCodes());
+        return ResponseEntity.status(HttpStatus.CREATED).body(mapper.toResponse(createRoleUseCase.execute(input, orgId)));
     }
 
     @PostMapping("/clone")
