@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.azure.application.dto;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 
+import java.util.Set;
+
 /**
  * Resultado de um sync de work items de um binding.
  *
@@ -15,12 +17,24 @@ import andromeda.sei.ms.feature.integration.domain.SyncStatus;
  * @param itemsDeactivated itens desativados por terem saido do WIQL do vinculo
  * @param itemsReactivated itens inativos que voltaram ao WIQL
  * @param reconciliationSkipped true quando a reconciliacao de removidos foi pulada por listagem nao confiavel
+ * @param newActivityDays pares (usuario, dia UTC) das atividades de work item gravadas NESTE sync
+ *                        (so autores resolvidos para usuario); base para refazer as sugestoes de alocacao
  */
 public record AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed,
-                                       int itemsDeactivated, int itemsReactivated, boolean reconciliationSkipped) {
+                                       int itemsDeactivated, int itemsReactivated, boolean reconciliationSkipped,
+                                       Set<ActivityDay> newActivityDays) {
+
+    public AzureWorkItemsSyncResult {
+        newActivityDays = newActivityDays != null ? Set.copyOf(newActivityDays) : Set.of();
+    }
+
+    public AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed,
+                                    int itemsDeactivated, int itemsReactivated, boolean reconciliationSkipped) {
+        this(binding, status, processed, failed, itemsDeactivated, itemsReactivated, reconciliationSkipped, Set.of());
+    }
 
     /** Result of a sync that reconciled nothing (kept for callers that do not care about removals). */
     public AzureWorkItemsSyncResult(AzureProjectBinding binding, SyncStatus status, int processed, int failed) {
-        this(binding, status, processed, failed, 0, 0, false);
+        this(binding, status, processed, failed, 0, 0, false, Set.of());
     }
 }
