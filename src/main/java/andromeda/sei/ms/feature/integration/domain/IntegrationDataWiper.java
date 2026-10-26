@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.integration.domain;
 
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Porta de remocao permanente dos dados que uma integracao produziu para uma organizacao.
@@ -22,6 +23,12 @@ public interface IntegrationDataWiper {
 
     /** Qual integracao esta implementacao limpa. */
     Integration integration();
+
+    /**
+     * Colecoes que este wiper limpa. Lido pelo teste de arquitetura da exclusao da organizacao,
+     * que exige que toda colecao com {@code organizationId} seja coberta por um wiper ou pelo purge.
+     */
+    Set<String> collections();
 
     /**
      * Apaga os dados desta integracao na organizacao.

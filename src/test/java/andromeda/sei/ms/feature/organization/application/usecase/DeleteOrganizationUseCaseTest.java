@@ -30,6 +30,7 @@ class DeleteOrganizationUseCaseTest {
 
     @Mock private OrganizationRepository organizationRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private PurgeOrganizationDataUseCase purgeUseCase;
 
     @InjectMocks
     private DeleteOrganizationUseCase useCase;
@@ -38,41 +39,48 @@ class DeleteOrganizationUseCaseTest {
     void should_deactivateOrganizationAndPublishEvent_when_slugMatches() {
         when(organizationRepository.findById(ORG)).thenReturn(Optional.of(organization()));
 
-        useCase.execute(ORG, "acme");
+        useCase.execute(ORG, "user-1", "acme");
 
         ArgumentCaptor<Organization> saved = ArgumentCaptor.forClass(Organization.class);
         verify(organizationRepository).save(saved.capture());
         assertThat(saved.getValue().isActive()).isFalse();
         assertThat(saved.getValue().getUpdatedAt()).isAfter(Instant.parse("2026-01-01T00:00:00Z"));
+        assertThat(saved.getValue().getDeletedAt()).isAfter(Instant.parse("2026-01-01T00:00:00Z"));
+        assertThat(saved.getValue().getDeletedBy()).isEqualTo("user-1");
+        assertThat(saved.getValue().getPurgedAt()).isNull();
         verify(eventPublisher).publishEvent(new OrganizationDeactivated(ORG));
+        verify(purgeUseCase).execute(ORG);
     }
 
     @Test
     void should_throw422AndNotSave_when_slugDiffers() {
         when(organizationRepository.findById(ORG)).thenReturn(Optional.of(organization()));
 
-        assertThatThrownBy(() -> useCase.execute(ORG, "other"))
+        assertThatThrownBy(() -> useCase.execute(ORG, "user-1", "other"))
                 .isInstanceOf(OrganizationDeleteConfirmationMismatchException.class);
         verify(organizationRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any(Object.class));
+        verify(purgeUseCase, never()).execute(any());
     }
 
     @Test
     void should_throw422_when_slugDiffersOnlyByCase() {
         when(organizationRepository.findById(ORG)).thenReturn(Optional.of(organization()));
 
-        assertThatThrownBy(() -> useCase.execute(ORG, "ACME"))
+        assertThatThrownBy(() -> useCase.execute(ORG, "user-1", "ACME"))
                 .isInstanceOf(OrganizationDeleteConfirmationMismatchException.class);
         verify(organizationRepository, never()).save(any());
+        verify(purgeUseCase, never()).execute(any());
     }
 
     @Test
     void should_throwNotFound_when_organizationDoesNotExist() {
         when(organizationRepository.findById(ORG)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> useCase.execute(ORG, "acme")).isInstanceOf(OrganizationNotFoundException.class);
+        assertThatThrownBy(() -> useCase.execute(ORG, "user-1", "acme")).isInstanceOf(OrganizationNotFoundException.class);
         verify(organizationRepository, never()).save(any());
         verify(eventPublisher, never()).publishEvent(any(Object.class));
+        verify(purgeUseCase, never()).execute(any());
     }
 
     private static Organization organization() {

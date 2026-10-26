@@ -18,4 +18,6 @@ public interface OrganizationMongoRepository extends MongoRepository<Organizatio
     @Query("{ 'active': true, 'syncSettings.scheduledSync': ?0, "
             + "'$or': [ { 'lastScheduledSyncAt': null }, { 'lastScheduledSyncAt': { '$lte': ?1 } } ] }")
     List<OrganizationDocument> findAllDueForScheduledSync(ScheduledSyncFrequency frequency, Instant dueUpTo);
+
+    List<OrganizationDocument> findAllByDeletedAtLessThanEqualAndPurgedAtIsNull(Instant deletedBefore);
 }

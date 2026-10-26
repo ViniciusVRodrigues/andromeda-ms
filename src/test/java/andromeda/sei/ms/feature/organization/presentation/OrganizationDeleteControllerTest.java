@@ -4,6 +4,9 @@ import andromeda.sei.ms.feature.organization.application.usecase.DeleteOrganizat
 import andromeda.sei.ms.feature.organization.domain.exception.OrganizationDeleteConfirmationMismatchException;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +40,8 @@ class OrganizationDeleteControllerTest {
     @BeforeEach
     void setUp() {
         TenantContextHolder.set("org-1");
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("user-1", null, List.of()));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -44,6 +49,7 @@ class OrganizationDeleteControllerTest {
 
     @AfterEach
     void tearDown() {
+        SecurityContextHolder.clearContext();
         TenantContextHolder.clear();
     }
 
@@ -54,7 +60,7 @@ class OrganizationDeleteControllerTest {
                         .content("{\"confirmSlug\":\"acme\"}"))
                 .andExpect(status().isNoContent());
 
-        verify(deleteOrganizationUseCase).execute("org-1", "acme");
+        verify(deleteOrganizationUseCase).execute("org-1", "user-1", "acme");
     }
 
     @Test
@@ -64,7 +70,7 @@ class OrganizationDeleteControllerTest {
                         .content("{}"))
                 .andExpect(status().isBadRequest());
 
-        verify(deleteOrganizationUseCase, never()).execute(any(), any());
+        verify(deleteOrganizationUseCase, never()).execute(any(), any(), any());
     }
 
     @Test
@@ -78,7 +84,7 @@ class OrganizationDeleteControllerTest {
     @Test
     void should_return422WithCode_when_slugDoesNotMatch() throws Exception {
         doThrow(new OrganizationDeleteConfirmationMismatchException())
-                .when(deleteOrganizationUseCase).execute("org-1", "wrong");
+                .when(deleteOrganizationUseCase).execute("org-1", "user-1", "wrong");
 
         mockMvc.perform(delete("/api/v1/organizations/me")
                         .contentType(MediaType.APPLICATION_JSON)

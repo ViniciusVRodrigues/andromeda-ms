@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -101,7 +102,8 @@ public class OrganizationController {
     @DeleteMapping("/me")
     @PreAuthorize("hasAuthority('ORGANIZATION_DELETE')")
     public ResponseEntity<Void> deleteMe(@Valid @RequestBody DeleteOrganizationRequest request) {
-        deleteOrganizationUseCase.execute(TenantContextHolder.get(), request.confirmSlug());
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        deleteOrganizationUseCase.execute(TenantContextHolder.get(), auth.getName(), request.confirmSlug());
         return ResponseEntity.noContent().build();
     }
 

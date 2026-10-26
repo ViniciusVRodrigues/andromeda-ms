@@ -36,6 +36,9 @@ public class OrganizationDocumentMapper {
         );
         organization.setSyncSettings(toSyncSettings(doc.getSyncSettings()));
         organization.setLastScheduledSyncAt(doc.getLastScheduledSyncAt());
+        organization.setDeletedAt(doc.getDeletedAt());
+        organization.setDeletedBy(doc.getDeletedBy());
+        organization.setPurgedAt(doc.getPurgedAt());
         organization.setMetricSettings(toMetricSettings(doc.getMetricSettings()));
         organization.setVcsSettings(toVcsSettings(doc.getVcsSettings()));
         return organization;
@@ -106,6 +109,9 @@ public class OrganizationDocumentMapper {
                 .syncSettings(new SyncSettingsDocument(
                         org.getSyncSettings().scheduledSync(), org.getSyncSettings().backfillDays()))
                 .lastScheduledSyncAt(org.getLastScheduledSyncAt())
+                .deletedAt(org.getDeletedAt())
+                .deletedBy(org.getDeletedBy())
+                .purgedAt(org.getPurgedAt())
                 .metricSettings(toMetricSettingsDocument(org.getMetricSettings()))
                 .vcsSettings(toVcsSettingsDocument(org.getVcsSettings()))
                 .createdAt(org.getCreatedAt())

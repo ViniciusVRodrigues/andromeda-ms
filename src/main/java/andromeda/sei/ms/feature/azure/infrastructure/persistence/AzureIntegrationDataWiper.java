@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Hard delete dos dados que o Azure DevOps produziu numa organizacao.
@@ -35,6 +36,12 @@ public class AzureIntegrationDataWiper implements IntegrationDataWiper {
     @Override
     public Integration integration() {
         return Integration.AZURE_DEVOPS;
+    }
+
+    @Override
+    public Set<String> collections() {
+        return Set.of("work_item_transitions", "work_items", "sprint_metrics", "sprints",
+                "azure_org_projects", "azure_org_users");
     }
 
     @Override
