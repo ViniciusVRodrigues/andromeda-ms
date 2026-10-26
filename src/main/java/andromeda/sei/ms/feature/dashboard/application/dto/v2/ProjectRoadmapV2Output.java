@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.dashboard.application.dto.v2;
 import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 import com.fasterxml.jackson.annotation.JsonUnwrapped;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 
@@ -85,10 +86,15 @@ public record ProjectRoadmapV2Output(
                               List<ManualOverride> overrides, Double overridePct) {}
 
     /** Units completed in the period with this effort value (the item's own field). */
-    public record EffortRow(String label, double effort, int count, DurationStat cycleTimeHours) {}
+    public record EffortRow(String label, double effort, int count, DurationStat cycleTimeHours,
+                            BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi) {}
 
+    /**
+     * {@code aiCostUsd}/{@code aiTokens}: VALIDATED allocation to the units of the band (same base as the
+     * item's {@code aiCostUsd}); {@code null} and {@code itemsWithAi = 0} when none of them has allocation.
+     */
     public record ComplexityRow(String label, double complexity, int count, DurationStat cycleTimeHours,
-                                Double avgEffort) {}
+                                Double avgEffort, BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi) {}
 
     /** {@code field}: {@code "Esforço"} or {@code "Complexidade"}; {@code by}: the user's name. */
     public record ManualOverride(String externalId, String title, String field, Double value, String by, Instant at) {}

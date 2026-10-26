@@ -89,7 +89,8 @@ public final class DashboardV2Views {
                 daysInProgress(item, now), aiCostUsd, item.getTokensPerSp(),
                 linkedPr == null ? null : new ItemPullRequest(linkedPr.getNumber(),
                         repositoryNames.get(linkedPr.getRepositoryId()), enumName(linkedPr.getStatus()),
-                        StalePullRequestPolicy.isStale(linkedPr, now)));
+                        StalePullRequestPolicy.isStale(linkedPr, now)),
+                item.getComplexity());
     }
 
     /** Days since the item started, only while it is in progress. */

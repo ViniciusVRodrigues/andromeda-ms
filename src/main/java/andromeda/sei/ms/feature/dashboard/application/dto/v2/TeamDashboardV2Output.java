@@ -102,5 +102,6 @@ public record TeamDashboardV2Output(
                                @JsonProperty("isSelected") boolean isSelected,
                                @JsonProperty("isCurrent") boolean isCurrent,
                                Double spPlanned, Double spDelivered, Double predictabilityPct,
-                               DurationStat cycleTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp) {}
+                               DurationStat cycleTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
+                               Long aiTokens) {}
 }

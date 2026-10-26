@@ -88,6 +88,13 @@ class ProjectDashboardsV2ControllerTest {
                 .andExpect(jsonPath("$.throughput[0].STORY").value(2))
                 .andExpect(jsonPath("$.throughput[0].BUG").value(1))
                 .andExpect(jsonPath("$.throughput[0].story").doesNotExist())
+                .andExpect(jsonPath("$.sprints[0].aiTokens").value(15000))
+                .andExpect(jsonPath("$.doraSeries[0].start").value("2026-07-20"))
+                .andExpect(jsonPath("$.doraSeries[0].leadTimeHoursP50").value(31.5))
+                .andExpect(jsonPath("$.doraSeries[0].deployFreqPerWeek").value(4.0))
+                .andExpect(jsonPath("$.doraSeries[0].changeFailurePct").value(nullValue()))
+                .andExpect(jsonPath("$.doraSeries[0].method").value("VCS_PROXY"))
+                .andExpect(jsonPath("$.doraSeries[0].estimated").value(false))
                 .andExpect(jsonPath("$.ai.costByBucket[0].byModel.claude").value(1.5))
                 .andExpect(jsonPath("$.kpis.leadTimeHours.n").value(0))
                 .andExpect(jsonPath("$.kpis.spDelivered").value(nullValue()))
@@ -105,6 +112,12 @@ class ProjectDashboardsV2ControllerTest {
                 .andExpect(jsonPath("$.epics[0].pctDone").value(50.0))
                 .andExpect(jsonPath("$.epics[0].forecastWeeks").value(12.8))
                 .andExpect(jsonPath("$.epics[0].progress").doesNotExist())
+                .andExpect(jsonPath("$.calibration.byEffort[0].aiCostUsd").value(2.5))
+                .andExpect(jsonPath("$.calibration.byEffort[0].aiTokens").value(15000))
+                .andExpect(jsonPath("$.calibration.byEffort[0].itemsWithAi").value(1))
+                .andExpect(jsonPath("$.calibration.byComplexity[0].aiCostUsd").value(nullValue()))
+                .andExpect(jsonPath("$.calibration.byComplexity[0].aiTokens").value(nullValue()))
+                .andExpect(jsonPath("$.calibration.byComplexity[0].itemsWithAi").value(0))
                 .andExpect(jsonPath("$.config.effortBearingLevel.inferred").value("STORY"))
                 .andExpect(jsonPath("$.asOf").value("2026-10-11T12:00:00Z"));
     }
@@ -154,7 +167,11 @@ class ProjectDashboardsV2ControllerTest {
                 new ProjectOverviewV2Output.Dora("UNAVAILABLE", new ProjectOverviewV2Output.LeadTime(EMPTY, null),
                         new ProjectOverviewV2Output.DeployFrequency(null, null, true),
                         new ProjectOverviewV2Output.ChangeFailureRate(null, null, true)),
-                List.of(new ThroughputRow("2026-07-20", "20/07", 2, 1, 0)), List.of(), List.of(), List.of(), List.of(),
+                List.of(new ProjectOverviewV2Output.DoraRow("2026-07-20", "20/07", 31.5, 4.0, null, "VCS_PROXY", false)),
+                List.of(new ThroughputRow("2026-07-20", "20/07", 2, 1, 0)),
+                List.of(new ProjectOverviewV2Output.SprintRow("s1", "S1", "Sprint 1", 10.0, 8.0, 80.0,
+                        BigDecimal.ONE, null, 15000L)),
+                List.of(), List.of(), List.of(),
                 List.of(),
                 new Ai(List.of("claude"), List.of(new CostBucket("2026-07-20", "20/07", Map.of("claude", new BigDecimal("1.5")))),
                         new ProjectOverviewV2Output.Adoption(0, 0),
@@ -170,7 +187,10 @@ class ProjectDashboardsV2ControllerTest {
                 List.of(new ProjectRoadmapV2Output.EpicRow("E-1", "Épico", "IN_PROGRESS", List.of(), 1, 0, progress)),
                 List.of(),
                 new ProjectRoadmapV2Output.Backlog(0, null, null, null, List.of(), List.of(), List.of(), List.of()),
-                List.of(), new ProjectRoadmapV2Output.Calibration(List.of(), List.of(), List.of(), null), AS_OF);
+                List.of(), new ProjectRoadmapV2Output.Calibration(
+                        List.of(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, EMPTY, new BigDecimal("2.5"), 15000L, 1)),
+                        List.of(new ProjectRoadmapV2Output.ComplexityRow("2", 2.0, 2, EMPTY, 3.0, null, null, 0)),
+                        List.of(), null), AS_OF);
     }
 
     private static ProjectQualityV2Output quality() {

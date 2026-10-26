@@ -59,6 +59,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -171,6 +173,8 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.sprints().get(0).aiCostUsd()).isEqualByComparingTo("10");
         assertThat(out.sprints().get(0).aiCostPerSp()).isEqualByComparingTo("2");
         assertThat(out.sprints().get(1).aiCostPerSp()).isEqualByComparingTo("0");
+        assertThat(out.sprints().get(0).aiTokens()).isEqualTo(150L);
+        assertThat(out.sprints().get(1).aiTokens()).isNull();
         assertThat(out.kpis().predictabilityPct()).isEqualTo(81.25);
         assertThat(out.previous().predictabilityPct()).isEqualTo(100.0);
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("10");
@@ -180,6 +184,86 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.ai().costByBucket().get(0).byModel().get("claude")).isEqualByComparingTo("0");
         assertThat(out.project().team()).isEqualTo("Core");
         assertThat(out.dataQuality().itemsWithEstimatePct()).isEqualTo(100.0);
+    }
+
+    @Test
+    void should_sumOnlyValidatedAllocatedTokens_inTheSprintRow_withTheBaseOfTheCost() {
+        sprints(sprint("s1", "Sprint 1", Sprint.TimeFrame.PAST, "2026-08-03", "2026-08-14"));
+        items.add(inSprint(done("a1", WorkItem.ResolvedType.STORY, 5.0, "2026-08-10T10:00:00Z"), "s1"));
+        AIUsage allocated = usageTokens("u1", "2026-08-05", "al1", "10.00", 10000, 5000);
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                any(), any())).thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
+        // u2 (1 day, not allocated) is never claimed by a VALIDATED allocation: it stays out of both bases
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
+                .thenReturn(List.of(allocated));
+
+        ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.sprints().getFirst().aiTokens()).isEqualTo(15000L);
+        assertThat(out.sprints().getFirst().aiCostUsd()).isEqualByComparingTo("10");
+    }
+
+    @Test
+    void should_weightTokensByTheSplitPercentage_ofTheProject() {
+        sprints(sprint("s1", "Sprint 1", Sprint.TimeFrame.PAST, "2026-08-03", "2026-08-14"));
+        items.add(inSprint(done("a1", WorkItem.ResolvedType.STORY, 5.0, "2026-08-10T10:00:00Z"), "s1"));
+        AiUsageAllocation half = new AiUsageAllocation("al1", ORG, ME, LocalDate.parse("2026-08-05"), List.of("u1"),
+                List.of(new AllocationSplit("a1", "Item", new BigDecimal("0.4")),
+                        new AllocationSplit("other-project-item", "Other", new BigDecimal("0.6"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                any(), any())).thenReturn(List.of(half));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
+                .thenReturn(List.of(usageTokens("u1", "2026-08-05", "al1", "10.00", 10000, 5000)));
+
+        ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.sprints().getFirst().aiTokens()).isEqualTo(6000L);
+        assertThat(out.sprints().getFirst().aiCostUsd()).isEqualByComparingTo("4");
+    }
+
+    @Test
+    void should_returnADoraPointPerBucket_withoutReadingTheChangesMoreThanOnce() {
+        when(vcsReadPort.repositoriesOfProject(ORG, PROJECT)).thenReturn(List.of(
+                new VcsRepository(REPO, ORG, VcsProvider.GITHUB, "ext-repo", "owner/orion")));
+        // merges in 3 of the 13 weekly buckets: 20/07, 03/08 and 31/08
+        when(vcsReadPort.pullRequestsTouchedSince(eq(ORG), eq(List.of(REPO)), any())).thenReturn(List.of(
+                pr("pr1", "2026-07-21T08:00:00Z", "2026-07-22T10:00:00Z", 2.0),
+                pr("pr2", "2026-08-04T08:00:00Z", "2026-08-05T10:00:00Z", 2.0),
+                pr("pr3", "2026-09-01T08:00:00Z", "2026-09-02T10:00:00Z", 2.0),
+                pr("pr4", "2026-09-01T09:00:00Z", "2026-09-03T10:00:00Z", 2.0)));
+
+        ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.doraSeries()).hasSize(out.flow().size()).hasSize(12);
+        assertThat(out.doraSeries()).extracting(ProjectOverviewV2Output.DoraRow::start)
+                .containsExactlyElementsOf(out.flow().stream().map(ProjectOverviewV2Output.FlowRow::start).toList());
+        assertThat(out.doraSeries()).extracting(ProjectOverviewV2Output.DoraRow::label)
+                .containsExactlyElementsOf(out.flow().stream().map(ProjectOverviewV2Output.FlowRow::label).toList());
+        var withMerge = out.doraSeries().get(0);
+        assertThat(withMerge.deployFreqPerWeek()).isEqualTo(1.0);
+        assertThat(withMerge.changeFailurePct()).isEqualTo(0.0);
+        assertThat(withMerge.method()).isEqualTo("VCS_PROXY");
+        assertThat(withMerge.estimated()).isFalse();
+        assertThat(out.doraSeries().get(6).deployFreqPerWeek()).isEqualTo(2.0);
+        var withoutMerge = out.doraSeries().get(1);
+        assertThat(withoutMerge.deployFreqPerWeek()).isEqualTo(0.0);
+        assertThat(withoutMerge.changeFailurePct()).isNull();
+        assertThat(withoutMerge.leadTimeHoursP50()).isNull();
+        assertThat(withoutMerge.method()).isEqualTo("VCS_PROXY");
+        verify(vcsReadPort, times(1)).pullRequestsTouchedSince(eq(ORG), eq(List.of(REPO)), any());
+    }
+
+    @Test
+    void should_returnUnavailableDoraPoints_butEveryBucket_when_thePeriodHasNoData() {
+        ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 180);
+
+        assertThat(out.doraSeries()).hasSize(6).allSatisfy(r -> {
+            assertThat(r.method()).isEqualTo("UNAVAILABLE");
+            assertThat(r.deployFreqPerWeek()).isNull();
+            assertThat(r.changeFailurePct()).isNull();
+            assertThat(r.leadTimeHoursP50()).isNull();
+        });
     }
 
     @Test
@@ -321,6 +405,11 @@ class GetProjectOverviewV2UseCaseTest {
     private static AIUsage usage(String id, String userId, String day, String allocationId, String cost, String model) {
         return new AIUsage(id, ORG, userId, "gh", "ds", LocalDate.parse(day), model, "w", "w", "m", "m",
                 100, 50, 2, "vscode", allocationId, new BigDecimal(cost), NOW, true, 0L, NOW, NOW);
+    }
+
+    private static AIUsage usageTokens(String id, String day, String allocationId, String cost, long in, long out) {
+        return new AIUsage(id, ORG, ME, "gh", "ds", LocalDate.parse(day), "claude", "w", "w", "m", "m",
+                in, out, 2, "vscode", allocationId, new BigDecimal(cost), NOW, true, 0L, NOW, NOW);
     }
 
     private static AiUsageAllocation allocation(String id, String userId, String day, String usageId, String workItemId) {

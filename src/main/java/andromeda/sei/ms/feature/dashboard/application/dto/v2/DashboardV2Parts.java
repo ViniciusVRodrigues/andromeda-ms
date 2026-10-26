@@ -31,7 +31,8 @@ public final class DashboardV2Parts {
     public record ItemView(String id, String externalId, String title, String type, String status,
                            String rawStatus, String priority, Double effort, Assignee assignee,
                            Instant startedAt, Instant completedAt, Double cycleTimeHours, Double leadTimeHours,
-                           Double daysInProgress, BigDecimal aiCostUsd, Double tokensPerSp, ItemPullRequest pr) {}
+                           Double daysInProgress, BigDecimal aiCostUsd, Double tokensPerSp, ItemPullRequest pr,
+                           Double complexity) {}
 
     public record WorkItemRef(String externalId, String title) {}
 

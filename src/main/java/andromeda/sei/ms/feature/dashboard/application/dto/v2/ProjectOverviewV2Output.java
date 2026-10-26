@@ -27,6 +27,7 @@ public record ProjectOverviewV2Output(
         PeriodStats kpis,
         PeriodStats previous,
         Dora dora,
+        List<DoraRow> doraSeries,
         List<ThroughputRow> throughput,
         List<SprintRow> sprints,
         List<FlowRow> flow,
@@ -85,7 +86,16 @@ public record ProjectOverviewV2Output(
 
     /** A past sprint that ended in the period: committed × delivered and the AI cost per SP. */
     public record SprintRow(String sprintId, String label, String name, Double spPlanned, Double spDelivered,
-                            Double predictabilityPct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp) {}
+                            Double predictabilityPct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
+                            Long aiTokens) {}
+
+    /**
+     * DORA proxies of one bucket of {@code flow[]}: same calculation as {@link Dora}, restricted to the
+     * bucket. A metric without data in the bucket is {@code null}; a bucket without merges in a period
+     * that has them reports {@code deployFreqPerWeek = 0}.
+     */
+    public record DoraRow(String start, String label, Double leadTimeHoursP50, Double deployFreqPerWeek,
+                          Double changeFailurePct, String method, boolean estimated) {}
 
     public record FlowRow(String start, String label, DurationStat leadTimeHours, DurationStat cycleTimeHours) {}
 
