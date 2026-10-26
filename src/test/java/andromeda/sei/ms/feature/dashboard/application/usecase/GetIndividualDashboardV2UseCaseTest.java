@@ -186,7 +186,21 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(delivered.assignee().name()).isEqualTo("Ana Ribeiro");
         assertThat(delivered.pr().number()).isEqualTo(1);
         assertThat(delivered.pr().repo()).isEqualTo("owner/orion");
+        assertThat(delivered.pr().stale()).isFalse();
         assertThat(out.kpis().itemsDone()).isEqualTo(1);
+    }
+
+    @Test
+    void should_notFlagMergedPrWithoutReviewAsStale_inPullRequests() {
+        VcsPullRequest merged = pr("pr-2", ME, PullRequestStatus.MERGED, "2026-10-02T10:00:00Z");
+        merged.setMergedAt(Instant.parse("2026-10-05T10:00:00Z"));
+        VcsPullRequest open = pr("pr-1", ME, PullRequestStatus.OPEN, "2026-10-02T10:00:00Z");
+        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(open, merged));
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
+
+        assertThat(out.pullRequests()).extracting(p -> p.id()).containsExactly("pr-1", "pr-2");
+        assertThat(out.pullRequests()).extracting(p -> p.stale()).containsExactly(true, false);
     }
 
     @Test

@@ -288,6 +288,22 @@ class GetTeamDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_notCountMergedOrClosedPrsWithoutReview_asStaleOrOpen() {
+        VcsPullRequest merged = pr("pr-5", ME, "2026-10-02T10:00:00Z");
+        merged.setStatus(PullRequestStatus.MERGED);
+        merged.setMergedAt(Instant.parse("2026-10-03T10:00:00Z"));
+        VcsPullRequest closed = pr("pr-6", ME, "2026-10-02T10:00:00Z");
+        closed.setStatus(PullRequestStatus.CLOSED);
+        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(merged, closed));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.stalePrs()).isEmpty();
+        assertThat(out.kpis().stalePrs()).isEqualTo(0);
+        assertThat(out.kpis().openPrs()).isEqualTo(0);
+    }
+
+    @Test
     void should_buildMembers_fromProjectMembersAndAssignees_withReviewLoad() {
         WorkItem mine = done("d1", 3.0, 6.0);
         mine.setAssigneeUserId(ME);
