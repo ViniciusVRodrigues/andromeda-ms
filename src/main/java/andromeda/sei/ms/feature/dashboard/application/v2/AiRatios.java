@@ -19,4 +19,10 @@ public final class AiRatios {
         if (cost == null || divisor == null || divisor <= 0) return null;
         return cost.divide(BigDecimal.valueOf(divisor), MONEY_SCALE, RoundingMode.HALF_UP);
     }
+
+    /** {@code hours / points} (hours per point of complexity), or {@code null} when either is absent or points is not positive. */
+    public static Double hoursPer(Double hours, Double points) {
+        if (hours == null || points == null || points <= 0) return null;
+        return hours / points;
+    }
 }

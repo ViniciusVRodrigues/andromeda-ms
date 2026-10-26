@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.presentation.dto.v2;
 
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Ai;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Delivery;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Engineering;
@@ -27,5 +28,6 @@ public record OrganizationDashboardV2Response(
         @Schema(description = "Commits, PRs e tempo até a 1ª review por intervalo; saúde por repositório") Engineering engineering,
         @Schema(description = "Uso de IA das pessoas dos projetos visíveis; custo alocado por projeto") Ai ai,
         @Schema(description = "Estado das conexões (sem segredos), sync de 14 dias, cobertura e fontes por projeto") Integrations integrations,
+        @Schema(description = "Sprints que cruzam o período, por projeto visível: IA alocada, complexidade, horas, previsibilidade, lead time") OrganizationDashboardV2Output.SprintHistory sprintHistory,
         @Schema(description = "Instante do cálculo (ISO-8601, UTC)", example = "2026-10-11T12:00:00Z") String asOf,
         @Schema(description = "Frescura dos dados dos projetos visíveis (sync mais antigo, refresh rodando); null sem projeto") DataFreshness dataFreshness) {}

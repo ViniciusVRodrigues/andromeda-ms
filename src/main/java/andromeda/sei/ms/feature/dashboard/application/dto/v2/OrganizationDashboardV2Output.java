@@ -39,7 +39,25 @@ public record OrganizationDashboardV2Output(
         Engineering engineering,
         Ai ai,
         Integrations integrations,
+        SprintHistory sprintHistory,
         Instant asOf) {
+
+    /**
+     * The sprints that cross the period of each visible project (those with {@code DASHBOARD_STRATEGIC}), oldest
+     * first: AI cost and tokens allocated (VALIDATED) to the project in the sprint, complexity and hours by the
+     * single definition (complexity-effort), and the ratios ({@code null} with a null or zero divisor).
+     * {@code hoursPerPoint} = {@code effortLogged} ÷ {@code complexityDelivered}.
+     */
+    public record SprintHistory(List<ProjectSprints> projects) {}
+
+    public record ProjectSprints(String projectId, String name, List<SprintPoint> sprints) {}
+
+    public record SprintPoint(String sprintId, String name, String startDate, String endDate, boolean current,
+                              BigDecimal aiCostUsd, Long aiTokens, Double complexityPlanned,
+                              Double complexityDelivered, Double effortLogged, BigDecimal aiCostPerPoint,
+                              BigDecimal aiCostPerHour, Double hoursPerPoint, Double predictabilityPct,
+                              DurationStat leadTimeHours, int itemsDone) {}
+
 
     public record Period(int days, String start, String end, String previousStart, String previousEnd,
                          String granularity) {}

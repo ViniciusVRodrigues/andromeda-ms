@@ -74,6 +74,7 @@ class GetProjectRoadmapV2UseCaseTest {
     @Mock private WorkItemRepository workItemRepository;
     @Mock private SprintRepository sprintRepository;
     @Mock private AzureProjectBindingRepository bindingRepository;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository connectionRepository;
     @Mock private UserRepository userRepository;
     @Mock private ConnectorTokenRepository connectorTokenRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
@@ -85,7 +86,7 @@ class GetProjectRoadmapV2UseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetProjectRoadmapV2UseCase(projectRepository, workItemRepository, sprintRepository,
-                new EffortBearingLevelResolver(), bindingRepository,
+                new EffortBearingLevelResolver(), bindingRepository, connectionRepository,
                 new DashboardPeopleDirectory(userRepository, connectorTokenRepository), allocationRepository, aiUsageRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         when(projectRepository.findActiveByIdAndOrganizationId(PROJECT, ORG)).thenReturn(Optional.of(
@@ -347,6 +348,86 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(out.calibration().overridePct()).isNull();
         assertThat(out.config().effortField()).isNull();
         assertThat(out.asOf()).isEqualTo(NOW);
+    }
+
+
+    /** Story of complexity 3 delivered 2026-09-12 with one Task child of {@code hours}. */
+    private void storyWithHours(String id, double complexity, Double hours) {
+        WorkItem story = calibrated(id, null, complexity, 10.0, List.of());
+        items.add(story);
+        if (hours != null) {
+            WorkItem task = WorkItemFixture.item("t-" + id, ResolvedType.TASK, ResolvedStatus.DONE, hours, "ext-" + id);
+            task.setCompletedAt(story.getCompletedAt());
+            items.add(task);
+        }
+    }
+
+    @Test
+    void should_reportTheHoursOfEachComplexityBand_andTheOutliersOutsideHalfToDoubleTheMedian() {
+        storyWithHours("a", 3.0, 6.0);
+        storyWithHours("b", 3.0, 8.0);
+        storyWithHours("c", 3.0, 30.0);
+        storyWithHours("d", 3.0, null);
+        storyWithHours("e", 5.0, 10.0);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        var band3 = out.calibration().byComplexity().stream().filter(r -> r.complexity() == 3.0).findFirst().orElseThrow();
+        assertThat(band3.effortHours().p50()).isEqualTo(8.0);
+        assertThat(band3.effortHours().p25()).isEqualTo(6.0);
+        assertThat(band3.effortHours().p75()).isEqualTo(30.0);
+        assertThat(band3.effortHours().n()).isEqualTo(3);
+        assertThat(band3.unitsWithoutEffort()).isEqualTo(1);
+        assertThat(out.calibration().outliers()).extracting(ProjectRoadmapV2Output.Outlier::externalId,
+                        ProjectRoadmapV2Output.Outlier::complexity, ProjectRoadmapV2Output.Outlier::effortHours)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("ext-c", 3.0, 30.0));
+    }
+
+    @Test
+    void should_keepAtMostFiveOutliers_largestDeviationFirst_andLinkThemToAzure() {
+        // no connection: the url stays null
+        // median 4 h: seven items at 1 h (4x below... ratio .25) and 4 h core
+        for (int i = 0; i < 8; i++) storyWithHours("n" + i, 2.0, 4.0);
+        for (int i = 0; i < 6; i++) storyWithHours("h" + i, 2.0, 10.0 + i); // above 2x the median 4? band median = 4
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers()).hasSize(5);
+        assertThat(out.calibration().outliers().getFirst().effortHours()).isEqualTo(15.0);
+        assertThat(out.calibration().outliers()).extracting(ProjectRoadmapV2Output.Outlier::effortHours)
+                .isSortedAccordingTo(java.util.Comparator.reverseOrder());
+        assertThat(out.calibration().outliers().getFirst().url()).isNull();
+    }
+
+    @Test
+    void should_buildTheOutlierUrlFromTheAzureOrganizationAndProject() {
+        var connection = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.AzureConnection.class);
+        when(connection.getAzureOrgUrl()).thenReturn("https://dev.azure.com/acme/");
+        when(connectionRepository.findByOrganizationIdAndActiveTrue(ORG)).thenReturn(Optional.of(connection));
+        var binding = org.mockito.Mockito.mock(AzureProjectBinding.class);
+        when(binding.getAzureProjectName()).thenReturn("Meu Projeto");
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(binding));
+        storyWithHours("a", 3.0, 6.0);
+        storyWithHours("b", 3.0, 6.0);
+        storyWithHours("c", 3.0, 30.0);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers().getFirst().url())
+                .isEqualTo("https://dev.azure.com/acme/Meu%20Projeto/_workitems/edit/ext-c");
+    }
+
+    @Test
+    void should_notFlagOutliers_when_theBandMedianIsZeroOrThereIsNoTaskHours() {
+        storyWithHours("a", 3.0, null);
+        storyWithHours("b", 3.0, null);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers()).isEmpty();
+        var band = out.calibration().byComplexity().getFirst();
+        assertThat(band.effortHours().p50()).isNull();
+        assertThat(band.effortHours().n()).isZero();
+        assertThat(band.unitsWithoutEffort()).isEqualTo(2);
     }
 
     private static FeatureRow feature(ProjectRoadmapV2Output out, String id) {

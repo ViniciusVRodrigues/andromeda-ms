@@ -91,7 +91,20 @@ public record ProjectRoadmapV2Output(
     public record TagShare(String tag, int count, double sp, double points) {}
 
     public record Calibration(List<EffortRow> byEffort, List<ComplexityRow> byComplexity,
-                              List<ManualOverride> overrides, Double overridePct) {}
+                              List<ManualOverride> overrides, Double overridePct, List<Outlier> outliers) {}
+
+    /**
+     * Hours logged on the Tasks of the units of a complexity band (nearest-rank quartiles, the same rule as the
+     * other percentiles); every figure {@code null} and {@code n = 0} without a sample.
+     */
+    public record EffortHours(Double p25, Double p50, Double p75, int n) {}
+
+    /**
+     * A unit whose logged hours are above twice or below half the median of its band (at most 5, largest
+     * deviation first); {@code url} is the item in Azure DevOps, {@code null} when unknown.
+     */
+    public record Outlier(String externalId, String title, String type, Double complexity, Double effortHours,
+                          String url) {}
 
     /**
      * Units completed in the period with this effort value (the item's own field). {@code label} is just the
@@ -106,7 +119,8 @@ public record ProjectRoadmapV2Output(
      * {@code label} is just the number (D7); {@code avgEffort}: the average Task hours logged on the band's units.
      */
     public record ComplexityRow(String label, double complexity, int count, DurationStat cycleTimeHours,
-                                Double avgEffort, BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi) {}
+                                Double avgEffort, BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi,
+                                EffortHours effortHours, int unitsWithoutEffort) {}
 
     /** {@code field}: {@code "Esforço"} or {@code "Complexidade"}; {@code by}: the user's name. */
     public record ManualOverride(String externalId, String title, String field, Double value, String by, Instant at) {}

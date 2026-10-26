@@ -183,6 +183,9 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.kpis().aiCostPerHour()).isEqualByComparingTo("0.5");
         assertThat(out.history().get(1).complexityDelivered()).isEqualTo(3.0);
         assertThat(out.history().get(1).aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.history().get(1).effortLogged()).isEqualTo(12.0);
+        assertThat(out.history().get(1).hoursPerPoint()).isEqualTo(4.0);
+        assertThat(out.history().get(0).hoursPerPoint()).as("a sprint without delivered complexity").isNull();
         assertThat(member(out, ME).complexityDelivered()).isEqualTo(3.0);
         assertThat(member(out, OTHER).complexityDelivered()).isNull();
         // old fields keep their values (D6)
@@ -201,6 +204,7 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.kpis().effortLogged()).isNull();
         assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.kpis().aiCostPerHour()).isNull();
+        assertThat(out.history()).allSatisfy(h -> assertThat(h.hoursPerPoint()).isNull());
     }
 
     @Test

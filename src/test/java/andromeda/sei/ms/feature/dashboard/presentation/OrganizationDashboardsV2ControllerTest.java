@@ -135,6 +135,6 @@ class OrganizationDashboardsV2ControllerTest {
                 new Period(90, "2026-07-14", "2026-10-11", "2026-04-15", "2026-07-13", "semana"), kpis, kpis,
                 List.of(row), new OrganizationDashboardV2Output.Delivery(
                         List.of(new ThroughputByProjectRow("2026-07-20", "20/07", Map.of("p-a", 2))), List.of(),
-                        List.of()), null, null, null, AS_OF);
+                        List.of()), null, null, null, null, AS_OF);
     }
 }

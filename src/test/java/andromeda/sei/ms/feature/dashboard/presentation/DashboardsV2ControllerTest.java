@@ -142,7 +142,7 @@ class DashboardsV2ControllerTest {
     void should_serializeBooleanFlags_withThePreviewNames_andDurationsAsP50P90N() throws Exception {
         var stat = new andromeda.sei.ms.shared.domain.metrics.DurationStat(8.0, 16.0, 2);
         var history = new TeamDashboardV2Output.HistoryPoint("s1", "S1*", "Sprint 1", true, true, 10.0, 8.0, 80.0,
-                stat, java.math.BigDecimal.ONE, null, 15000L, 5.0, 4.0, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE);
+                stat, java.math.BigDecimal.ONE, null, 15000L, 5.0, 4.0, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 24.0, 6.0);
         var member = new TeamDashboardV2Output.Member(CALLER, "Ana", true, true, true, 1, 2, 5.0, 3.0, 1, stat,
                 1, 0, null, null, null, 5.0, 4.0, 12.0, 100.0, 8.0);
         var empty = TeamDashboardV2Output.withoutSprint(new TeamDashboardV2Output.TeamInfo("Core", 1), AS_OF);

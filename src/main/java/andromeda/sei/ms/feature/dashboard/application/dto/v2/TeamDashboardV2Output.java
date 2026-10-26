@@ -110,5 +110,6 @@ public record TeamDashboardV2Output(
                                Double spPlanned, Double spDelivered, Double predictabilityPct,
                                DurationStat cycleTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
                                Long aiTokens, Double complexityPlanned, Double complexityDelivered,
-                               BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
+                               BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour,
+                               Double effortLogged, Double hoursPerPoint) {}
 }

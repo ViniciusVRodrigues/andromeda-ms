@@ -189,8 +189,9 @@ class ProjectDashboardsV2ControllerTest {
                 new ProjectRoadmapV2Output.Backlog(0, null, null, null, List.of(), List.of(), List.of(), List.of(), 6.0),
                 List.of(), new ProjectRoadmapV2Output.Calibration(
                         List.of(new ProjectRoadmapV2Output.EffortRow("3", 3.0, 2, EMPTY, new BigDecimal("2.5"), 15000L, 1)),
-                        List.of(new ProjectRoadmapV2Output.ComplexityRow("2", 2.0, 2, EMPTY, 3.0, null, null, 0)),
-                        List.of(), null), AS_OF);
+                        List.of(new ProjectRoadmapV2Output.ComplexityRow("2", 2.0, 2, EMPTY, 3.0, null, null, 0,
+                                new ProjectRoadmapV2Output.EffortHours(2.0, 3.0, 4.0, 2), 0)),
+                        List.of(), null, List.of(new ProjectRoadmapV2Output.Outlier("1", "t", "STORY", 2.0, 9.0, null))), AS_OF);
     }
 
     private static ProjectQualityV2Output quality() {

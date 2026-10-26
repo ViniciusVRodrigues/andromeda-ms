@@ -408,8 +408,14 @@ public class GetTeamDashboardV2UseCase {
             return new HistoryPoint(sprint.getId(), DashboardV2Views.historyLabel(sprint), sprint.getName(),
                     sprint.getId().equals(selection.selected().getId()), DashboardV2Views.isCurrent(sprint),
                     s.spPlanned(), s.spDelivered(), predictability(s), s.cycleTimeHours(), s.aiCostUsd(), s.aiCostPerSp(), tokens,
-                    s.complexityPlanned(), s.complexityDelivered(), s.aiCostPerPoint(), s.aiCostPerHour());
+                    s.complexityPlanned(), s.complexityDelivered(), s.aiCostPerPoint(), s.aiCostPerHour(),
+                    s.effortLogged(), hoursPerPoint(s));
         }).toList();
+    }
+
+    /** Hours logged on the Tasks of the delivered units ÷ complexity delivered; null with a null or zero divisor. */
+    private static Double hoursPerPoint(SprintStats s) {
+        return AiRatios.hoursPer(s.effortLogged(), s.complexityDelivered());
     }
 
     private static Double predictability(SprintStats s) {
