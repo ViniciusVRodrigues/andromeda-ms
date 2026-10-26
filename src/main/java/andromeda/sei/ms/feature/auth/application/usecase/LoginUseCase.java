@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.auth.application.usecase;
 import andromeda.sei.ms.feature.auth.application.dto.LoginInput;
 import andromeda.sei.ms.feature.auth.application.dto.LoginOutput;
 import andromeda.sei.ms.feature.auth.domain.exception.InvalidCredentialsException;
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.role.domain.RoleRepository;
 import andromeda.sei.ms.feature.usage.application.usecase.RecordLoginUseCase;
 import andromeda.sei.ms.feature.usage.domain.LoginMethod;
@@ -25,6 +26,7 @@ public class LoginUseCase {
     private final RoleRepository roleRepository;
     private final PasswordVerifier passwordVerifier;
     private final RecordLoginUseCase recordLoginUseCase;
+    private final OrganizationRepository organizationRepository;
 
     @Value("${security.jwt.expiration-ms:86400000}")
     private long expiresInMs;
@@ -40,6 +42,10 @@ public class LoginUseCase {
         if (!passwordVerifier.verify(input.password(), user.getPasswordHash())) {
             throw new InvalidCredentialsException();
         }
+
+        // findById hides inactive organizations: same error as a wrong password, nothing is revealed.
+        organizationRepository.findById(user.getOrganizationId())
+                .orElseThrow(InvalidCredentialsException::new);
 
         var role = roleRepository.findById(user.getRoleId())
                 .orElseThrow(InvalidCredentialsException::new);

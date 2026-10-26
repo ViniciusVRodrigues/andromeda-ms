@@ -22,6 +22,7 @@ public final class PermissionCatalog {
     public static final String USER_MANAGE = "USER_MANAGE";
     public static final String PROJECT_ACCESS_ALL = "PROJECT_ACCESS_ALL";
     public static final String PROJECT_MANAGE = "PROJECT_MANAGE";
+    public static final String ORGANIZATION_DELETE = "ORGANIZATION_DELETE";
     public static final String AZURE_READ = "AZURE_READ";
     public static final String REPOS_READ = "REPOS_READ";
     public static final String DASHBOARD_TEAM = "DASHBOARD_TEAM";
@@ -37,7 +38,7 @@ public final class PermissionCatalog {
         Map<String, PermissionScope> scopes = new LinkedHashMap<>();
         for (String code : new String[]{USER_MANAGE, "ROLE_MANAGE", "PRICE_TABLE_MANAGE", "AZURE_CONFIGURE",
                 "REPOS_CONFIGURE", "CONNECTOR_TOKEN_MANAGE_OWN", "CONNECTOR_TOKEN_MANAGE_ALL", "AI_READ_OWN",
-                "DASHBOARD_INDIVIDUAL", PROJECT_ACCESS_ALL, PROJECT_MANAGE}) {
+                "DASHBOARD_INDIVIDUAL", PROJECT_ACCESS_ALL, PROJECT_MANAGE, ORGANIZATION_DELETE}) {
             scopes.put(code, PermissionScope.ORG_ONLY);
         }
         for (String code : new String[]{AZURE_READ, REPOS_READ, DASHBOARD_TEAM, DASHBOARD_STRATEGIC, AI_READ_ALL,

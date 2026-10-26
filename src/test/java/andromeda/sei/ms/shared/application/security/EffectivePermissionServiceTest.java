@@ -1,5 +1,7 @@
 package andromeda.sei.ms.shared.application.security;
 
+import andromeda.sei.ms.feature.organization.domain.Organization;
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.role.domain.Role;
@@ -42,6 +44,7 @@ class EffectivePermissionServiceTest {
     @Mock private UserRepository userRepository;
     @Mock private RoleRepository roleRepository;
     @Mock private ProjectRepository projectRepository;
+    @Mock private OrganizationRepository organizationRepository;
 
     private EffectivePermissionService service;
 
@@ -51,8 +54,18 @@ class EffectivePermissionServiceTest {
     @BeforeEach
     void setUp() {
         service = new EffectivePermissionService(userRepository, roleRepository, projectRepository,
-                new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
+                organizationRepository, new CaffeinePermissionSnapshotCache(Duration.ofMinutes(5)));
         lenient().when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(List.of(a, b));
+        lenient().when(organizationRepository.findById(ORG)).thenReturn(Optional.of(
+                new Organization(ORG, "Org", "org", null, null, null, null, null, true, 1L, T, T)));
+    }
+
+    @Test
+    void should_returnEmptySnapshot_when_organizationIsInactiveOrMissing() {
+        when(organizationRepository.findById(ORG)).thenReturn(Optional.empty()); // findById hides inactive ones
+        lenient().when(userRepository.findByIdAndOrganizationId("dev", ORG)).thenReturn(Optional.of(user("dev", "role-1", List.of())));
+
+        assertThat(service.snapshot(ORG, "dev")).isEmpty();
     }
 
     @Test

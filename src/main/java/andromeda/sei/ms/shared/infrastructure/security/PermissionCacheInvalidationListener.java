@@ -1,6 +1,7 @@
 package andromeda.sei.ms.shared.infrastructure.security;
 
 import andromeda.sei.ms.shared.application.security.EffectivePermissionService;
+import andromeda.sei.ms.shared.application.security.OrganizationDeactivated;
 import andromeda.sei.ms.shared.application.security.ProjectMembersChanged;
 import andromeda.sei.ms.shared.application.security.RoleChanged;
 import andromeda.sei.ms.shared.application.security.UserPermissionsChanged;
@@ -29,6 +30,11 @@ public class PermissionCacheInvalidationListener {
 
     @EventListener
     public void on(RoleChanged event) {
+        effectivePermissionService.evictAll();
+    }
+
+    @EventListener
+    public void on(OrganizationDeactivated event) {
         effectivePermissionService.evictAll();
     }
 

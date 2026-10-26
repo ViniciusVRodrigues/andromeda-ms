@@ -39,6 +39,7 @@ class LoginRecordingTest {
     @Mock private PasswordVerifier passwordVerifier;
     @Mock private PasswordHasher passwordHasher;
     @Mock private RecordLoginUseCase recordLoginUseCase;
+    @Mock private andromeda.sei.ms.feature.organization.domain.OrganizationRepository organizationRepository;
     @Mock private andromeda.sei.ms.feature.usage.application.usecase.LinkFunnelUseCase linkFunnelUseCase;
     @Mock private andromeda.sei.ms.feature.azure.application.usecase.AutoLinkAzureIdentitiesUseCase autoLink;
 
@@ -52,7 +53,10 @@ class LoginRecordingTest {
     }
 
     private LoginUseCase login() {
-        return new LoginUseCase(userRepository, roleRepository, passwordVerifier, recordLoginUseCase);
+        org.mockito.Mockito.lenient().when(organizationRepository.findById(org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> Optional.of(
+                new andromeda.sei.ms.feature.organization.domain.Organization(inv.getArgument(0), "Org", "org", null, null,
+                        null, null, null, true, 1L, NOW, NOW)));
+        return new LoginUseCase(userRepository, roleRepository, passwordVerifier, recordLoginUseCase, organizationRepository);
     }
 
     @Test

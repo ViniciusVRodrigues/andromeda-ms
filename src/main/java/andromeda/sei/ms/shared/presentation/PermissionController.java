@@ -37,6 +37,7 @@ public class PermissionController {
             Map.entry("REPOS_READ", "Ver dados de Repositórios"),
             Map.entry("PRICE_TABLE_MANAGE", "Gerenciar Tabela de Preços"),
             Map.entry("PROJECT_ACCESS_ALL", "Acesso a todos os projetos"),
+            Map.entry("ORGANIZATION_DELETE", "Excluir a organização"),
             Map.entry("PROJECT_MANAGE", "Gerenciar Projetos"),
             Map.entry("ROLE_MANAGE", "Gerenciar Cargos"),
             Map.entry("USER_MANAGE", "Gerenciar Usuários"),
