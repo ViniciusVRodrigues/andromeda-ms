@@ -20,4 +20,22 @@ public interface OrganizationRepository {
      * Consulta de manutencao do scheduler, sem tenant por construcao.
      */
     List<Organization> findAllDueForScheduledSync(Instant tick);
+
+    /**
+     * Lapide de uma organizacao excluida (com {@code deletedAt}), ativa ou nao. Ao contrario de
+     * {@link #findById}, que so enxerga organizacoes ativas.
+     */
+    Optional<Organization> findDeletedById(String id);
+
+    /**
+     * Lapides cujo purge ainda nao terminou: {@code deletedAt <= deletedBefore} e sem
+     * {@code purgedAt}. Consulta de manutencao da retomada, sem tenant por construcao.
+     */
+    List<Organization> findPendingPurge(Instant deletedBefore);
+
+    /**
+     * Fecha o purge: reduz o documento a lapide (id, name, slug, active=false, deletedAt,
+     * deletedBy, purgedAt, createdAt, updatedAt, version) e zera o resto.
+     */
+    void markPurged(String id, Instant purgedAt);
 }

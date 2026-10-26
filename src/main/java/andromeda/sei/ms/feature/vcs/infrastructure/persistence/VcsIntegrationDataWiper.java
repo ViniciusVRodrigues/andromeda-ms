@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 
 /**
@@ -52,6 +53,12 @@ public class VcsIntegrationDataWiper implements IntegrationDataWiper {
     @Override
     public Integration integration() {
         return VcsIntegrations.integrationOf(provider);
+    }
+
+    @Override
+    public Set<String> collections() {
+        return Set.of(VcsReviewEventDocument.COLLECTION, VcsPullRequestDocument.COLLECTION,
+                VcsCommitDocument.COLLECTION, VcsRepositoryDocument.COLLECTION);
     }
 
     @Override

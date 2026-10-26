@@ -67,7 +67,7 @@ class OrganizationDeleteSecurityTest {
 
         assertThatThrownBy(() -> controller().deleteMe(new DeleteOrganizationRequest("acme")))
                 .isInstanceOf(AccessDeniedException.class);
-        verify(USE_CASE, never()).execute(any(), any());
+        verify(USE_CASE, never()).execute(any(), any(), any());
     }
 
     @Test
@@ -76,7 +76,7 @@ class OrganizationDeleteSecurityTest {
 
         controller().deleteMe(new DeleteOrganizationRequest("acme"));
 
-        verify(USE_CASE).execute("org-1", "acme");
+        verify(USE_CASE).execute("org-1", "user-a", "acme");
     }
 
     private static void authenticateWith(String... authorities) {

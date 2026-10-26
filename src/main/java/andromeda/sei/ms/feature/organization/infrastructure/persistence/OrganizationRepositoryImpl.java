@@ -52,4 +52,37 @@ public class OrganizationRepositoryImpl implements OrganizationRepository {
                 .map(mapper::toDomain)
                 .toList();
     }
+
+    @Override
+    public Optional<Organization> findDeletedById(String id) {
+        return mongoRepository.findById(id)
+                .filter(doc -> doc.getDeletedAt() != null)
+                .map(mapper::toDomain);
+    }
+
+    @Override
+    public List<Organization> findPendingPurge(Instant deletedBefore) {
+        return mongoRepository.findAllByDeletedAtLessThanEqualAndPurgedAtIsNull(deletedBefore).stream()
+                .map(mapper::toDomain)
+                .toList();
+    }
+
+    @Override
+    public void markPurged(String id, Instant purgedAt) {
+        mongoRepository.findById(id).filter(doc -> doc.getDeletedAt() != null).ifPresent(doc -> {
+            doc.setActive(false);
+            doc.setSector(null);
+            doc.setCountry(null);
+            doc.setSeniorities(null);
+            doc.setAiPrices(null);
+            doc.setSubscriptionCostPerUserUsd(null);
+            doc.setSyncSettings(null);
+            doc.setLastScheduledSyncAt(null);
+            doc.setMetricSettings(null);
+            doc.setVcsSettings(null);
+            doc.setPurgedAt(purgedAt);
+            doc.setUpdatedAt(purgedAt);
+            mongoRepository.save(doc);
+        });
+    }
 }

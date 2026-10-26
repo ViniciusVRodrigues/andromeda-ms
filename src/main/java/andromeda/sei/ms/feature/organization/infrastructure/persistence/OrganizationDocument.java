@@ -37,6 +37,11 @@ public class OrganizationDocument {
     private SyncSettingsDocument syncSettings;
     private Instant lastScheduledSyncAt;
 
+    /** Lapide (excluir-organizacao): ausentes em organizacao viva. */
+    private Instant deletedAt;
+    private String deletedBy;
+    private Instant purgedAt;
+
     /** Ausente em documentos anteriores a metrics-correctness; o mapper le os defaults. */
     private MetricSettingsDocument metricSettings;
 

@@ -24,6 +24,9 @@ public class Organization {
     private Instant updatedAt;
     private SyncSettings syncSettings = SyncSettings.defaults();
     private Instant lastScheduledSyncAt;
+    private Instant deletedAt;
+    private String deletedBy;
+    private Instant purgedAt;
     private MetricSettings metricSettings = MetricSettings.defaults();
     private VcsSettings vcsSettings = VcsSettings.defaults();
 
@@ -109,6 +112,18 @@ public class Organization {
     public void setVcsSettings(VcsSettings vcsSettings) {
         this.vcsSettings = vcsSettings != null ? vcsSettings : VcsSettings.defaults();
     }
+
+    /** Lapide: quando a exclusao foi pedida; nulo em organizacao viva. */
+    public Instant getDeletedAt() { return deletedAt; }
+    public void setDeletedAt(Instant deletedAt) { this.deletedAt = deletedAt; }
+
+    /** Lapide: userId de quem excluiu a organizacao. */
+    public String getDeletedBy() { return deletedBy; }
+    public void setDeletedBy(String deletedBy) { this.deletedBy = deletedBy; }
+
+    /** Lapide: quando o purge dos dados terminou; nulo enquanto ainda ha o que apagar. */
+    public Instant getPurgedAt() { return purgedAt; }
+    public void setPurgedAt(Instant purgedAt) { this.purgedAt = purgedAt; }
 
     /** Instante (tick do scheduler) do ultimo sync agendado disparado para a organizacao. */
     public Instant getLastScheduledSyncAt() { return lastScheduledSyncAt; }

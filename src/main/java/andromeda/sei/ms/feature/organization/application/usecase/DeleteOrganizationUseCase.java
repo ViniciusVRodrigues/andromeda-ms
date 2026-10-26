@@ -10,15 +10,20 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 
-/** Logical deletion of the caller's organization (soft delete); users and data are left untouched. */
+/**
+ * Deletion of the caller's organization: cuts access at once (inactive + tombstone with
+ * {@code deletedAt}/{@code deletedBy}, event published, 204) and then triggers the background
+ * {@link PurgeOrganizationDataUseCase}, which erases the organization's data for good.
+ */
 @Component
 @RequiredArgsConstructor
 public class DeleteOrganizationUseCase {
 
     private final OrganizationRepository organizationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PurgeOrganizationDataUseCase purgeUseCase;
 
-    public void execute(String organizationId, String confirmSlug) {
+    public void execute(String organizationId, String deletedBy, String confirmSlug) {
         var organization = organizationRepository.findById(organizationId)
                 .orElseThrow(() -> new OrganizationNotFoundException(organizationId));
 
@@ -26,9 +31,13 @@ public class DeleteOrganizationUseCase {
             throw new OrganizationDeleteConfirmationMismatchException();
         }
 
+        Instant now = Instant.now();
         organization.setActive(false);
-        organization.setUpdatedAt(Instant.now());
+        organization.setDeletedAt(now);
+        organization.setDeletedBy(deletedBy);
+        organization.setUpdatedAt(now);
         organizationRepository.save(organization);
         eventPublisher.publishEvent(new OrganizationDeactivated(organizationId));
+        purgeUseCase.execute(organizationId);
     }
 }

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Hard delete do uso de IA de uma organizacao.
@@ -33,6 +34,11 @@ public class AiConnectorIntegrationDataWiper implements IntegrationDataWiper {
     @Override
     public Integration integration() {
         return Integration.AI_CONNECTOR;
+    }
+
+    @Override
+    public Set<String> collections() {
+        return Set.of("ai_usage_allocations", "ai_usages");
     }
 
     @Override
