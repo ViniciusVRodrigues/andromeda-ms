@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.sync.application.runner;
 
+import andromeda.sei.ms.feature.allocation.application.usecase.RefreshAllocationSuggestionsUseCase;
+import andromeda.sei.ms.feature.azure.application.dto.ActivityDay;
 import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureSprintsUseCase;
 import andromeda.sei.ms.feature.azure.application.usecase.SyncAzureWorkItemsUseCase;
@@ -20,7 +22,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -45,6 +49,7 @@ public class AzureBindingSyncRunner implements BindingSyncRunner {
     private final SyncAzureSprintsUseCase syncAzureSprintsUseCase;
     private final SyncAzureWorkItemsUseCase syncAzureWorkItemsUseCase;
     private final ConnectionHealthUpdater connectionHealthUpdater;
+    private final RefreshAllocationSuggestionsUseCase refreshAllocationSuggestionsUseCase;
 
     @Override
     public Integration integration() {
@@ -79,15 +84,28 @@ public class AzureBindingSyncRunner implements BindingSyncRunner {
         }
 
         boolean anyFailed = false;
+        Set<ActivityDay> newActivityDays = new HashSet<>();
         for (SyncTarget target : batch.targets()) {
-            BindingSyncOutcome outcome = syncBinding(ready, target, batch);
+            BindingSyncOutcome outcome = syncBinding(ready, target, batch, newActivityDays);
             anyFailed |= !outcome.reachedProvider();
             onOutcome.accept(outcome);
         }
         connectionHealthUpdater.recordAzure(orgId, !anyFailed);
+        refreshSuggestions(orgId, newActivityDays);
     }
 
-    private BindingSyncOutcome syncBinding(AzureConnection connection, SyncTarget target, BindingSyncBatch batch) {
+    /** One refresh for the union of every binding's new activity days; never breaks the sync. */
+    private void refreshSuggestions(String orgId, Set<ActivityDay> newActivityDays) {
+        if (newActivityDays.isEmpty()) return;
+        try {
+            refreshAllocationSuggestionsUseCase.execute(orgId, newActivityDays);
+        } catch (Exception e) {
+            log.warn("Allocation suggestion refresh failed after Azure sync for org={}", orgId, e);
+        }
+    }
+
+    private BindingSyncOutcome syncBinding(AzureConnection connection, SyncTarget target, BindingSyncBatch batch,
+                                           Set<ActivityDay> newActivityDays) {
         String orgId = batch.organizationId();
         try {
             Optional<AzureProjectBinding> found =
@@ -105,6 +123,7 @@ public class AzureBindingSyncRunner implements BindingSyncRunner {
             AzureProjectBinding afterSprints = syncAzureSprintsUseCase.execute(connection, binding, batch.trigger());
             AzureWorkItemsSyncResult result = syncAzureWorkItemsUseCase.sync(
                     connection, afterSprints, batch.trigger(), batch.backfillFrom());
+            newActivityDays.addAll(result.newActivityDays());
             return toOutcome(target, result);
         } catch (Exception e) {
             log.error("Azure sync failed for org={} project={} binding={}", orgId, target.projectId(), target.bindingId(), e);

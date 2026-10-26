@@ -7,7 +7,11 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemActivity;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemActivityRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -36,6 +40,7 @@ class AutoAssignAllocationUseCaseTest {
     @Mock AIUsageRepository aiUsageRepository;
     @Mock SprintRepository sprintRepository;
     @Mock WorkItemRepository workItemRepository;
+    @Mock WorkItemActivityRepository activityRepository;
 
     AutoAssignAllocationUseCase useCase;
 
@@ -46,7 +51,7 @@ class AutoAssignAllocationUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new AutoAssignAllocationUseCase(
-                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
+                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository, activityRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
     }
 
     // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -206,6 +211,234 @@ class AutoAssignAllocationUseCaseTest {
     }
 
     // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    // ── Activity-based suggestion (alocacao-no-dashboard D3) ───────────────
+
+    @Test
+    void should_splitEvenlyAcrossActivityItems_lastClosesSum_when_threeItemsChanged() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenActivityOn("wi-1", "wi-2", "wi-3");
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        AiUsageAllocation created = savedOne();
+        assertThat(created.getSplits()).extracting(AllocationSplit::getWorkItemId)
+                .containsExactly("wi-1", "wi-2", "wi-3");
+        assertThat(created.getSplits()).extracting(AllocationSplit::getPercentage)
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("0.3333"), new BigDecimal("0.3333"), new BigDecimal("0.3334"));
+        assertThat(created.getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+        verify(sprintRepository, never()).findByOrganizationIdAndDay(anyString(), any());
+    }
+
+    @Test
+    void should_useOnlyActivityItem_when_otherItemsAreInProgress() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenActivityOn("wi-1");
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        AiUsageAllocation created = savedOne();
+        assertThat(created.getSplits()).hasSize(1);
+        assertThat(created.getSplits().get(0).getWorkItemId()).isEqualTo("wi-1");
+        assertThat(created.getSplits().get(0).getPercentage()).isEqualByComparingTo("1.0000");
+        assertThat(created.getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+    }
+
+    @Test
+    void should_countRepeatedRevisionsOfTheSameItemOnce() {
+        givenUnallocatedUsageAndNoAllocation();
+        when(activityRepository.findByOrganizationIdAndActorUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(activity("wi-1", 1), activity("wi-1", 2), activity("wi-2", 3)));
+        stubItem("wi-1");
+        stubItem("wi-2");
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        assertThat(savedOne().getSplits()).extracting(AllocationSplit::getPercentage)
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(new BigDecimal("0.5000"), new BigDecimal("0.5000"));
+    }
+
+    @Test
+    void should_fallBackToInProgress_withSourceInProgress_when_noActivity() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenInProgress(workItem("wi-a", "A"), workItem("wi-b", "B"));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        AiUsageAllocation created = savedOne();
+        assertThat(created.getSplits()).hasSize(2);
+        assertThat(created.getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.IN_PROGRESS);
+    }
+
+    @Test
+    void should_fallBackToInProgress_when_activityItemsAreAllFilteredOut() {
+        givenUnallocatedUsageAndNoAllocation();
+        when(activityRepository.findByOrganizationIdAndActorUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(activity("wi-removed", 1), activity("wi-unknown", 2)));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-removed", ORG)).thenReturn(Optional.empty());
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-unknown", ORG)).thenReturn(Optional.empty());
+        givenInProgress(workItem("wi-a", "A"));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        assertThat(savedOne().getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.IN_PROGRESS);
+        assertThat(savedOne().getSplits()).extracting(AllocationSplit::getWorkItemId).containsExactly("wi-a");
+    }
+
+    @Test
+    void should_createNothing_when_noActivityAndNothingInProgress() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenInProgress();
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void should_leaveTaskOut_when_taskHasNoEffortAndLevelResolvesToStory() {
+        givenUnallocatedUsageAndNoAllocation();
+        WorkItem task = taskWorkItem("wi-task", null);
+        when(activityRepository.findByOrganizationIdAndActorUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(activity("wi-task", 1)));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-task", ORG)).thenReturn(Optional.of(task));
+        givenInProgress();
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void should_keepTask_when_taskCarriesEffort() {
+        givenUnallocatedUsageAndNoAllocation();
+        WorkItem task = taskWorkItem("wi-task", 2.0);
+        when(activityRepository.findByOrganizationIdAndActorUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(activity("wi-task", 1)));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-task", ORG)).thenReturn(Optional.of(task));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        assertThat(savedOne().getSplits()).extracting(AllocationSplit::getWorkItemId).containsExactly("wi-task");
+    }
+
+    @Test
+    void should_neverTouchValidatedDay() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-9")));
+        AiUsageAllocation validated = savedAllocation("alloc-v", List.of("usage-1"));
+        validated.setStatus(AiUsageAllocation.Status.VALIDATED);
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(validated));
+
+        useCase.execute(ORG, USER, DAY, true);
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).deleteById(anyString());
+    }
+
+    @Test
+    void should_recomputeWhenForced_replacingPendingWithNewSource() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        AiUsageAllocation pending = savedAllocation("alloc-p", List.of("usage-1"));
+        pending.setSplits(List.of(new AllocationSplit("wi-old", "Old", new BigDecimal("1.0000"))));
+        pending.setSuggestionSource(AiUsageAllocation.SuggestionSource.IN_PROGRESS);
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(pending));
+        givenActivityOn("wi-1");
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY, true);
+
+        verify(allocationRepository).deleteById("alloc-p");
+        assertThat(savedOne().getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+    }
+
+    @Test
+    void should_notRewriteWhenForced_butSuggestionIsUnchanged() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        AiUsageAllocation pending = savedAllocation("alloc-p", List.of("usage-1"));
+        pending.setSplits(List.of(new AllocationSplit("wi-1", "wi-1", new BigDecimal("1.0000"))));
+        pending.setSuggestionSource(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(pending));
+        givenActivityOn("wi-1");
+
+        useCase.execute(ORG, USER, DAY, true);
+
+        verify(allocationRepository, never()).deleteById(anyString());
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void should_notRecomputeWithoutForce_whenSameUsageSet() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(savedAllocation("alloc-p", List.of("usage-1"))));
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(activityRepository, never()).findByOrganizationIdAndActorUserIdAndDay(anyString(), anyString(), any());
+        verify(allocationRepository, never()).save(any());
+    }
+
+    private void givenUnallocatedUsageAndNoAllocation() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+    }
+
+    private void givenActivityOn(String... workItemIds) {
+        int rev = 1;
+        List<WorkItemActivity> acts = new java.util.ArrayList<>();
+        for (String id : workItemIds) {
+            acts.add(activity(id, rev++));
+            stubItem(id);
+        }
+        when(activityRepository.findByOrganizationIdAndActorUserIdAndDay(ORG, USER, DAY)).thenReturn(acts);
+    }
+
+    private void stubItem(String id) {
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, ORG))
+                .thenReturn(Optional.of(workItem(id, id)));
+    }
+
+    private void givenInProgress(WorkItem... items) {
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint("sprint-1")));
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of(items));
+    }
+
+    private AiUsageAllocation savedOne() {
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        return captor.getValue();
+    }
+
+    private WorkItemActivity activity(String workItemId, int revision) {
+        Instant at = Instant.parse("2026-06-03T10:00:00Z").plusSeconds(revision);
+        return new WorkItemActivity(null, ORG, workItemId, "ext-" + workItemId, revision, "az-1", "u@x", USER,
+                at, DAY, List.of("System.State"), true, 0L, at, at);
+    }
+
+    private WorkItem taskWorkItem(String id, Double effort) {
+        return new WorkItem(id, ORG, "proj-1", WorkItem.Source.AZURE_DEVOPS,
+                id, Instant.now(), "Task " + id,
+                "Task", WorkItem.ResolvedType.TASK,
+                "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
+                "Medium", null, List.of(),
+                "sprint-1", "ext-user", USER, null, null,
+                Instant.now(), Instant.now(), null,
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, effort, null, null, null);
+    }
 
     @Test
     void should_ignoreInactiveWorkItems_when_assigning() {

@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
 import andromeda.sei.ms.feature.azure.application.DefaultWorkflowConfigFactory;
+import andromeda.sei.ms.feature.azure.application.dto.ActivityDay;
 import andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult;
 import andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector;
 import andromeda.sei.ms.feature.azure.application.service.AzureWorkItemRemovalReconciler;
@@ -27,6 +28,8 @@ import andromeda.sei.ms.feature.workitem.domain.SharedIterations;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemActivity;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemActivityRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransition;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemTransitionRepository;
@@ -37,6 +40,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -59,6 +64,7 @@ public class SyncAzureWorkItemsUseCase {
     private final AzureProjectBindingRepository azureProjectBindingRepository;
     private final AzureOrgUserCollector orgUserCollector;
     private final AzureWorkItemRemovalReconciler removalReconciler;
+    private final WorkItemActivityRepository workItemActivityRepository;
 
     /**
      * @return o binding tal como persistido, com a {@code version} atualizada. Chamadores
@@ -93,6 +99,7 @@ public class SyncAzureWorkItemsUseCase {
         int deactivated = 0;
         int reactivated = 0;
         boolean reconciliationSkipped = false;
+        ActivityCollector activity = new ActivityCollector();
 
         try {
             String orgUrl = connection.getAzureOrgUrl();
@@ -136,7 +143,7 @@ public class SyncAzureWorkItemsUseCase {
             Set<String> processedIds = new java.util.HashSet<>();
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
-                    if (processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader)) reactivated++;
+                    if (processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader, activity)) reactivated++;
                     processedIds.add(String.valueOf(adoItem.id()));
                     collectIdentities(adoItem, seen);
                     processed++;
@@ -169,12 +176,12 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setItemsDeactivated(deactivated);
             syncLog.setItemsReactivated(reactivated);
             syncLogRepository.save(syncLog);
-            log.info("Work item sync completed: org={} project={} status={} processed={} failed={} deactivated={} reactivated={} reconciliationSkipped={} durationMs={}",
+            log.info("Work item sync completed: org={} project={} status={} processed={} failed={} deactivated={} reactivated={} reconciliationSkipped={} activitiesStored={} durationMs={}",
                     connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
-                    deactivated, reactivated, reconciliationSkipped,
+                    deactivated, reactivated, reconciliationSkipped, activity.stored,
                     finishedAt.toEpochMilli() - startedAt.toEpochMilli());
             return new AzureWorkItemsSyncResult(saved, status, processed, failed, deactivated, reactivated,
-                    reconciliationSkipped);
+                    reconciliationSkipped, activity.days);
 
         } catch (Exception e) {
             Instant finishedAt = Instant.now();
@@ -238,7 +245,8 @@ public class SyncAzureWorkItemsUseCase {
 
     /** @return true when the item existed inactive and this write reactivated it */
     private boolean processWorkItem(String orgId, String projectId, AdoWorkItemDto adoItem,
-                                  WorkflowConfig config, String orgUrl, String authHeader) {
+                                  WorkflowConfig config, String orgUrl, String authHeader,
+                                  ActivityCollector activity) {
         Map<String, Object> fields = adoItem.fields() != null ? adoItem.fields() : Map.of();
         String externalId = String.valueOf(adoItem.id());
 
@@ -309,7 +317,11 @@ public class SyncAzureWorkItemsUseCase {
         // Save first to ensure workItemId is set before building transitions
         WorkItem saved = workItemRepository.save(workItem);
 
-        buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader, rawType);
+        List<AdoWorkItemUpdateDto> fetchedUpdates =
+                buildTransitions(saved, storedRawStatus, adoItem, config, orgUrl, authHeader, rawType);
+        /* Atividade (alocacao-no-dashboard D2): primeiro sync reaproveita os updates ja baixados para as
+         * transicoes; nos demais (incremental, repair) busca e grava so o que passa da maior revisao. */
+        recordActivity(saved, fetchedUpdates, orgUrl, authHeader, activity);
 
         // Re-derive from transitions -- prefer transition-derived timestamps (more granular)
         // but fall back to the ADO field values already set above if transitions give nothing.
@@ -400,8 +412,10 @@ public class SyncAzureWorkItemsUseCase {
 
         WorkflowConfig effectiveConfig = config != null ? config : DefaultWorkflowConfigFactory.fallback();
 
-        buildFullTransitionHistoryById(workItemId, item.getOrganizationId(), item.getExternalId(),
-                effectiveConfig, orgUrl, authHeader, item.getRawStatus(), item.getCreatedAt(), item.getRawType());
+        List<AdoWorkItemUpdateDto> updates = buildFullTransitionHistoryById(workItemId, item.getOrganizationId(),
+                item.getExternalId(), effectiveConfig, orgUrl, authHeader, item.getRawStatus(),
+                item.getCreatedAt(), item.getRawType());
+        recordActivity(item, updates, orgUrl, authHeader, new ActivityCollector());
 
         List<WorkItemTransition> transitions = workItemTransitionRepository.findAllByWorkItemId(workItemId);
         item.setStartedAt(deriveStartedAt(transitions));
@@ -409,24 +423,25 @@ public class SyncAzureWorkItemsUseCase {
         workItemRepository.save(item);
     }
 
-    private void buildTransitions(WorkItem workItem, String storedRawStatus, AdoWorkItemDto adoItem,
+    /** @return the updates fetched to build the full history, or null when no fetch was needed */
+    private List<AdoWorkItemUpdateDto> buildTransitions(WorkItem workItem, String storedRawStatus, AdoWorkItemDto adoItem,
                                    WorkflowConfig config, String orgUrl, String authHeader, String rawType) {
         String workItemId = workItem.getId();
-        if (workItemId == null) return;
+        if (workItemId == null) return null;
 
         boolean hasTransitions = workItemTransitionRepository.existsByWorkItemId(workItemId);
 
         if (!hasTransitions) {
-            buildFullTransitionHistoryById(workItemId, workItem.getOrganizationId(),
+            return buildFullTransitionHistoryById(workItemId, workItem.getOrganizationId(),
                     String.valueOf(adoItem.id()), config, orgUrl, authHeader,
                     workItem.getRawStatus(), workItem.getCreatedAt(), rawType);
-        } else {
-            appendIncrementalTransition(workItemId, workItem.getOrganizationId(),
-                    storedRawStatus, adoItem, config, rawType);
         }
+        appendIncrementalTransition(workItemId, workItem.getOrganizationId(),
+                storedRawStatus, adoItem, config, rawType);
+        return null;
     }
 
-    private void buildFullTransitionHistoryById(String workItemId, String orgId, String externalId,
+    private List<AdoWorkItemUpdateDto> buildFullTransitionHistoryById(String workItemId, String orgId, String externalId,
                                                  WorkflowConfig config, String orgUrl, String authHeader,
                                                  String currentRawStatus, Instant createdAt, String rawType) {
         int adoItemId;
@@ -434,7 +449,7 @@ public class SyncAzureWorkItemsUseCase {
             adoItemId = Integer.parseInt(externalId);
         } catch (NumberFormatException e) {
             log.warn("rebuildTransitionHistory: invalid externalId={} for workItemId={}", externalId, workItemId);
-            return;
+            return null;
         }
         List<AdoWorkItemUpdateDto> updates = azureDevOpsClient.getWorkItemUpdates(orgUrl, adoItemId, authHeader);
 
@@ -472,6 +487,79 @@ public class SyncAzureWorkItemsUseCase {
 
         for (WorkItemTransition t : transitions) {
             workItemTransitionRepository.upsertByCompositeKey(t);
+        }
+        return updates;
+    }
+
+    /** Pairs (user, day) and the count of the activity stored by one sync. */
+    private static final class ActivityCollector {
+        final Set<ActivityDay> days = new java.util.LinkedHashSet<>();
+        int stored;
+    }
+
+    /**
+     * Stores the revisions of the item above the highest one already stored, so a repeat is a
+     * no-op and an item with transitions but no activity (repair) is backfilled in full.
+     *
+     * @param prefetched the item's updates when the caller already fetched them, else null (fetched here)
+     */
+    private void recordActivity(WorkItem item, List<AdoWorkItemUpdateDto> prefetched, String orgUrl,
+                                String authHeader, ActivityCollector collector) {
+        if (item.getId() == null) return;
+        int adoItemId;
+        try {
+            adoItemId = Integer.parseInt(item.getExternalId());
+        } catch (NumberFormatException e) {
+            return;
+        }
+        String orgId = item.getOrganizationId();
+        int maxStored = workItemActivityRepository.maxRevisionByWorkItemId(orgId, item.getId()).orElse(0);
+        List<AdoWorkItemUpdateDto> updates = prefetched;
+        if (updates == null) {
+            // A falha só de atividade não derruba o item: o próximo repair reconstrói o que faltar.
+            try {
+                updates = azureDevOpsClient.getWorkItemUpdates(orgUrl, adoItemId, authHeader);
+            } catch (RuntimeException e) {
+                log.warn("Activity skipped for work item {}: updates fetch failed ({})", item.getExternalId(),
+                        e.getMessage());
+                return;
+            }
+        }
+        if (updates == null) return;
+
+        Map<String, String> authors = new java.util.HashMap<>();
+        for (AdoWorkItemUpdateDto update : updates.stream()
+                .filter(u -> u.id() > maxStored).sorted(Comparator.comparingInt(AdoWorkItemUpdateDto::id)).toList()) {
+            Instant changedAt = getChangedDateFromUpdate(update);
+            if (changedAt == null) changedAt = parseSentinelAware(update.revisedDate());
+            if (changedAt == null) {
+                log.warn("Revision {} of work item {} has no change date; activity skipped", update.id(),
+                        item.getExternalId());
+                continue;
+            }
+            AdoWorkItemUpdateDto.RevisedBy by = update.revisedBy();
+            String azureId = by != null ? by.id() : null;
+            String uniqueName = by != null ? by.uniqueName() : null;
+            String authorKey = azureId + "|" + uniqueName;
+            if (!authors.containsKey(authorKey)) authors.put(authorKey, lookupUserId(orgId, azureId, uniqueName));
+            String userId = authors.get(authorKey);
+            LocalDate day = changedAt.atZone(ZoneOffset.UTC).toLocalDate();
+            List<String> changed = update.fields() != null ? List.copyOf(update.fields().keySet()) : List.of();
+            Instant now = Instant.now();
+            workItemActivityRepository.upsert(new WorkItemActivity(null, orgId, item.getId(), item.getExternalId(),
+                    update.id(), azureId, uniqueName, userId, changedAt, day, changed, true, null, now, now));
+            collector.stored++;
+            if (userId != null) collector.days.add(new ActivityDay(userId, day));
+        }
+    }
+
+    private Instant parseSentinelAware(String value) {
+        if (value == null) return null;
+        try {
+            Instant instant = Instant.parse(value);
+            return instant.isAfter(ADO_SENTINEL) ? null : instant;
+        } catch (Exception e) {
+            return null;
         }
     }
 
@@ -655,16 +743,23 @@ public class SyncAzureWorkItemsUseCase {
         String email = workItem.getAssigneeEmail();
         // Azure is the source of truth: a reassignment to someone without an Andromeda
         // user (or no assignee) must not keep the previous user.
-        workItem.setAssigneeUserId(null);
-        if (externalId != null) {
-            userRepository.findByOrganizationIdAndAzureId(orgId, externalId)
-                    .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
+        workItem.setAssigneeUserId(lookupUserId(orgId, externalId, email));
+    }
+
+    /** Azure id first, then e-mail (case-insensitive); null when nobody of the organization matches. */
+    private String lookupUserId(String orgId, String azureId, String email) {
+        if (azureId != null) {
+            Optional<andromeda.sei.ms.feature.user.domain.User> byAzureId =
+                    userRepository.findByOrganizationIdAndAzureId(orgId, azureId);
+            if (byAzureId.isPresent()) return byAzureId.get().getId();
         }
-        if (workItem.getAssigneeUserId() == null && email != null && !email.isBlank()) {
-            userRepository.findAllByOrganizationIdAndEmailIgnoringCase(orgId, email.trim()).stream()
+        if (email != null && !email.isBlank()) {
+            return userRepository.findAllByOrganizationIdAndEmailIgnoringCase(orgId, email.trim()).stream()
                     .findFirst()
-                    .ifPresent(user -> workItem.setAssigneeUserId(user.getId()));
+                    .map(andromeda.sei.ms.feature.user.domain.User::getId)
+                    .orElse(null);
         }
+        return null;
     }
 
     private Instant getChangedDateFromUpdate(AdoWorkItemUpdateDto update) {

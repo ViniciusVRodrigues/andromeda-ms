@@ -5,4 +5,13 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record AdoWorkItemUpdateDto(int id, Map<String, Object> fields, String revisedDate) {}
+public record AdoWorkItemUpdateDto(int id, Map<String, Object> fields, String revisedDate, RevisedBy revisedBy) {
+
+    /** Updates without a known author. */
+    public AdoWorkItemUpdateDto(int id, Map<String, Object> fields, String revisedDate) {
+        this(id, fields, revisedDate, null);
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record RevisedBy(String id, String uniqueName, String displayName) {}
+}

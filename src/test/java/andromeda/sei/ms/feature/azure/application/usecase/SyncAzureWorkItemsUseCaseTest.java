@@ -56,6 +56,7 @@ class SyncAzureWorkItemsUseCaseTest {
     @Mock private andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
     @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository azureProjectBindingRepository;
     @Mock private andromeda.sei.ms.feature.azure.application.port.AzureOrgUserCollector orgUserCollector;
+    @Mock private andromeda.sei.ms.feature.workitem.domain.WorkItemActivityRepository workItemActivityRepository;
 
     private SyncAzureWorkItemsUseCase useCase;
 
@@ -69,7 +70,8 @@ class SyncAzureWorkItemsUseCaseTest {
                 workItemTransitionRepository, sprintRepository, azureDevOpsClient, userRepository,
                 azureProjectBindingRepository, orgUserCollector,
                 new andromeda.sei.ms.feature.azure.application.service.AzureWorkItemRemovalReconciler(
-                        workItemRepository, azureDevOpsClient));
+                        workItemRepository, azureDevOpsClient),
+                workItemActivityRepository);
         connection = new AzureConnection("conn-1", "org-1", "https://dev.azure.com/org",
                 "enc-access", "enc-refresh", NOW.plusSeconds(3600),
                 "user-1", AzureConnectionStatus.CONNECTED, null, 0, null, null, true, NOW, NOW, null,
@@ -134,7 +136,7 @@ class SyncAzureWorkItemsUseCaseTest {
 
         useCase.execute(connection, binding, SyncTrigger.SCHEDULED);
 
-        verify(azureDevOpsClient, never()).getWorkItemUpdates(anyString(), anyInt(), anyString());
+        // /updates now feeds the activity only; the transition is still built from the state compare
         ArgumentCaptor<WorkItemTransition> captor = ArgumentCaptor.forClass(WorkItemTransition.class);
         verify(workItemTransitionRepository).upsertByCompositeKey(captor.capture());
         assertThat(captor.getValue().getToRawStatus()).isEqualTo("Closed");
@@ -1008,5 +1010,183 @@ class SyncAzureWorkItemsUseCaseTest {
         var seen = captor.getValue().iterator().next();
         assertThat(seen.azureId()).isEqualTo("p-1");
         assertThat(seen.source()).isEqualTo(andromeda.sei.ms.feature.azure.domain.AzureOrgUserSource.WORKITEM);
+    }
+
+    // ---- work item activity (alocacao-no-dashboard MS-1) ----
+
+    private AdoWorkItemUpdateDto revision(int rev, String azureId, String uniqueName, String changedDate,
+                                          String... changedFields) {
+        Map<String, Object> fields = new java.util.LinkedHashMap<>();
+        fields.put("System.ChangedDate", Map.of("newValue", changedDate));
+        for (String f : changedFields) fields.put(f, Map.of("newValue", "x"));
+        return new AdoWorkItemUpdateDto(rev, fields, "9999-01-01T00:00:00Z",
+                new AdoWorkItemUpdateDto.RevisedBy(azureId, uniqueName, "Alguem"));
+    }
+
+    /** Revisions from..to alternating authors az-1 (odd) and az-2 (even), one day per revision. */
+    private List<AdoWorkItemUpdateDto> revisions(int from, int to) {
+        List<AdoWorkItemUpdateDto> list = new java.util.ArrayList<>();
+        for (int i = from; i <= to; i++) {
+            list.add(revision(i, i % 2 == 0 ? "az-2" : "az-1", i % 2 == 0 ? "b@x.com" : "a@x.com",
+                    "2026-10-0" + i + "T10:00:00Z", "System.History"));
+        }
+        return list;
+    }
+
+    /**
+     * Syncs one item whose Azure state equals the stored one (so no transition is appended).
+     * {@code watermarkNull} true = first sync / repair; {@code transitionsExist} tells whether the
+     * item already has transitions (the repair case).
+     */
+    private andromeda.sei.ms.feature.azure.application.dto.AzureWorkItemsSyncResult syncActivity(
+            boolean watermarkNull, boolean transitionsExist, java.util.OptionalInt storedMax,
+            List<AdoWorkItemUpdateDto> updates) {
+        Instant lastSync = NOW.minusSeconds(3600);
+        if (!watermarkNull) binding.setWorkItemsWatermark(lastSync);
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(),
+                watermarkNull ? isNull() : eq(lastSync), isNull(), any())).thenReturn(List.of(100));
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString()))
+                .thenReturn(List.of(adoItem(100, "Active")));
+        WorkItem stored = workItem("100", "Active");
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(transitionsExist ? Optional.of(stored) : Optional.empty());
+        when(workItemRepository.save(any())).thenReturn(stored);
+        when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(transitionsExist);
+        when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+        org.mockito.Mockito.lenient().when(workItemTransitionRepository.upsertByCompositeKey(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        if (updates == null) {
+            when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString()))
+                    .thenThrow(new RuntimeException("updates down"));
+        } else {
+            when(azureDevOpsClient.getWorkItemUpdates(anyString(), eq(100), anyString())).thenReturn(updates);
+        }
+        when(workItemActivityRepository.maxRevisionByWorkItemId("org-1", "wi-100")).thenReturn(storedMax);
+        org.mockito.Mockito.lenient().when(workItemActivityRepository.upsert(any()))
+                .thenAnswer(inv -> inv.getArgument(0));
+        return useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+    }
+
+    private void authorsResolve() {
+        var userA = userOf("u-a", "org-1");
+        var userB = userOf("u-b", "org-1");
+        org.mockito.Mockito.lenient().when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-1")).thenReturn(Optional.of(userA));
+        org.mockito.Mockito.lenient().when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-2")).thenReturn(Optional.empty());
+        org.mockito.Mockito.lenient().when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "b@x.com"))
+                .thenReturn(List.of(userB));
+    }
+
+    private List<andromeda.sei.ms.feature.workitem.domain.WorkItemActivity> storedActivities() {
+        ArgumentCaptor<andromeda.sei.ms.feature.workitem.domain.WorkItemActivity> captor =
+                ArgumentCaptor.forClass(andromeda.sei.ms.feature.workitem.domain.WorkItemActivity.class);
+        verify(workItemActivityRepository, org.mockito.Mockito.atLeast(0)).upsert(captor.capture());
+        return captor.getAllValues();
+    }
+
+    @Test
+    void shouldStoreAllFiveRevisionsWithAuthorDayAndFieldsOnFirstSync() {
+        authorsResolve();
+
+        var result = syncActivity(true, false, java.util.OptionalInt.empty(), revisions(1, 5));
+
+        var stored = storedActivities();
+        assertThat(stored).extracting(a -> a.getRevision()).containsExactly(1, 2, 3, 4, 5);
+        var first = stored.get(0);
+        assertThat(first.getOrganizationId()).isEqualTo("org-1");
+        assertThat(first.getWorkItemId()).isEqualTo("wi-100");
+        assertThat(first.getExternalId()).isEqualTo("100");
+        assertThat(first.getActorExternalId()).isEqualTo("az-1");
+        assertThat(first.getActorUniqueName()).isEqualTo("a@x.com");
+        assertThat(first.getActorUserId()).isEqualTo("u-a");
+        assertThat(first.getChangedAt()).isEqualTo(Instant.parse("2026-10-01T10:00:00Z"));
+        assertThat(first.getDay()).isEqualTo(java.time.LocalDate.of(2026, 10, 1));
+        assertThat(first.getChangedFields()).containsExactlyInAnyOrder("System.ChangedDate", "System.History");
+        assertThat(stored.get(1).getActorUserId()).isEqualTo("u-b");
+        // exposed for the allocation refresh: one pair per (user, day) of the NEW activity
+        assertThat(result.newActivityDays()).hasSize(5).contains(
+                new andromeda.sei.ms.feature.azure.application.dto.ActivityDay("u-a", java.time.LocalDate.of(2026, 10, 1)),
+                new andromeda.sei.ms.feature.azure.application.dto.ActivityDay("u-b", java.time.LocalDate.of(2026, 10, 2)));
+    }
+
+    @Test
+    void shouldNotDuplicateWhenSyncedAgainWithoutNewRevisions() {
+        var result = syncActivity(false, true, java.util.OptionalInt.of(5), revisions(1, 5));
+
+        verify(workItemActivityRepository, never()).upsert(any());
+        assertThat(result.newActivityDays()).isEmpty();
+    }
+
+    @Test
+    void shouldStoreOnlyRevisionsAboveTheHighestStoredOnIncrementalSync() {
+        authorsResolve();
+
+        var result = syncActivity(false, true, java.util.OptionalInt.of(7), revisions(1, 9));
+
+        assertThat(storedActivities()).extracting(a -> a.getRevision()).containsExactly(8, 9);
+        verify(workItemTransitionRepository, never()).upsertByCompositeKey(any());
+        assertThat(result.newActivityDays()).hasSize(2);
+    }
+
+    @Test
+    void shouldKeepTheItemSyncedWhenTheIncrementalUpdatesFetchFails() {
+        var result = syncActivity(false, true, java.util.OptionalInt.of(7), null);
+
+        assertThat(result.status()).isEqualTo(SyncStatus.SUCCESS);
+        verify(workItemActivityRepository, never()).upsert(any());
+        assertThat(result.newActivityDays()).isEmpty();
+    }
+
+    @Test
+    void shouldBackfillActivityForAnItemThatAlreadyHasTransitions() {
+        // the repair path: watermark reset, transitions already exist, no activity stored yet
+        authorsResolve();
+
+        syncActivity(true, true, java.util.OptionalInt.empty(), revisions(1, 3));
+
+        assertThat(storedActivities()).extracting(a -> a.getRevision()).containsExactly(1, 2, 3);
+        verify(workItemTransitionRepository, never()).upsertByCompositeKey(any());
+    }
+
+    @Test
+    void shouldMatchRevisionAuthorByEmailWhenAzureIdHasNoUser() {
+        var nati = userOf("u-nati", "org-1");
+        when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-nati")).thenReturn(Optional.empty());
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "nati@empresa.com"))
+                .thenReturn(List.of(nati));
+
+        syncActivity(true, false, java.util.OptionalInt.empty(),
+                List.of(revision(1, "az-nati", "nati@empresa.com", "2026-10-02T10:00:00Z")));
+
+        assertThat(storedActivities()).singleElement()
+                .satisfies(a -> assertThat(a.getActorUserId()).isEqualTo("u-nati"));
+    }
+
+    @Test
+    void shouldStoreUnknownAuthorWithNullUserAndKeepItOutOfTheNewPairs() {
+        when(userRepository.findByOrganizationIdAndAzureId("org-1", "az-svc")).thenReturn(Optional.empty());
+        when(userRepository.findAllByOrganizationIdAndEmailIgnoringCase("org-1", "svc@build")).thenReturn(List.of());
+
+        var result = syncActivity(true, false, java.util.OptionalInt.empty(),
+                List.of(revision(1, "az-svc", "svc@build", "2026-10-02T10:00:00Z")));
+
+        assertThat(storedActivities()).singleElement().satisfies(a -> {
+            assertThat(a.getActorUserId()).isNull();
+            assertThat(a.getActorExternalId()).isEqualTo("az-svc");
+        });
+        assertThat(result.newActivityDays()).isEmpty();
+    }
+
+    @Test
+    void shouldPutBypassRulesRevisionOnItsRetroactiveChangeDate() {
+        // authorized "today" but System.ChangedDate says 2026-09-29
+        authorsResolve();
+
+        syncActivity(true, false, java.util.OptionalInt.empty(),
+                List.of(revision(1, "az-1", "a@x.com", "2026-09-29T23:30:00Z", "System.State")));
+
+        assertThat(storedActivities()).singleElement().satisfies(a -> {
+            assertThat(a.getDay()).isEqualTo(java.time.LocalDate.of(2026, 9, 29));
+            assertThat(a.getChangedAt()).isEqualTo(Instant.parse("2026-09-29T23:30:00Z"));
+        });
     }
 }

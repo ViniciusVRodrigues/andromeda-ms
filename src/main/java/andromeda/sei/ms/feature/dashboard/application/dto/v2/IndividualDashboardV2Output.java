@@ -70,16 +70,25 @@ public record IndividualDashboardV2Output(
     }
 
     public record Ai(List<AiDay> byDay, List<AiModel> byModel, AllocationSummary allocation,
-                     List<PendingAllocation> pendingAllocations, List<String> editors) {
+                     List<PendingAllocation> pendingAllocations, List<UnallocatedDay> unallocatedDayList,
+                     List<String> editors) {
         public static final Ai EMPTY = new Ai(List.of(), List.of(), new AllocationSummary(0, 0, 0), List.of(),
-                List.of());
+                List.of(), List.of());
     }
 
-    /** A day whose automatic split awaits validation; {@code pct} is 0–100. */
-    public record PendingAllocation(String date, String label, long tokens, BigDecimal costUsd,
+    /**
+     * A day whose automatic split awaits validation. {@code date}/{@code costUsd}/{@code pct} are the
+     * long-standing fields ({@code pct} is 0–100); {@code day}/{@code cost}/{@code percentage}
+     * (a 0–1 fraction) are the same values under the names of the allocation-strip contract.
+     */
+    public record PendingAllocation(String allocationId, String date, String day, String label, long tokens,
+                                    BigDecimal costUsd, BigDecimal cost, String suggestionSource,
                                     List<PendingSplit> splits) {}
 
-    public record PendingSplit(String externalId, String title, Double pct) {}
+    public record PendingSplit(String workItemId, String externalId, String title, Double pct, Double percentage) {}
+
+    /** A day of the window with usage but neither a validated allocation nor a pending suggestion. */
+    public record UnallocatedDay(String day, long tokens, BigDecimal cost) {}
 
     public record HistoryPoint(String sprintId, String label, String name,
                                @JsonProperty("isSelected") boolean isSelected,

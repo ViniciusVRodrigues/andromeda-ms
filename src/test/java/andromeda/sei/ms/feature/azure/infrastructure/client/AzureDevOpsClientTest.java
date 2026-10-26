@@ -111,6 +111,35 @@ class AzureDevOpsClientTest {
     }
 
     @Test
+    void getWorkItemUpdates_shouldDeserializeRevisedBy() {
+        String json = """
+                {
+                  "value": [
+                    {
+                      "id": 3,
+                      "revisedBy": {"id": "az-1", "uniqueName": "nati@empresa.com", "displayName": "Nati", "url": "x"},
+                      "revisedDate": "9999-01-01T00:00:00Z",
+                      "fields": {"System.ChangedDate": {"newValue": "2026-09-29T10:00:00Z"}}
+                    },
+                    {"id": 4, "fields": {}}
+                  ],
+                  "count": 2
+                }
+                """;
+        AzureDevOpsClient client = clientFor(webClientReturning(200, json));
+
+        List<AdoWorkItemUpdateDto> updates = client.getWorkItemUpdates(
+                "https://dev.azure.com/myorg", 100, "Basic dGVzdA==");
+
+        assertThat(updates).hasSize(2);
+        assertThat(updates.get(0).id()).isEqualTo(3);
+        assertThat(updates.get(0).revisedBy().id()).isEqualTo("az-1");
+        assertThat(updates.get(0).revisedBy().uniqueName()).isEqualTo("nati@empresa.com");
+        assertThat(updates.get(0).revisedBy().displayName()).isEqualTo("Nati");
+        assertThat(updates.get(1).revisedBy()).isNull();
+    }
+
+    @Test
     void getWorkItemsBatch_shouldDeserializeRelationsFromExpandAllResponse() {
         // Realistic shape of an Azure DevOps "$expand=all" work item response: a Task with a
         // System.LinkTypes.Hierarchy-Reverse relation pointing at its parent's work item id.

@@ -39,6 +39,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -126,5 +127,39 @@ class AiUsageAllocationControllerTest {
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("ALLOCATION_INVALID_SUM"));
+    }
+
+    private static final String DAY_BODY = """
+            {"day":"2026-06-03","splits":[{"workItemId":"wi-1","workItemTitle":"Fix login","percentage":1.0}]}
+            """;
+
+    @Test
+    void manualForDay_returns_204_on_success() throws Exception {
+        mockMvc.perform(post("/api/v1/ai/allocations/manual")
+                        .contentType(MediaType.APPLICATION_JSON).content(DAY_BODY))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void manualForDay_returns_409_when_day_already_validated() throws Exception {
+        doThrow(new andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException("day"))
+                .when(manualAllocate).execute(anyString(), anyString(), any(), any(), any());
+
+        mockMvc.perform(post("/api/v1/ai/allocations/manual")
+                        .contentType(MediaType.APPLICATION_JSON).content(DAY_BODY))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ALLOCATION_ALREADY_VALIDATED"));
+    }
+
+    @Test
+    void manualForDay_returns_422_when_nothing_to_allocate() throws Exception {
+        doThrow(new andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException(
+                LocalDate.of(2026, 6, 3)))
+                .when(manualAllocate).execute(anyString(), anyString(), any(), any(), any());
+
+        mockMvc.perform(post("/api/v1/ai/allocations/manual")
+                        .contentType(MediaType.APPLICATION_JSON).content(DAY_BODY))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("ALLOCATION_NOTHING_TO_ALLOCATE"));
     }
 }

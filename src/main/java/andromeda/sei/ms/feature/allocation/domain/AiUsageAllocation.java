@@ -9,6 +9,9 @@ public class AiUsageAllocation {
     public enum Status { UNALLOCATED, PENDING_VALIDATION, VALIDATED }
     public enum AssignedBy { AUTO, MANUAL }
 
+    /** Where an automatic suggestion came from; absent (legacy) is read as {@link #IN_PROGRESS}. */
+    public enum SuggestionSource { AZURE_ACTIVITY, IN_PROGRESS }
+
     private String id;
     private String organizationId;
     private String userId;
@@ -21,6 +24,7 @@ public class AiUsageAllocation {
     private Long version;
     private Instant createdAt;
     private Instant updatedAt;
+    private SuggestionSource suggestionSource;
 
     public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
                               List<String> aiUsageIds, List<AllocationSplit> splits,
@@ -38,6 +42,16 @@ public class AiUsageAllocation {
         this.version = version;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
+    }
+
+    public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
+                              List<String> aiUsageIds, List<AllocationSplit> splits,
+                              Status status, AssignedBy assignedBy,
+                              boolean active, Long version, Instant createdAt, Instant updatedAt,
+                              SuggestionSource suggestionSource) {
+        this(id, organizationId, userId, day, aiUsageIds, splits, status, assignedBy, active, version,
+                createdAt, updatedAt);
+        this.suggestionSource = suggestionSource;
     }
 
     public String getId() { return id; }
@@ -75,4 +89,13 @@ public class AiUsageAllocation {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    /** Raw stored value; {@code null} on allocations created before the field existed. */
+    public SuggestionSource getSuggestionSource() { return suggestionSource; }
+    public void setSuggestionSource(SuggestionSource suggestionSource) { this.suggestionSource = suggestionSource; }
+
+    /** The source, with an absent value read as {@link SuggestionSource#IN_PROGRESS}. */
+    public SuggestionSource suggestionSourceOrDefault() {
+        return suggestionSource != null ? suggestionSource : SuggestionSource.IN_PROGRESS;
+    }
 }

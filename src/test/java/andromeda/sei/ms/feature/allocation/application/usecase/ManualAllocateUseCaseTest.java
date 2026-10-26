@@ -5,6 +5,8 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
+import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
@@ -121,6 +123,49 @@ class ManualAllocateUseCaseTest {
 
         verify(allocationRepository, never()).save(any());
         verify(aiUsageRepository, never()).findUnallocatedByOrganizationIdAndUserIdAndDay(any(), any(), any());
+    }
+
+    @Test
+    void shouldReject409_whenDayAlreadyValidated() {
+        AiUsageAllocation validated = new AiUsageAllocation("v-1", ORG_ID, USER_ID, DAY, List.of("usage-1"),
+                validSplits, AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL,
+                true, 0L, Instant.now(), Instant.now());
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(validated));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits))
+                .isInstanceOf(AllocationAlreadyValidatedException.class);
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).deleteById(any());
+    }
+
+    @Test
+    void shouldReject422_whenDayHasNoUnallocatedUsage() {
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of());
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits))
+                .isInstanceOf(AllocationNothingToAllocateException.class);
+
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldReplacePendingOfTheDay_whenAllocatingManuallyByDay() {
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(pendingAllocation));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("usage-1")));
+        when(allocationRepository.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            a.setId("new-id");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        verify(allocationRepository).deleteById(ALLOCATION_ID);
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(eq(List.of("usage-1")), eq("new-id"));
     }
 
     private AIUsage mockAiUsage(String id) {
