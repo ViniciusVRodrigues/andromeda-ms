@@ -40,6 +40,7 @@ public class GetAllocationCandidatesUseCase {
                     // lives on Tasks, offering only Stories left the developer with nothing to
                     // attribute their AI usage to.
                     var level = effortBearingLevelResolver.resolve(null, sprintItems);
+                    var scope = effortBearingLevelResolver.scope(sprintItems);
                     return effortBearingLevelResolver.deliverableUnits(level, sprintItems).stream()
                             .map(wi -> new WorkItemCandidateOutput(
                                     wi.getId(),
@@ -47,7 +48,9 @@ public class GetAllocationCandidatesUseCase {
                                     sprint.getName(),
                                     wi.getResolvedType() != null ? wi.getResolvedType().name() : null,
                                     wi.getExternalId(),
-                                    wi.getEffort() != null ? wi.getEffort() : wi.getStoryPoints()));
+                                    wi.getEffort() != null ? wi.getEffort() : wi.getStoryPoints(),
+                                    scope.effectiveComplexity(wi),
+                                    scope.taskEffort(wi)));
                 })
                 .toList();
     }
