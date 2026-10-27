@@ -338,10 +338,10 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(out.ai().allocation().unallocatedDays()).isEqualTo(1);
         assertThat(out.ai().pendingAllocations()).hasSize(1);
         var day = out.ai().pendingAllocations().get(0);
-        assertThat(day.date()).isEqualTo("2026-10-02");
-        assertThat(day.costUsd()).isEqualByComparingTo("2.00");
+        assertThat(day.day()).isEqualTo("2026-10-02");
+        assertThat(day.cost()).isEqualByComparingTo("2.00");
         assertThat(day.tokens()).isEqualTo(30);
-        assertThat(day.splits().get(0).pct()).isEqualTo(25.0);
+        assertThat(day.splits().get(0).percentage()).isEqualTo(0.25);
         assertThat(out.ai().editors()).containsExactly("vscode");
     }
 

@@ -81,15 +81,13 @@ public record IndividualDashboardV2Output(
     }
 
     /**
-     * A day whose automatic split awaits validation. {@code date}/{@code costUsd}/{@code pct} are the
-     * long-standing fields ({@code pct} is 0–100); {@code day}/{@code cost}/{@code percentage}
-     * (a 0–1 fraction) are the same values under the names of the allocation-strip contract.
+     * A day whose automatic split awaits validation. {@code day} is the UTC date, {@code cost} the
+     * USD cost of the day's usage and {@code percentage} (in {@link PendingSplit}) a 0-1 fraction.
      */
-    public record PendingAllocation(String allocationId, String date, String day, String label, long tokens,
-                                    BigDecimal costUsd, BigDecimal cost, String suggestionSource,
-                                    List<PendingSplit> splits) {}
+    public record PendingAllocation(String allocationId, String day, String label, long tokens,
+                                    BigDecimal cost, String suggestionSource, List<PendingSplit> splits) {}
 
-    public record PendingSplit(String workItemId, String externalId, String title, Double pct, Double percentage) {}
+    public record PendingSplit(String workItemId, String externalId, String title, Double percentage) {}
 
     /** A day of the window with usage but neither a validated allocation nor a pending suggestion. */
     public record UnallocatedDay(String day, long tokens, BigDecimal cost) {}

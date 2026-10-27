@@ -77,7 +77,6 @@ import java.util.stream.Collectors;
 @Service
 public class GetIndividualDashboardV2UseCase {
 
-    private static final double PERCENT = 100.0;
     private static final Map<WorkItem.ResolvedStatus, Integer> ITEM_ORDER = Map.of(
             WorkItem.ResolvedStatus.IN_PROGRESS, 0, WorkItem.ResolvedStatus.TODO, 1, WorkItem.ResolvedStatus.DONE, 2);
 
@@ -360,15 +359,15 @@ public class GetIndividualDashboardV2UseCase {
         BigDecimal cost = records.stream().map(AIUsage::getCostUsd).filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         String day = allocation.getDay().toString();
-        return new PendingAllocation(allocation.getId(), day, day, DashboardV2Views.label(allocation.getDay()),
+        return new PendingAllocation(allocation.getId(), day, DashboardV2Views.label(allocation.getDay()),
                 records.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
-                cost, cost, allocation.suggestionSourceOrDefault().name(), splits);
+                cost, allocation.suggestionSourceOrDefault().name(), splits);
     }
 
     private static PendingSplit pendingSplit(AllocationSplit split, Map<String, String> externalIdByItem) {
         Double fraction = split.getPercentage() == null ? null : split.getPercentage().doubleValue();
         return new PendingSplit(split.getWorkItemId(), externalIdByItem.get(split.getWorkItemId()),
-                split.getWorkItemTitle(), fraction == null ? null : fraction * PERCENT, fraction);
+                split.getWorkItemTitle(), fraction);
     }
 
     /**

@@ -17,4 +17,10 @@ public interface WorkItemActivityRepository {
     /** Active activity of one user on one UTC day. */
     List<WorkItemActivity> findByOrganizationIdAndActorUserIdAndDay(String organizationId, String actorUserId,
                                                                     LocalDate day);
+
+    /**
+     * Gives an owner to the active activity that has none, when its actor is the given Azure id or
+     * e-mail (case-insensitive). Blank keys match nothing. Returns the distinct UTC days affected.
+     */
+    List<LocalDate> assignOwnerToUnowned(String organizationId, String azureId, String email, String userId);
 }

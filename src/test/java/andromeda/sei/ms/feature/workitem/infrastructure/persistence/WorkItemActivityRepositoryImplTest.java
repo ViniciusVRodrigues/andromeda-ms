@@ -80,6 +80,48 @@ class WorkItemActivityRepositoryImplTest {
         assertThat(found).extracting(WorkItemActivity::getWorkItemId).containsExactlyInAnyOrder("wi-1", "wi-2");
     }
 
+    @Test
+    void assignOwnerToUnowned_matchesByAzureIdOrEmailIgnoringCase_andReturnsDistinctDays() {
+        repository.upsert(activityOf("org-1", "wi-1", "az-9", "outro@x.com", null, DAY));
+        repository.upsert(activityOf("org-1", "wi-2", "az-0", "ANA@Acme.com", null, DAY.plusDays(1)));
+        repository.upsert(activityOf("org-1", "wi-3", "az-9", "x@x.com", null, DAY));
+        repository.upsert(activityOf("org-1", "wi-4", "az-1", "ana@acme.com", "u-other", DAY.plusDays(2)));
+        repository.upsert(activityOf("org-2", "wi-5", "az-9", "ana@acme.com", null, DAY.plusDays(3)));
+        repository.upsert(activityOf("org-1", "wi-6", "az-5", "ana@acme.com.br", null, DAY.plusDays(4)));
+
+        List<LocalDate> days = repository.assignOwnerToUnowned("org-1", "az-9", "ana@acme.com", "u-1");
+
+        assertThat(days).containsExactlyInAnyOrder(DAY, DAY.plusDays(1));
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-1", "u-1", DAY)).hasSize(2);
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-1", "u-1", DAY.plusDays(1))).hasSize(1);
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-1", "u-other", DAY.plusDays(2))).hasSize(1);
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-2", "u-1", DAY.plusDays(3))).isEmpty();
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-1", "u-1", DAY.plusDays(4))).isEmpty();
+    }
+
+    @Test
+    void assignOwnerToUnowned_ignoresInactive_andBlankKeys() {
+        WorkItemActivity inactive = activityOf("org-1", "wi-1", "az-9", "ana@acme.com", null, DAY);
+        repository.upsert(inactive);
+        mongoTemplate.updateMulti(new org.springframework.data.mongodb.core.query.Query(),
+                new org.springframework.data.mongodb.core.query.Update().set("active", false),
+                WorkItemActivityDocument.class);
+        repository.upsert(activityOf("org-1", "wi-2", null, null, null, DAY));
+        repository.upsert(activityOf("org-1", "wi-3", "", "", null, DAY));
+
+        assertThat(repository.assignOwnerToUnowned("org-1", "az-9", "ana@acme.com", "u-1")).isEmpty();
+        assertThat(repository.assignOwnerToUnowned("org-1", null, "", "u-1")).isEmpty();
+        assertThat(repository.assignOwnerToUnowned("org-1", " ", null, "u-1")).isEmpty();
+        assertThat(repository.findByOrganizationIdAndActorUserIdAndDay("org-1", "u-1", DAY)).isEmpty();
+    }
+
+    private WorkItemActivity activityOf(String org, String workItemId, String actorExternalId, String uniqueName,
+                                        String userId, LocalDate day) {
+        return new WorkItemActivity(null, org, workItemId, "100", 1, actorExternalId, uniqueName, userId,
+                day.atStartOfDay().toInstant(java.time.ZoneOffset.UTC), day,
+                List.of("System.State"), true, null, null, null);
+    }
+
     private WorkItemActivity activity(String org, String workItemId, int revision, String userId, LocalDate day) {
         return new WorkItemActivity(null, org, workItemId, "100", revision, "az-1", "nati@empresa.com", userId,
                 day.atStartOfDay().toInstant(java.time.ZoneOffset.UTC), day,
