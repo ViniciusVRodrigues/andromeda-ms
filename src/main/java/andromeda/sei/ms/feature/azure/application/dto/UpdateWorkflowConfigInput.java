@@ -13,7 +13,11 @@ public record UpdateWorkflowConfigInput(
         List<HierarchyLevelInput> hierarchyLevels
 ) {
     public record StatusMappingInput(String workItemType, String rawStatus, WorkItem.ResolvedStatus resolvedStatus) {}
-    public record TypeMappingInput(String rawType, WorkItem.ResolvedType resolvedType) {}
+    public record TypeMappingInput(String rawType, WorkItem.ResolvedType resolvedType, Boolean receivesAi) {
+        public TypeMappingInput(String rawType, WorkItem.ResolvedType resolvedType) {
+            this(rawType, resolvedType, null);
+        }
+    }
     public record FieldMappingInput(FieldMapping.InternalFieldTarget internalField, String workItemType,
                                      String azureFieldReferenceName, String azureFieldType) {}
     public record WiqlFilterInput(List<String> workItemTypes, String areaPath, String iterationPath) {}

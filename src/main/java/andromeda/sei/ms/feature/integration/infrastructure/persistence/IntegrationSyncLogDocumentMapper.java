@@ -29,6 +29,8 @@ public class IntegrationSyncLogDocumentMapper {
         log.setBindingId(doc.getBindingId());
         log.setItemsDeactivated(doc.getItemsDeactivated());
         log.setItemsReactivated(doc.getItemsReactivated());
+        log.setItemsUnmappedType(doc.getItemsUnmappedType());
+        log.setUnmappedTypes(doc.getUnmappedTypes());
         return log;
     }
 
@@ -52,7 +54,9 @@ public class IntegrationSyncLogDocumentMapper {
                 .parentSyncId(log.getParentSyncId())
                 .bindingId(log.getBindingId())
                 .itemsDeactivated(log.getItemsDeactivated())
-                .itemsReactivated(log.getItemsReactivated());
+                .itemsReactivated(log.getItemsReactivated())
+                .itemsUnmappedType(log.getItemsUnmappedType())
+                .unmappedTypes(log.getUnmappedTypes());
 
         if (log.getId() != null) {
             builder.id(log.getId());

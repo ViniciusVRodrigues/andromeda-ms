@@ -220,7 +220,7 @@ public class AzureProjectBindingController {
                                 .toList(),
                 request.typeMappings() == null ? List.of() :
                         request.typeMappings().stream()
-                                .map(t -> new UpdateWorkflowConfigInput.TypeMappingInput(t.rawType(), t.resolvedType()))
+                                .map(t -> new UpdateWorkflowConfigInput.TypeMappingInput(t.rawType(), t.resolvedType(), t.receivesAi()))
                                 .toList(),
                 request.fieldMappings() == null ? List.of() :
                         request.fieldMappings().stream()
@@ -310,7 +310,7 @@ public class AzureProjectBindingController {
             List<WorkflowConfigResponse.TypeMappingResponse> typeMappings = wf.getTypeMappings() == null
                     ? List.of()
                     : wf.getTypeMappings().stream()
-                            .map(t -> new WorkflowConfigResponse.TypeMappingResponse(t.getRawType(), t.getResolvedType()))
+                            .map(t -> new WorkflowConfigResponse.TypeMappingResponse(t.getRawType(), t.getResolvedType(), t.isReceivesAi()))
                             .toList();
             List<WorkflowConfigResponse.FieldMappingResponse> fieldMappings = wf.getFieldMappings() == null
                     ? List.of()

@@ -49,4 +49,6 @@ public class IntegrationSyncLogDocument {
     private String bindingId;
     private int itemsDeactivated;
     private int itemsReactivated;
+    private int itemsUnmappedType;
+    private java.util.List<String> unmappedTypes;
 }

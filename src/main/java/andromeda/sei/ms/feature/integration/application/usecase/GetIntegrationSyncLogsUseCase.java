@@ -54,7 +54,9 @@ public class GetIntegrationSyncLogsUseCase {
                 l.getErrorCode(),
                 l.getErrorMessage(),
                 l.getHttpStatus(),
-                l.getErrorDetail()
+                l.getErrorDetail(),
+                l.getItemsUnmappedType(),
+                l.getUnmappedTypes()
         )).toList();
     }
 }

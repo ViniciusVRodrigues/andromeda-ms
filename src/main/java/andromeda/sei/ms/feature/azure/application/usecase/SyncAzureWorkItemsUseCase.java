@@ -99,6 +99,8 @@ public class SyncAzureWorkItemsUseCase {
         int deactivated = 0;
         int reactivated = 0;
         boolean reconciliationSkipped = false;
+        int unmappedCount = 0;
+        java.util.SortedSet<String> unmappedNames = new java.util.TreeSet<>();
         ActivityCollector activity = new ActivityCollector();
 
         try {
@@ -144,6 +146,11 @@ public class SyncAzureWorkItemsUseCase {
             for (AdoWorkItemDto adoItem : adoItems) {
                 try {
                     if (processWorkItem(orgId, projectId, adoItem, config, orgUrl, authHeader, activity)) reactivated++;
+                    String itemRawType = adoItem.fields() != null ? getString(adoItem.fields(), "System.WorkItemType") : null;
+                    if (isTypeUnmapped(itemRawType, config)) {
+                        unmappedCount++;
+                        if (itemRawType != null) unmappedNames.add(itemRawType);
+                    }
                     processedIds.add(String.valueOf(adoItem.id()));
                     collectIdentities(adoItem, seen);
                     processed++;
@@ -175,6 +182,13 @@ public class SyncAzureWorkItemsUseCase {
             syncLog.setItemsFailed(failed);
             syncLog.setItemsDeactivated(deactivated);
             syncLog.setItemsReactivated(reactivated);
+            List<String> unmappedList = unmappedNames.stream().limit(MAX_UNMAPPED_TYPES).toList();
+            syncLog.setItemsUnmappedType(unmappedCount);
+            syncLog.setUnmappedTypes(unmappedList);
+            if (unmappedCount > 0) {
+                log.warn("Work item sync: {} item(s) with unmapped type became TASK: binding={} project={} types={}",
+                        unmappedCount, binding.getId(), binding.getProjectId(), unmappedList);
+            }
             syncLogRepository.save(syncLog);
             log.info("Work item sync completed: org={} project={} status={} processed={} failed={} deactivated={} reactivated={} reconciliationSkipped={} activitiesStored={} durationMs={}",
                     connection.getOrganizationId(), binding.getProjectId(), status, processed, failed,
@@ -597,6 +611,14 @@ public class SyncAzureWorkItemsUseCase {
                 .map(WorkItemTransition::getOccurredAt)
                 .min(Comparator.naturalOrder())
                 .orElse(null);
+    }
+
+    private static final int MAX_UNMAPPED_TYPES = 20;
+
+    /** Mesmo criterio do {@link #resolveType}: sem tipo, sem config ou sem match (sem caixa). */
+    private boolean isTypeUnmapped(String rawType, WorkflowConfig config) {
+        if (rawType == null || config == null || config.getTypeMappings() == null) return true;
+        return config.getTypeMappings().stream().noneMatch(m -> rawType.equalsIgnoreCase(m.getRawType()));
     }
 
     private WorkItem.ResolvedType resolveType(String rawType, WorkflowConfig config) {

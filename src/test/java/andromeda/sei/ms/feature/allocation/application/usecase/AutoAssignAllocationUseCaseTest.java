@@ -41,6 +41,7 @@ class AutoAssignAllocationUseCaseTest {
     @Mock SprintRepository sprintRepository;
     @Mock WorkItemRepository workItemRepository;
     @Mock WorkItemActivityRepository activityRepository;
+    @Mock andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository bindingRepository;
 
     AutoAssignAllocationUseCase useCase;
 
@@ -51,7 +52,8 @@ class AutoAssignAllocationUseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new AutoAssignAllocationUseCase(
-                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository, activityRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
+                allocationRepository, aiUsageRepository, sprintRepository, workItemRepository, activityRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(),
+                new andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility(bindingRepository));
     }
 
     // â”€â”€ Happy path â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -586,5 +588,45 @@ class AutoAssignAllocationUseCaseTest {
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
                 null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void should_splitOnlyAmongMarkedTypes_when_bindingMarksUserStoryAndBug() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of());
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint("sprint-1")));
+        List<WorkItem> items = new java.util.ArrayList<>();
+        items.add(typedItem("us", "User Story", WorkItem.ResolvedType.STORY));
+        items.add(typedItem("bug", "Bug", WorkItem.ResolvedType.BUG));
+        items.add(typedItem("feat", "Feature", WorkItem.ResolvedType.FEATURE));
+        for (String t : List.of("t1", "t2", "t3")) items.add(typedItem(t, "Task", WorkItem.ResolvedType.TASK));
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(items);
+        var mappings = List.of(
+                new andromeda.sei.ms.feature.azure.domain.TypeMapping("User Story", WorkItem.ResolvedType.STORY, true),
+                new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG, true),
+                new andromeda.sei.ms.feature.azure.domain.TypeMapping("Feature", WorkItem.ResolvedType.FEATURE, false));
+        var config = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.WorkflowConfig.class);
+        when(config.getTypeMappings()).thenReturn(mappings);
+        var binding = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.AzureProjectBinding.class);
+        when(binding.getWorkflowConfig()).thenReturn(config);
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, "proj-1"))
+                .thenReturn(java.util.Optional.of(binding));
+        when(allocationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        org.mockito.ArgumentCaptor<AiUsageAllocation> captor = org.mockito.ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getSplits()).extracting(AllocationSplit::getWorkItemId)
+                .containsExactly("us", "bug");
+    }
+
+    private WorkItem typedItem(String id, String rawType, WorkItem.ResolvedType type) {
+        WorkItem wi = workItem(id, "Title " + id);
+        wi.setRawType(rawType);
+        wi.setResolvedType(type);
+        return wi;
     }
 }

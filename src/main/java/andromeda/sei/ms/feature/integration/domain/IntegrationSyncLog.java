@@ -27,6 +27,9 @@ public class IntegrationSyncLog {
     /** Work items deactivated / reactivated by the Azure removal reconciliation of this sync. */
     private int itemsDeactivated;
     private int itemsReactivated;
+    /** Itens cujo tipo bruto nao tinha mapeamento (viraram TASK) e ate 20 nomes distintos desses tipos. */
+    private int itemsUnmappedType;
+    private java.util.List<String> unmappedTypes = java.util.List.of();
 
     public IntegrationSyncLog(String id, String organizationId, Integration integration,
                                SyncOperation operation, SyncStatus status, SyncTrigger triggeredBy,
@@ -108,6 +111,14 @@ public class IntegrationSyncLog {
 
     public int getItemsReactivated() { return itemsReactivated; }
     public void setItemsReactivated(int itemsReactivated) { this.itemsReactivated = itemsReactivated; }
+
+    public int getItemsUnmappedType() { return itemsUnmappedType; }
+    public void setItemsUnmappedType(int itemsUnmappedType) { this.itemsUnmappedType = itemsUnmappedType; }
+
+    public java.util.List<String> getUnmappedTypes() { return unmappedTypes; }
+    public void setUnmappedTypes(java.util.List<String> unmappedTypes) {
+        this.unmappedTypes = unmappedTypes == null ? java.util.List.of() : unmappedTypes;
+    }
 
     /** Verdadeiro enquanto o log nao atingiu um status terminal. */
     public boolean isRunning() { return status == SyncStatus.RUNNING; }

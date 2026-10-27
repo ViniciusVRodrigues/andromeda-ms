@@ -68,7 +68,7 @@ public class UpdateWorkflowConfigUseCase {
 
         List<TypeMapping> typeMappings = input.typeMappings() == null ? List.of() :
                 input.typeMappings().stream()
-                        .map(t -> new TypeMapping(t.rawType(), t.resolvedType()))
+                        .map(t -> new TypeMapping(t.rawType(), t.resolvedType(), Boolean.TRUE.equals(t.receivesAi())))
                         .toList();
 
         validateNotWipingMappings(binding, statusMappings, typeMappings);

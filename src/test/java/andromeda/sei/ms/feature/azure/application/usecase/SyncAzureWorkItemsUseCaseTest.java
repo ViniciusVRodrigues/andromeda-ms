@@ -1190,4 +1190,61 @@ class SyncAzureWorkItemsUseCaseTest {
             assertThat(a.getChangedAt()).isEqualTo(Instant.parse("2026-09-29T23:30:00Z"));
         });
     }
+    private IntegrationSyncLog syncTypedItemsAndCaptureLog(List<String> rawTypes) {
+        var config = new andromeda.sei.ms.feature.azure.domain.WorkflowConfig(
+                List.of(), List.of(new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", WorkItem.ResolvedType.BUG)),
+                List.of(), null, andromeda.sei.ms.feature.azure.domain.WorkflowConfig.ConfigSource.CUSTOM);
+        binding.setWorkflowConfig(config);
+        List<Integer> ids = new java.util.ArrayList<>();
+        List<AdoWorkItemDto> items = new java.util.ArrayList<>();
+        for (int i = 0; i < rawTypes.size(); i++) {
+            ids.add(200 + i);
+            items.add(new AdoWorkItemDto(200 + i, Map.of(
+                    "System.Title", "T" + i,
+                    "System.WorkItemType", rawTypes.get(i),
+                    "System.State", "Active",
+                    "System.CreatedDate", NOW.toString(),
+                    "System.ChangedDate", NOW.toString()), null));
+        }
+        when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
+                .thenReturn(ids);
+        when(azureDevOpsClient.getWorkItemsBatch(anyString(), any(), anyString())).thenReturn(items);
+        when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
+                .thenReturn(Optional.empty());
+        when(workItemRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.Mockito.lenient().when(workItemTransitionRepository.existsByWorkItemId(any())).thenReturn(true);
+        org.mockito.Mockito.lenient().when(workItemTransitionRepository.findAllByWorkItemId(any())).thenReturn(List.of());
+
+        useCase.sync(connection, binding, SyncTrigger.SCHEDULED, null);
+
+        ArgumentCaptor<WorkItem> saved = ArgumentCaptor.forClass(WorkItem.class);
+        verify(workItemRepository, atLeastOnce()).save(saved.capture());
+        for (int i = 0; i < rawTypes.size(); i++) {
+            String raw = rawTypes.get(i);
+            if (!"Bug".equalsIgnoreCase(raw)) {
+                assertThat(saved.getAllValues()).filteredOn(w -> raw.equals(w.getRawType()))
+                        .allMatch(w -> w.getResolvedType() == WorkItem.ResolvedType.TASK);
+            }
+        }
+        ArgumentCaptor<IntegrationSyncLog> logs = ArgumentCaptor.forClass(IntegrationSyncLog.class);
+        verify(syncLogRepository, atLeastOnce()).save(logs.capture());
+        return logs.getAllValues().get(logs.getAllValues().size() - 1);
+    }
+
+    @Test
+    void shouldCountAndNameUnmappedTypesInSyncLogAndKeepThemAsTask() {
+        IntegrationSyncLog last = syncTypedItemsAndCaptureLog(
+                List.of("Issue", "Risk", "Issue", "Bug", "Issue", "Risk"));
+
+        assertThat(last.getItemsUnmappedType()).isEqualTo(5);
+        assertThat(last.getUnmappedTypes()).containsExactly("Issue", "Risk");
+    }
+
+    @Test
+    void shouldRecordZeroUnmappedWhenEveryTypeIsMapped() {
+        IntegrationSyncLog last = syncTypedItemsAndCaptureLog(List.of("Bug", "bug"));
+
+        assertThat(last.getItemsUnmappedType()).isZero();
+        assertThat(last.getUnmappedTypes()).isEmpty();
+    }
 }

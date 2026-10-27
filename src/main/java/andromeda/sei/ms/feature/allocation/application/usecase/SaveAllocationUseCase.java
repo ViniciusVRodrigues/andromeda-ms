@@ -3,11 +3,13 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryInput;
+import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationEmptyException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationInvalidSumException;
+import andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,7 @@ public class SaveAllocationUseCase {
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
     private final WorkItemRepository workItemRepository;
+    private final AllocationTypeEligibility typeEligibility;
 
     public void execute(String organizationId, String userId, LocalDate day, List<AllocationEntryInput> entries) {
         validate(entries);
@@ -88,8 +91,10 @@ public class SaveAllocationUseCase {
         for (AllocationEntryInput entry : entries) {
             String id = entry.workItemId();
             if (id == null || id.isBlank()) continue;
-            if (workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).isEmpty()) {
-                throw new WorkItemNotFoundException(id);
+            var item = workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId)
+                    .orElseThrow(() -> new WorkItemNotFoundException(id));
+            if (!typeEligibility.isEligible(organizationId, item)) {
+                throw new AllocationWorkItemTypeNotEligibleException(item.getRawType());
             }
         }
     }

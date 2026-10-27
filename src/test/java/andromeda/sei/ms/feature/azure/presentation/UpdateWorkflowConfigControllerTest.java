@@ -230,4 +230,36 @@ class UpdateWorkflowConfigControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workflowConfig.hierarchyLevels").isEmpty());
     }
+    @Test
+    void updateWorkflowConfig_shouldPassReceivesAiToUseCaseAndDefaultAbsentToNull() throws Exception {
+        Instant now = Instant.now();
+        AzureProjectBinding binding = new AzureProjectBinding(
+                "bind-1", "org-1", "proj-1", "azure-id-1", "My Project",
+                true, null,
+                new WorkflowConfig(List.of(), List.of(
+                        new andromeda.sei.ms.feature.azure.domain.TypeMapping("Bug", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedType.BUG, true),
+                        new andromeda.sei.ms.feature.azure.domain.TypeMapping("Task", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedType.TASK)),
+                        List.of(), null, WorkflowConfig.ConfigSource.CUSTOM),
+                true, now, now, null);
+        when(updateWorkflowConfigUseCase.execute(eq("bind-1"), any(UpdateWorkflowConfigInput.class)))
+                .thenReturn(binding);
+
+        mockMvc.perform(put("/api/v1/integrations/azure/bindings/bind-1/workflow-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "statusMappings": [],
+                                  "typeMappings": [{"rawType": "Bug", "resolvedType": "BUG", "receivesAi": true},
+                                                   {"rawType": "Task", "resolvedType": "TASK"}]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workflowConfig.typeMappings[0].receivesAi").value(true))
+                .andExpect(jsonPath("$.workflowConfig.typeMappings[1].receivesAi").value(false));
+
+        var captor = org.mockito.ArgumentCaptor.forClass(UpdateWorkflowConfigInput.class);
+        org.mockito.Mockito.verify(updateWorkflowConfigUseCase).execute(eq("bind-1"), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().typeMappings().get(0).receivesAi()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().typeMappings().get(1).receivesAi()).isNull();
+    }
 }

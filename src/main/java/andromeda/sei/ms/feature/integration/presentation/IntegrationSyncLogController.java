@@ -43,7 +43,7 @@ public class IntegrationSyncLogController {
                 l.id(), l.integration(), l.operation(), l.status(), l.triggeredBy(),
                 l.projectId(), l.startedAt(), l.finishedAt(), l.durationMs(),
                 l.itemsProcessed(), l.itemsFailed(), l.errorCode(), l.errorMessage(),
-                l.httpStatus(), l.errorDetail()
+                l.httpStatus(), l.errorDetail(), l.itemsUnmappedType(), l.unmappedTypes()
         )).toList();
 
         return ResponseEntity.ok(response);
