@@ -170,7 +170,6 @@ class GetAllocationCandidatesUseCaseTest {
         wi.setRawType(rawType);
         wi.setResolvedType(type);
         wi.setEffort(3.0);
-        wi.setStoryPoints(3.0);
         return wi;
     }
 
