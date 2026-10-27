@@ -7,8 +7,10 @@ import andromeda.sei.ms.feature.azure.domain.AzureOrgUserRepository;
 import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+import andromeda.sei.ms.shared.application.security.VcsIdentityLinked;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -20,7 +22,8 @@ import java.util.Set;
  * Links users without {@code azureId} to the single org identity that carries their email
  * (perfil-integracoes D11). The write is conditional on {@code azureId} still being null, so it never
  * overwrites an admin link and loses silently to a concurrent one. No permission event: an Azure
- * identity does not change permissions.
+ * identity does not change permissions. Each written link publishes {@link VcsIdentityLinked}, so the
+ * person's unowned VCS history is attributed in background.
  */
 @Slf4j
 @Service
@@ -31,6 +34,7 @@ public class AutoLinkAzureIdentitiesUseCase {
     private final AzureOrgUserRepository azureOrgUserRepository;
     private final AzureIdentityMatchService matchService;
     private final WorkItemRepository workItemRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** All active users of the organization; returns how many were linked. */
     public int executeForOrganization(String orgId) {
@@ -75,6 +79,7 @@ public class AutoLinkAzureIdentitiesUseCase {
         taken.add(identity.getAzureId());
         workItemRepository.updateAssigneeUserIdByExternalIdOrEmail(orgId, identity.getAzureId(), user.getEmail(),
                 user.getId());
+        eventPublisher.publishEvent(new VcsIdentityLinked(orgId, user.getId()));
         return true;
     }
 }

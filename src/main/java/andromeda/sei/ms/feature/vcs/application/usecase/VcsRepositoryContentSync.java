@@ -75,6 +75,8 @@ public class VcsRepositoryContentSync {
                         repository.getProvider(), remote.sha()));
         commit.setMessage(remote.message());
         commit.setAuthorLogin(remote.authorLogin());
+        commit.setAuthorExternalId(remote.authorExternalId());
+        commit.setAuthorEmail(remote.authorEmail());
         commit.setAuthorUserId(resolveUser(context, remote.authorExternalId(), remote.authorEmail()));
         commit.setAuthoredAt(remote.authoredAt());
         commitRepository.save(commit);

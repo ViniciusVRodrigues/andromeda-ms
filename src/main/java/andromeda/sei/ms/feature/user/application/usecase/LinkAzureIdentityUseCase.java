@@ -5,7 +5,9 @@ import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserNotFoundException;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
+import andromeda.sei.ms.shared.application.security.VcsIdentityLinked;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -16,6 +18,7 @@ public class LinkAzureIdentityUseCase {
 
     private final UserRepository userRepository;
     private final WorkItemRepository workItemRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public void execute(String orgId, String userId, String azureId, String azureEmail) {
         var user = userRepository.findByIdAndOrganizationId(userId, orgId)
@@ -44,5 +47,8 @@ public class LinkAzureIdentityUseCase {
         userRepository.save(user);
 
         workItemRepository.updateAssigneeUserIdByExternalIdOrEmail(orgId, azureId, user.getEmail(), userId);
+        if (azureId != null) {
+            eventPublisher.publishEvent(new VcsIdentityLinked(orgId, userId));
+        }
     }
 }

@@ -8,10 +8,12 @@ import andromeda.sei.ms.feature.user.domain.User;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import org.junit.jupiter.api.BeforeEach;
+import andromeda.sei.ms.shared.application.security.VcsIdentityLinked;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.List;
@@ -33,13 +35,15 @@ class AutoLinkAzureIdentitiesUseCaseTest {
     @Mock private UserRepository userRepository;
     @Mock private AzureOrgUserRepository azureOrgUserRepository;
     @Mock private WorkItemRepository workItemRepository;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private AutoLinkAzureIdentitiesUseCase useCase;
 
     @BeforeEach
     void setUp() {
         useCase = new AutoLinkAzureIdentitiesUseCase(userRepository, azureOrgUserRepository,
-                new AzureIdentityMatchService(azureOrgUserRepository, userRepository), workItemRepository);
+                new AzureIdentityMatchService(azureOrgUserRepository, userRepository), workItemRepository,
+                eventPublisher);
     }
 
     private static User user(String id, String org, String email, String azureId) {
@@ -64,6 +68,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
         assertThat(useCase.executeForOrganization("org-1")).isEqualTo(1);
 
         verify(workItemRepository).updateAssigneeUserIdByExternalIdOrEmail("org-1", "az-1", "Pedro@x.com", "u1");
+        verify(eventPublisher).publishEvent(new VcsIdentityLinked("org-1", "u1"));
     }
 
     @Test
@@ -77,6 +82,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
         assertThat(useCase.executeForOrganization("org-1")).isZero();
 
         verify(workItemRepository, never()).updateAssigneeUserIdByExternalIdOrEmail(any(), any(), any(), any());
+        verify(eventPublisher, never()).publishEvent(any(Object.class));
     }
 
     @Test

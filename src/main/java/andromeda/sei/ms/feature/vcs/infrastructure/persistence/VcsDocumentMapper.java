@@ -134,6 +134,8 @@ public class VcsDocumentMapper {
                 doc.getProvider(), doc.getSha());
         commit.setMessage(doc.getMessage());
         commit.setAuthorLogin(doc.getAuthorLogin());
+        commit.setAuthorExternalId(doc.getAuthorExternalId());
+        commit.setAuthorEmail(doc.getAuthorEmail());
         commit.setAuthorUserId(doc.getAuthorUserId());
         commit.setAuthoredAt(doc.getAuthoredAt());
         commit.setActive(doc.isActive());
@@ -152,6 +154,8 @@ public class VcsDocumentMapper {
                 .sha(commit.getSha())
                 .message(commit.getMessage())
                 .authorLogin(commit.getAuthorLogin())
+                .authorExternalId(commit.getAuthorExternalId())
+                .authorEmail(commit.getAuthorEmail())
                 .authorUserId(commit.getAuthorUserId())
                 .authoredAt(commit.getAuthoredAt())
                 .active(commit.isActive())

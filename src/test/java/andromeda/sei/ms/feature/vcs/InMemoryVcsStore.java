@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.vcs;
 
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.vcs.domain.VcsAttribution;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
@@ -209,6 +210,12 @@ public class InMemoryVcsStore {
     }
 
     @Override
+    public VcsAttribution attributeByAuthorExternalIds(String organizationId, VcsProvider provider,
+                                                       Collection<String> externalIds, String userId) {
+        throw new UnsupportedOperationException("covered by the Mongo adapter test");
+    }
+
+    @Override
     public void updateMetrics(String organizationId, String id, Double cycleTimeHours, Double timeToFirstReviewHours,
                               Double timeToFirstApprovalHours) {
         findByIdAndOrganizationId(id, organizationId).ifPresent(pr -> {
@@ -252,6 +259,24 @@ public class InMemoryVcsStore {
         return commit;
     }
 
+    @Override
+    public long attributeByAuthorExternalIds(String organizationId, VcsProvider provider,
+                                             Collection<String> externalIds, String userId) {
+        throw new UnsupportedOperationException("covered by the Mongo adapter test");
+    }
+
+    @Override
+    public long attributeByLegacyAuthorLogin(String organizationId, VcsProvider provider, String authorLogin,
+                                             String userId) {
+        throw new UnsupportedOperationException("covered by the Mongo adapter test");
+    }
+
+    @Override
+    public long attributeByAuthorEmails(String organizationId, VcsProvider provider, Collection<String> emails,
+                                        String userId) {
+        throw new UnsupportedOperationException("covered by the Mongo adapter test");
+    }
+
     }
 
     public final Events reviewEventRepository = new Events();
@@ -277,6 +302,12 @@ public class InMemoryVcsStore {
     public VcsReviewEvent save(VcsReviewEvent event) {
         events.add(event);
         return event;
+    }
+
+    @Override
+    public VcsAttribution attributeByActorExternalIds(String organizationId, VcsProvider provider,
+                                                      Collection<String> externalIds, String userId) {
+        throw new UnsupportedOperationException("covered by the Mongo adapter test");
     }
 
     }
