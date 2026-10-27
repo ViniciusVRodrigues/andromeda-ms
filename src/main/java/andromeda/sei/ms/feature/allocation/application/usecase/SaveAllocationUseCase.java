@@ -8,6 +8,8 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationEmptyException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationInvalidSumException;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -37,9 +39,11 @@ public class SaveAllocationUseCase {
 
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
+    private final WorkItemRepository workItemRepository;
 
     public void execute(String organizationId, String userId, LocalDate day, List<AllocationEntryInput> entries) {
         validate(entries);
+        requireOrganizationWorkItems(organizationId, entries);
 
         Instant now = Instant.now();
         List<AllocationSplit> splits = entries.stream()
@@ -76,6 +80,17 @@ public class SaveAllocationUseCase {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         if (BigDecimal.ONE.subtract(sum).abs().compareTo(TOLERANCE) > 0) {
             throw new AllocationInvalidSumException();
+        }
+    }
+
+    /** A non-blank {@code workItemId} that is not an active work item of the organization rejects the request. */
+    private void requireOrganizationWorkItems(String organizationId, List<AllocationEntryInput> entries) {
+        for (AllocationEntryInput entry : entries) {
+            String id = entry.workItemId();
+            if (id == null || id.isBlank()) continue;
+            if (workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).isEmpty()) {
+                throw new WorkItemNotFoundException(id);
+            }
         }
     }
 }

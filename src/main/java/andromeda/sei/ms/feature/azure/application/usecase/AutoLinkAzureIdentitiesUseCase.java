@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.azure.application.usecase;
 
+import andromeda.sei.ms.feature.allocation.application.usecase.ReattributeAzureActivityUseCase;
 import andromeda.sei.ms.feature.azure.application.AzureIdentityMatchService;
 import andromeda.sei.ms.feature.azure.domain.AzureIdentityMatcher;
 import andromeda.sei.ms.feature.azure.domain.AzureOrgUser;
@@ -31,6 +32,7 @@ public class AutoLinkAzureIdentitiesUseCase {
     private final AzureOrgUserRepository azureOrgUserRepository;
     private final AzureIdentityMatchService matchService;
     private final WorkItemRepository workItemRepository;
+    private final ReattributeAzureActivityUseCase reattributeActivity;
 
     /** All active users of the organization; returns how many were linked. */
     public int executeForOrganization(String orgId) {
@@ -75,6 +77,7 @@ public class AutoLinkAzureIdentitiesUseCase {
         taken.add(identity.getAzureId());
         workItemRepository.updateAssigneeUserIdByExternalIdOrEmail(orgId, identity.getAzureId(), user.getEmail(),
                 user.getId());
+        reattributeActivity.execute(orgId, user.getId(), identity.getAzureId(), user.getEmail());
         return true;
     }
 }
