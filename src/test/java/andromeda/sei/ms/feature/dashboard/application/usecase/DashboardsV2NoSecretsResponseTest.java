@@ -116,4 +116,31 @@ class DashboardsV2NoSecretsResponseTest {
         // the connection error message stays in /integrations; here only its code
         assertThat(body).contains("TOKEN_EXPIRED").doesNotContain("Access token expired");
     }
+
+    @Test
+    void should_neverSerializeASecretNorAnEmail_inThePeopleResponse() throws Exception {
+        andromeda.sei.ms.feature.project.domain.ProjectRepository projects =
+                mock(andromeda.sei.ms.feature.project.domain.ProjectRepository.class);
+        when(projects.findActiveByIdAndOrganizationId("p1", ORG)).thenReturn(java.util.Optional.of(
+                new andromeda.sei.ms.feature.project.domain.Project("p1", ORG, "Orion", "orion", null, true,
+                        List.of("u-ana", "u-bruno", "u-gone"), 0L, NOW, NOW)));
+        andromeda.sei.ms.feature.dashboard.presentation.DashboardsV2Controller controller =
+                new andromeda.sei.ms.feature.dashboard.presentation.DashboardsV2Controller(
+                mock(andromeda.sei.ms.feature.dashboard.application.usecase.GetIndividualDashboardV2UseCase.class),
+                mock(andromeda.sei.ms.feature.dashboard.application.usecase.GetTeamDashboardV2UseCase.class),
+                new andromeda.sei.ms.feature.dashboard.application.usecase.ListDashboardPeopleUseCase(projects,
+                        fixtures.userRepository, mock(andromeda.sei.ms.feature.role.domain.RoleRepository.class)),
+                new andromeda.sei.ms.feature.dashboard.presentation.DashboardsV2Mapper(),
+                mock(DataFreshnessResolver.class));
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler())
+                .build();
+
+        String body = mvc.perform(get("/api/v1/dashboards/individual/people").param("projectId", "p1"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertThat(body).contains("Ana", "Bruno").doesNotContain("Gone", "Carla");
+        assertThat(body).doesNotContain(SECRETS.toArray(String[]::new));
+        assertThat(body).doesNotContain(SECRET_KEYS.toArray(String[]::new));
+        assertThat(body).doesNotContain("@example.com", "@azure.example.com", "email");
+    }
 }

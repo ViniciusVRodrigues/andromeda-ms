@@ -143,6 +143,54 @@ class GetIndividualDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_passTheTargetToTheRepositories_when_callerLooksAtAnotherMember() {
+        when(userRepository.findByIdAndOrganizationId(OTHER, ORG)).thenReturn(Optional.of(user(OTHER, "Bruno Lima", null)));
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of());
+
+        IndividualDashboardV2Output out = useCase.execute(ORG, ME, OTHER, PROJECT, null);
+
+        assertThat(out.person().id()).isEqualTo(OTHER);
+        assertThat(out.person().name()).isEqualTo("Bruno Lima");
+    }
+
+    @Test
+    void should_useTheCaller_when_targetIsNullOrTheCaller() {
+        when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of());
+
+        assertThat(useCase.execute(ORG, ME, null, PROJECT, null).person().id()).isEqualTo(ME);
+        assertThat(useCase.execute(ORG, ME, ME, PROJECT, null).person().id()).isEqualTo(ME);
+    }
+
+    @Test
+    void should_throwMemberNotFound_when_targetIsNotAMemberOfTheProject() {
+        when(userRepository.findByIdAndOrganizationId("user-z", ORG)).thenReturn(Optional.of(user("user-z", "Zed", null)));
+
+        assertThatThrownBy(() -> useCase.execute(ORG, ME, "user-z", PROJECT, null))
+                .isInstanceOf(andromeda.sei.ms.feature.project.domain.exception.ProjectMemberNotFoundException.class)
+                .hasFieldOrPropertyWithValue("code", "PROJECT_MEMBER_NOT_FOUND");
+        verify(developerDashboard, never()).execute(any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void should_throwMemberNotFound_when_targetIsAMemberButInactiveOrUnknownInTheOrganization() {
+        User inactive = new User(OTHER, ORG, "b@x.io", null, "Bruno", "role", null, null, null, null, null, true,
+                false, 0L, NOW, NOW);
+        when(userRepository.findByIdAndOrganizationId(OTHER, ORG)).thenReturn(Optional.of(inactive));
+        assertThatThrownBy(() -> useCase.execute(ORG, ME, OTHER, PROJECT, null))
+                .hasFieldOrPropertyWithValue("code", "PROJECT_MEMBER_NOT_FOUND");
+
+        when(userRepository.findByIdAndOrganizationId(OTHER, ORG)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> useCase.execute(ORG, ME, OTHER, PROJECT, null))
+                .hasFieldOrPropertyWithValue("code", "PROJECT_MEMBER_NOT_FOUND");
+    }
+
+    @Test
+    void should_throwProjectNotFound_beforeCheckingMembership_when_projectIsOfAnotherOrganization() {
+        assertThatThrownBy(() -> useCase.execute(ORG, ME, OTHER, "project-of-other-org", null))
+                .isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
     void should_returnPayloadWithoutSprint_when_projectHasNoSprint() {
         when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of());
 

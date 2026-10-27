@@ -4,6 +4,10 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.IndividualDashboard
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.TeamDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.usecase.GetIndividualDashboardV2UseCase;
 import andromeda.sei.ms.feature.dashboard.application.usecase.GetTeamDashboardV2UseCase;
+import andromeda.sei.ms.feature.dashboard.application.usecase.ListDashboardPeopleUseCase;
+import andromeda.sei.ms.feature.project.domain.exception.ProjectMemberNotFoundException;
+import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundException;
+import java.util.List;
 import andromeda.sei.ms.feature.sync.application.DataFreshnessResolver;
 import andromeda.sei.ms.feature.sync.application.dto.DataFreshness;
 import andromeda.sei.ms.feature.workitem.domain.exception.SprintNotFoundException;
@@ -48,13 +52,14 @@ class DashboardsV2ControllerTest {
 
     @Mock private GetIndividualDashboardV2UseCase individualUseCase;
     @Mock private GetTeamDashboardV2UseCase teamUseCase;
+    @Mock private ListDashboardPeopleUseCase listPeople;
     @Mock private DataFreshnessResolver dataFreshnessResolver;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        DashboardsV2Controller controller = new DashboardsV2Controller(individualUseCase, teamUseCase,
+        DashboardsV2Controller controller = new DashboardsV2Controller(individualUseCase, teamUseCase, listPeople,
                 new DashboardsV2Mapper(), dataFreshnessResolver);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).setControllerAdvice(new GlobalExceptionHandler()).build();
         TenantContextHolder.set(ORG);
@@ -70,7 +75,7 @@ class DashboardsV2ControllerTest {
 
     @Test
     void should_return200WithIndividualPayload_asOfAndDataFreshness() throws Exception {
-        when(individualUseCase.execute(ORG, CALLER, "p1", "s1")).thenReturn(individualOutput());
+        when(individualUseCase.execute(ORG, CALLER, null, "p1", "s1")).thenReturn(individualOutput());
         when(dataFreshnessResolver.resolve(ORG, "p1")).thenReturn(new DataFreshness(SYNC_AT, false));
 
         mockMvc.perform(get("/api/v1/dashboards/individual").param("projectId", "p1").param("sprintId", "s1"))
@@ -87,20 +92,54 @@ class DashboardsV2ControllerTest {
     }
 
     @Test
-    void should_ignoreUserIdInQuery_andReadThePersonFromTheJwt() throws Exception {
-        when(individualUseCase.execute(eq(ORG), anyString(), eq("p1"), isNull())).thenReturn(individualOutput());
+    void should_passTheRequestedUserIdAsTarget_andTheJwtSubjectAsCaller() throws Exception {
+        when(individualUseCase.execute(eq(ORG), anyString(), eq("user-b"), eq("p1"), isNull()))
+                .thenReturn(individualOutput());
 
         mockMvc.perform(get("/api/v1/dashboards/individual").param("projectId", "p1").param("userId", "user-b")
-                        .param("memberId", "user-b"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.person.id").value(CALLER));
+                        .param("memberId", "user-c"))
+                .andExpect(status().isOk());
 
-        verify(individualUseCase).execute(ORG, CALLER, "p1", null);
+        verify(individualUseCase).execute(ORG, CALLER, "user-b", "p1", null);
+    }
+
+    @Test
+    void should_answer404ProjectMemberNotFound_when_targetIsNotAProjectMember() throws Exception {
+        when(individualUseCase.execute(any(), any(), eq("user-x"), any(), any()))
+                .thenThrow(new ProjectMemberNotFoundException("p1", "user-x"));
+
+        mockMvc.perform(get("/api/v1/dashboards/individual").param("projectId", "p1").param("userId", "user-x"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PROJECT_MEMBER_NOT_FOUND"));
+    }
+
+    @Test
+    void should_listProjectPeople_withIdNameAndJobTitleOnly() throws Exception {
+        when(listPeople.execute(ORG, "p1")).thenReturn(List.of(
+                new ListDashboardPeopleUseCase.PersonOption("u1", "Ana", "Desenvolvedor"),
+                new ListDashboardPeopleUseCase.PersonOption("u2", "Bruno", null)));
+
+        mockMvc.perform(get("/api/v1/dashboards/individual/people").param("projectId", "p1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("u1"))
+                .andExpect(jsonPath("$[0].name").value("Ana"))
+                .andExpect(jsonPath("$[0].jobTitle").value("Desenvolvedor"))
+                .andExpect(jsonPath("$[1].jobTitle").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$[0].email").doesNotExist());
+    }
+
+    @Test
+    void should_answer404ProjectNotFound_when_peopleProjectIsOfAnotherOrganization() throws Exception {
+        when(listPeople.execute(ORG, "foreign")).thenThrow(new ProjectNotFoundException("foreign"));
+
+        mockMvc.perform(get("/api/v1/dashboards/individual/people").param("projectId", "foreign"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("PROJECT_NOT_FOUND"));
     }
 
     @Test
     void should_answer404SprintNotFound_when_individualSprintIsOfAnotherProject() throws Exception {
-        when(individualUseCase.execute(any(), any(), any(), eq("s-other"))).thenThrow(new SprintNotFoundException("s-other"));
+        when(individualUseCase.execute(any(), any(), any(), any(), eq("s-other"))).thenThrow(new SprintNotFoundException("s-other"));
 
         mockMvc.perform(get("/api/v1/dashboards/individual").param("projectId", "p1").param("sprintId", "s-other"))
                 .andExpect(status().isNotFound())
