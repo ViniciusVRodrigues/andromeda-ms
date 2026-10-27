@@ -31,13 +31,18 @@ import java.util.Set;
 /**
  * Suggests, for one (user, day), the work items that day's AI usage belongs to. The suggestion
  * comes from the items the person changed in Azure DevOps that day; with none, from the items
- * in progress in the sprint covering the day. The result is a {@code PENDING_VALIDATION}
+ * in progress in the sprint covering the day. A source with more than {@link #MAX_SUGGESTED_ITEMS}
+ * items is no signal (a bulk edit in Azure, a crowded sprint) and is skipped: an even split over
+ * hundreds of items gave each a fraction of a percent. The result is a {@code PENDING_VALIDATION}
  * allocation; a {@code VALIDATED} day is never touched.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AutoAssignAllocationUseCase {
+
+    /** Above this many items a day's source is treated as a bulk change, not as the day's work. */
+    static final int MAX_SUGGESTED_ITEMS = 10;
 
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
@@ -114,12 +119,19 @@ public class AutoAssignAllocationUseCase {
     private Suggestion suggest(String organizationId, String userId, LocalDate day) {
         List<WorkItem> items = activityItems(organizationId, userId, day);
         SuggestionSource source = SuggestionSource.AZURE_ACTIVITY;
-        if (items.isEmpty()) {
+        if (!usable(items, source, userId, day)) {
             items = inProgressItems(organizationId, userId, day);
             source = SuggestionSource.IN_PROGRESS;
         }
-        if (items.isEmpty()) return null;
+        if (!usable(items, source, userId, day)) return null;
         return new Suggestion(evenSplits(items), source);
+    }
+
+    private static boolean usable(List<WorkItem> items, SuggestionSource source, String userId, LocalDate day) {
+        if (items.size() <= MAX_SUGGESTED_ITEMS) return !items.isEmpty();
+        log.debug("AutoAssign: {} {} items for user={} day={} exceed {} — not a suggestion",
+                items.size(), source, userId, day, MAX_SUGGESTED_ITEMS);
+        return false;
     }
 
     /** Distinct active items the user changed that day, filtered to the effort-bearing level. */
@@ -152,6 +164,8 @@ public class AutoAssignAllocationUseCase {
                         .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                                 organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS)
                         .stream().filter(WorkItem::isActive).toList()).stream())
+                // an item in two sprints of the day must not take two shares of the split
+                .filter(distinctIds())
                 .toList();
     }
 
@@ -163,6 +177,11 @@ public class AutoAssignAllocationUseCase {
         if (items.isEmpty()) return List.of();
         var level = effortBearingLevelResolver.resolve(null, items);
         return effortBearingLevelResolver.deliverableUnits(level, items);
+    }
+
+    private static java.util.function.Predicate<WorkItem> distinctIds() {
+        Set<String> seen = new java.util.HashSet<>();
+        return wi -> seen.add(wi.getId());
     }
 
     /** Even split, scale 4 HALF_UP; the last split closes the sum at exactly 1.0000. */
