@@ -174,4 +174,15 @@ class AiUsageAllocationControllerTest {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("ALLOCATION_NOTHING_TO_ALLOCATE"));
     }
+
+    @Test
+    void manualForDay_returns_404_when_work_item_is_not_of_the_organization() throws Exception {
+        doThrow(new andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException("wi-1"))
+                .when(manualAllocate).execute(anyString(), anyString(), any(), any(), any());
+
+        mockMvc.perform(post("/api/v1/ai/allocations/manual")
+                        .contentType(MediaType.APPLICATION_JSON).content(DAY_BODY))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("WORK_ITEM_NOT_FOUND"));
+    }
 }

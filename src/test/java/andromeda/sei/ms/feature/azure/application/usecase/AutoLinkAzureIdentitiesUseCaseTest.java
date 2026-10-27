@@ -36,6 +36,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
     @Mock private AzureOrgUserRepository azureOrgUserRepository;
     @Mock private WorkItemRepository workItemRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private andromeda.sei.ms.feature.allocation.application.usecase.ReattributeAzureActivityUseCase reattribute;
 
     private AutoLinkAzureIdentitiesUseCase useCase;
 
@@ -43,7 +44,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
     void setUp() {
         useCase = new AutoLinkAzureIdentitiesUseCase(userRepository, azureOrgUserRepository,
                 new AzureIdentityMatchService(azureOrgUserRepository, userRepository), workItemRepository,
-                eventPublisher);
+                eventPublisher, reattribute);
     }
 
     private static User user(String id, String org, String email, String azureId) {
@@ -69,6 +70,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
 
         verify(workItemRepository).updateAssigneeUserIdByExternalIdOrEmail("org-1", "az-1", "Pedro@x.com", "u1");
         verify(eventPublisher).publishEvent(new VcsIdentityLinked("org-1", "u1"));
+        verify(reattribute).execute("org-1", "u1", "az-1", "Pedro@x.com");
     }
 
     @Test
@@ -83,6 +85,7 @@ class AutoLinkAzureIdentitiesUseCaseTest {
 
         verify(workItemRepository, never()).updateAssigneeUserIdByExternalIdOrEmail(any(), any(), any(), any());
         verify(eventPublisher, never()).publishEvent(any(Object.class));
+        org.mockito.Mockito.verifyNoInteractions(reattribute);
     }
 
     @Test

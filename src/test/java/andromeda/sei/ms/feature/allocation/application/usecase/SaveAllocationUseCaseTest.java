@@ -39,9 +39,31 @@ class SaveAllocationUseCaseTest {
 
     @Mock private AiUsageAllocationRepository allocationRepository;
     @Mock private AIUsageRepository aiUsageRepository;
+    @Mock private andromeda.sei.ms.feature.workitem.domain.WorkItemRepository workItemRepository;
 
     @InjectMocks
     private SaveAllocationUseCase useCase;
+
+    @org.junit.jupiter.api.BeforeEach
+    void knownWorkItems() {
+        for (String id : List.of("wi-1", "wi-2")) {
+            org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, ORG))
+                    .thenReturn(java.util.Optional.of(org.mockito.Mockito.mock(
+                            andromeda.sei.ms.feature.workitem.domain.WorkItem.class)));
+        }
+    }
+
+    @Test
+    void should_rejectWorkItemOfAnotherOrganization_andTouchNothing() {
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-foreign", ORG))
+                .thenReturn(java.util.Optional.empty());
+
+        assertThatThrownBy(() -> useCase.execute(ORG, USER, DAY, List.of(entry("wi-1", "0.5"), entry("wi-foreign", "0.5"))))
+                .isInstanceOf(andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException.class);
+
+        verify(allocationRepository, never()).deleteByOrganizationIdAndUserIdAndDay(any(), any(), any());
+        verify(allocationRepository, never()).save(any());
+    }
 
     @Test
     void should_storeTheDayUsageIdsAndLinkUsagesBack_when_saving() {

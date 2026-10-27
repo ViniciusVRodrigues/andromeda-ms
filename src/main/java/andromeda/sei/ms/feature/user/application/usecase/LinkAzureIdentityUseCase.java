@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.user.application.usecase;
 
+import andromeda.sei.ms.feature.allocation.application.usecase.ReattributeAzureActivityUseCase;
 import andromeda.sei.ms.feature.user.domain.AzureIdentitySource;
 import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.user.domain.exception.UserNotFoundException;
@@ -19,6 +20,7 @@ public class LinkAzureIdentityUseCase {
     private final UserRepository userRepository;
     private final WorkItemRepository workItemRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ReattributeAzureActivityUseCase reattributeActivity;
 
     public void execute(String orgId, String userId, String azureId, String azureEmail) {
         var user = userRepository.findByIdAndOrganizationId(userId, orgId)
@@ -49,6 +51,7 @@ public class LinkAzureIdentityUseCase {
         workItemRepository.updateAssigneeUserIdByExternalIdOrEmail(orgId, azureId, user.getEmail(), userId);
         if (azureId != null) {
             eventPublisher.publishEvent(new VcsIdentityLinked(orgId, userId));
+            reattributeActivity.execute(orgId, userId, azureId, user.getEmail());
         }
     }
 }

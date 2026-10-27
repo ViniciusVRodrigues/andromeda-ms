@@ -29,6 +29,7 @@ class LinkAzureIdentityUseCaseTest {
     @Mock private UserRepository userRepository;
     @Mock private WorkItemRepository workItemRepository;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private andromeda.sei.ms.feature.allocation.application.usecase.ReattributeAzureActivityUseCase reattribute;
 
     private User user() {
         return new User("u1", "org", "ana@acme.com", "h", "Ana", "r", null, null, null, null,
@@ -42,7 +43,7 @@ class LinkAzureIdentityUseCaseTest {
         when(userRepository.findByOrganizationIdAndAzureId("org", "az-1")).thenReturn(Optional.empty());
         Instant before = Instant.now();
 
-        new LinkAzureIdentityUseCase(userRepository, workItemRepository, eventPublisher).execute("org", "u1", "az-1", "a@az.com");
+        new LinkAzureIdentityUseCase(userRepository, workItemRepository, eventPublisher, reattribute).execute("org", "u1", "az-1", "a@az.com");
 
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(saved.capture());
@@ -50,6 +51,7 @@ class LinkAzureIdentityUseCaseTest {
         assertThat(saved.getValue().getAzureIdentitySource()).isEqualTo(AzureIdentitySource.ADMIN);
         assertThat(saved.getValue().getAzureIdentityLinkedAt()).isAfterOrEqualTo(before);
         verify(eventPublisher).publishEvent(new VcsIdentityLinked("org", "u1"));
+        verify(reattribute).execute("org", "u1", "az-1", "ana@acme.com");
     }
 
     @Test
@@ -60,7 +62,7 @@ class LinkAzureIdentityUseCaseTest {
         user.setAzureIdentityLinkedAt(T0);
         when(userRepository.findByIdAndOrganizationId("u1", "org")).thenReturn(Optional.of(user));
 
-        new LinkAzureIdentityUseCase(userRepository, workItemRepository, eventPublisher).execute("org", "u1", null, null);
+        new LinkAzureIdentityUseCase(userRepository, workItemRepository, eventPublisher, reattribute).execute("org", "u1", null, null);
 
         ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
         verify(userRepository).save(saved.capture());
@@ -68,5 +70,6 @@ class LinkAzureIdentityUseCaseTest {
         assertThat(saved.getValue().getAzureIdentitySource()).isNull();
         assertThat(saved.getValue().getAzureIdentityLinkedAt()).isNull();
         verifyNoInteractions(eventPublisher);
+        org.mockito.Mockito.verifyNoInteractions(reattribute);
     }
 }
