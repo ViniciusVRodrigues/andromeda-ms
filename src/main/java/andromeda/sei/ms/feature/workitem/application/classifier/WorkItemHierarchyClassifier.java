@@ -4,93 +4,135 @@ import andromeda.sei.ms.feature.azure.domain.HierarchyLevel;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
- * Applies the two-tier root/child/orphan classification rule described in
- * openspec/changes/project-backlog-view/design.md Decision 3.
- *
- * <p>Rank-aware tier (used when the binding declares {@code hierarchyLevels}):
- * <ul>
- *   <li>Root: the item's type has the lowest declared rank present among the types found in the
- *       project's synced data, OR the item has no {@code parentExternalId}.</li>
- *   <li>Valid child: {@code parentExternalId} resolves to another work item in the same project
- *       AND that parent's declared rank is strictly lower (higher in the tree) than the item's own
- *       rank.</li>
- *   <li>Orphan: {@code parentExternalId} is non-null and either doesn't resolve within the project,
- *       or resolves but violates the "strictly lower" rank ordering (a hierarchy-violating link).</li>
- *   <li>Per-item fallback: if an item's raw type -- or its parent's raw type -- has no entry in
- *       {@code hierarchyLevels} (e.g. a new custom type added after onboarding, or a type the org
- *       simply never ranked), that single item is classified using the structural fallback rule
- *       below, without affecting classification of other, ranked items. An unranked type means the
- *       ordering is unknown, not violated, so such links are still valid children.</li>
- * </ul>
- *
- * <p>Structural fallback tier (used when {@code hierarchyLevels} is empty/absent, or per-item per
- * above): root = no resolvable {@code parentExternalId}; any resolvable {@code parentExternalId} is
- * a valid child regardless of type; orphan = non-null {@code parentExternalId} that doesn't resolve.
+ * Root/child/orphan classification of a project's work items
+ * (openspec/changes/backlog-arvore-nivel/design.md D1). {@code rank(x)} is the rank of the raw type
+ * in the binding's {@code hierarchyLevels}, case-insensitive, or null. In order:
+ * <ol>
+ *   <li>no parent, or parent equal to the item itself: ROOT;</li>
+ *   <li>parent not among the project's active items: ROOT with {@code parentMissing};</li>
+ *   <li>no {@code hierarchyLevels}, or {@code rank(item)} / {@code rank(parent)} null: CHILD;</li>
+ *   <li>{@code rank(parent) <= rank(item)}: CHILD (same level is allowed);</li>
+ *   <li>{@code rank(parent) > rank(item)}: ORPHAN (inverted hierarchy);</li>
+ *   <li>cycle through CHILD links (at most {@link #MAX_HOPS} hops): the lowest id of the cycle is
+ *       ROOT, the others stay CHILD.</li>
+ * </ol>
  */
 @Component
 public class WorkItemHierarchyClassifier {
 
+    /** Upper bound for walking up the parent links when looking for a cycle. */
+    static final int MAX_HOPS = 64;
+
     public enum Classification { ROOT, CHILD, ORPHAN }
 
-    /**
-     * Classifies a single work item given the set of hierarchy levels declared on its binding and
-     * a resolver capable of finding another work item in the same project by its externalId (used
-     * to look up the candidate parent, when present).
-     */
-    public Classification classify(WorkItem item, List<HierarchyLevel> hierarchyLevels,
-                                    Function<String, WorkItem> resolveByExternalId) {
-        Map<String, Integer> ranksByRawType = ranksByRawType(hierarchyLevels);
-        boolean hierarchyConfigured = !ranksByRawType.isEmpty();
-
-        if (!hierarchyConfigured) {
-            return classifyStructural(item, resolveByExternalId);
-        }
-
-        Integer itemRank = ranksByRawType.get(normalize(item.getRawType()));
-        if (itemRank == null) {
-            // 4.5: per-item fallback — this item's type has no declared rank, classify it
-            // structurally without disturbing rank-aware classification of other items.
-            return classifyStructural(item, resolveByExternalId);
-        }
-
-        if (item.getParentExternalId() == null) {
-            return Classification.ROOT;
-        }
-
-        WorkItem parent = resolveByExternalId.apply(item.getParentExternalId());
-        if (parent == null) {
-            return Classification.ORPHAN;
-        }
-
-        Integer parentRank = ranksByRawType.get(normalize(parent.getRawType()));
-        if (parentRank == null) {
-            // The parent's type has no declared rank (e.g. "User Story" missing from an org's
-            // hierarchyLevels). An unranked parent means *unknown* ordering, not *violating* it, so
-            // fall back to structural inference for this link rather than calling it an orphan --
-            // the parent resolves within the project, so this is a valid child. Treating it as an
-            // orphan would strand every item under an unranked type in the "Sem item pai" bucket
-            // even though its parent link is perfectly good (design.md Decision 3: an unranked type
-            // "falls back to structural inference for that type").
-            return classifyStructural(item, resolveByExternalId);
-        }
-        if (parentRank < itemRank) {
-            return Classification.CHILD;
-        }
-        // parent resolves but violates "strictly lower" rank ordering — hierarchy-violating link.
-        return Classification.ORPHAN;
+    public record HierarchyPlacement(Classification classification, boolean parentMissing) {
     }
 
-    private Classification classifyStructural(WorkItem item, Function<String, WorkItem> resolveByExternalId) {
-        if (item.getParentExternalId() == null) {
-            return Classification.ROOT;
+    /** Classifies one item against a resolver of the project active items by externalId. */
+    public Classification classify(WorkItem item, List<HierarchyLevel> hierarchyLevels,
+                                    Function<String, WorkItem> resolveByExternalId) {
+        return place(item, hierarchyLevels, resolveByExternalId).classification();
+    }
+
+    public HierarchyPlacement place(WorkItem item, List<HierarchyLevel> hierarchyLevels,
+                                     Function<String, WorkItem> resolveByExternalId) {
+        return place(item, ranksByRawType(hierarchyLevels), resolveByExternalId);
+    }
+
+    /**
+     * Classifies a whole project at once, keyed by the item {@code id}. Same rules as
+     * {@link #place}, with the ranks computed once; callers that need roots, children and rollups
+     * to agree must share this result.
+     */
+    public Map<String, HierarchyPlacement> classifyAll(List<WorkItem> items, List<HierarchyLevel> hierarchyLevels) {
+        Map<String, Integer> ranks = ranksByRawType(hierarchyLevels);
+        Map<String, WorkItem> byExternalId = new HashMap<>();
+        for (WorkItem item : items) {
+            if (item.getExternalId() != null) byExternalId.putIfAbsent(item.getExternalId(), item);
         }
-        WorkItem parent = resolveByExternalId.apply(item.getParentExternalId());
-        return parent != null ? Classification.CHILD : Classification.ORPHAN;
+        Function<String, WorkItem> resolver = byExternalId::get;
+        Map<String, HierarchyPlacement> result = new HashMap<>(items.size() * 2);
+        for (WorkItem item : items) {
+            result.put(item.getId(), place(item, ranks, resolver));
+        }
+        return result;
+    }
+
+    /** Rank of the item raw type in the hierarchy levels, or {@code null}. */
+    public Integer rankOf(WorkItem item, List<HierarchyLevel> hierarchyLevels) {
+        return ranksByRawType(hierarchyLevels).get(normalize(item.getRawType()));
+    }
+
+    /** Case-insensitive rank lookup by raw type, for callers that rank many items. */
+    public Function<String, Integer> rankLookup(List<HierarchyLevel> hierarchyLevels) {
+        Map<String, Integer> ranks = ranksByRawType(hierarchyLevels);
+        return rawType -> ranks.get(normalize(rawType));
+    }
+
+    private HierarchyPlacement place(WorkItem item, Map<String, Integer> ranks,
+                                      Function<String, WorkItem> resolver) {
+        HierarchyPlacement raw = placeIgnoringCycles(item, ranks, resolver);
+        if (raw.classification() == Classification.CHILD && isLowestOfItsCycle(item, ranks, resolver)) {
+            return new HierarchyPlacement(Classification.ROOT, false);
+        }
+        return raw;
+    }
+
+    private HierarchyPlacement placeIgnoringCycles(WorkItem item, Map<String, Integer> ranks,
+                                                    Function<String, WorkItem> resolver) {
+        String parentId = item.getParentExternalId();
+        if (parentId == null || parentId.equals(item.getExternalId())) {
+            return new HierarchyPlacement(Classification.ROOT, false);
+        }
+        WorkItem parent = resolver.apply(parentId);
+        if (parent == null) {
+            return new HierarchyPlacement(Classification.ROOT, true);
+        }
+        Integer itemRank = ranks.get(normalize(item.getRawType()));
+        Integer parentRank = ranks.get(normalize(parent.getRawType()));
+        if (ranks.isEmpty() || itemRank == null || parentRank == null || parentRank <= itemRank) {
+            return new HierarchyPlacement(Classification.CHILD, false);
+        }
+        return new HierarchyPlacement(Classification.ORPHAN, false);
+    }
+
+    /**
+     * Walks up the parent links that would be CHILD. If the path returns to {@code item}, the item
+     * is in a cycle, and it is promoted to ROOT when it has the lowest id of the cycle.
+     */
+    private boolean isLowestOfItsCycle(WorkItem item, Map<String, Integer> ranks,
+                                        Function<String, WorkItem> resolver) {
+        Set<String> visited = new HashSet<>();
+        visited.add(item.getExternalId());
+        WorkItem lowest = item;
+        WorkItem current = item;
+        for (int hop = 0; hop < MAX_HOPS; hop++) {
+            if (placeIgnoringCycles(current, ranks, resolver).classification() != Classification.CHILD) {
+                return false;
+            }
+            WorkItem next = resolver.apply(current.getParentExternalId());
+            if (next == null) return false;
+            if (next.getExternalId().equals(item.getExternalId())) {
+                return lowest == item;
+            }
+            if (!visited.add(next.getExternalId())) {
+                return false; // a cycle that does not pass through this item
+            }
+            if (BacklogOrdering.compareExternalIds(next.getExternalId(), lowest.getExternalId()) < 0) {
+                lowest = next;
+            }
+            current = next;
+        }
+        return false;
     }
 
     private Map<String, Integer> ranksByRawType(List<HierarchyLevel> hierarchyLevels) {
@@ -102,11 +144,11 @@ public class WorkItemHierarchyClassifier {
                         level -> normalize(level.getRawType()), HierarchyLevel::getRank, (a, b) -> a));
     }
 
-    // Azure's raw type names are matched case/whitespace-insensitively everywhere else in this
+    // Azure raw type names are matched case/whitespace-insensitively everywhere else in this
     // codebase (see SyncAzureWorkItemsUseCase.resolveType/resolveStatus); hierarchyLevels lookups
-    // must do the same, since the wizard's discovered-type strings and a WorkItem's persisted
+    // must do the same, since the wizard discovered-type strings and a WorkItem persisted
     // rawType can otherwise drift in casing and silently miss the rank map.
     private String normalize(String rawType) {
-        return rawType == null ? null : rawType.trim().toLowerCase(java.util.Locale.ROOT);
+        return rawType == null ? null : rawType.trim().toLowerCase(Locale.ROOT);
     }
 }

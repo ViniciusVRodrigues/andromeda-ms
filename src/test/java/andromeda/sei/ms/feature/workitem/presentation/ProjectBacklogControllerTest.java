@@ -76,6 +76,41 @@ class ProjectBacklogControllerTest {
     }
 
     @Test
+    void listRoots_shouldExposeLevelsAndPerItemPlacementFields() throws Exception {
+        WorkItem item = workItem("wi-1");
+        when(listProjectBacklogRootsUseCase.execute(eq("proj-1"), anyInt(), anyInt(), any()))
+                .thenReturn(new WorkItemPageResult(List.of(item), 0, 20, 1, java.util.Map.of(),
+                        java.util.Map.of("wi-1", new andromeda.sei.ms.feature.workitem.domain.BacklogItemInfo(1, true, null)),
+                        List.of(new andromeda.sei.ms.feature.workitem.domain.BacklogLevel(1, List.of("Epic"), 1),
+                                new andromeda.sei.ms.feature.workitem.domain.BacklogLevel(null, List.of("Issue"), 0))));
+
+        mockMvc.perform(get("/api/v1/projects/proj-1/work-items/roots"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].rank").value(1))
+                .andExpect(jsonPath("$.content[0].parentMissing").value(true))
+                .andExpect(jsonPath("$.content[0].parentRawType").doesNotExist())
+                .andExpect(jsonPath("$.levels[0].rank").value(1))
+                .andExpect(jsonPath("$.levels[0].rawTypes[0]").value("Epic"))
+                .andExpect(jsonPath("$.levels[0].count").value(1))
+                .andExpect(jsonPath("$.levels[1].rank").doesNotExist());
+    }
+
+    @Test
+    void listOrphans_shouldNotExposeLevels() throws Exception {
+        WorkItem item = workItem("wi-2");
+        when(listProjectBacklogOrphansUseCase.execute(eq("proj-1"), anyInt(), anyInt(), any()))
+                .thenReturn(new WorkItemPageResult(List.of(item), 0, 20, 1, java.util.Map.of(),
+                        java.util.Map.of("wi-2", new andromeda.sei.ms.feature.workitem.domain.BacklogItemInfo(2, false, "Story")),
+                        List.of()));
+
+        mockMvc.perform(get("/api/v1/projects/proj-1/work-items/orphans"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content[0].parentRawType").value("Story"))
+                .andExpect(jsonPath("$.content[0].rank").value(2))
+                .andExpect(jsonPath("$.levels").doesNotExist());
+    }
+
+    @Test
     void listRoots_shouldPassPaginationParams() throws Exception {
         when(listProjectBacklogRootsUseCase.execute(eq("proj-1"), eq(2), eq(50), any()))
                 .thenReturn(new WorkItemPageResult(List.of(), 2, 50, 0));

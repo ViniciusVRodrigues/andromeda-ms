@@ -53,7 +53,7 @@ public class ProjectBacklogController {
             @RequestParam(required = false) String status) {
         var result = listProjectBacklogRootsUseCase.execute(
                 projectId, page, size, filterOf(sprintId, assigneeUserId, search, type, status));
-        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result))
+        return ResponseEntity.ok(WorkItemPageResponse.from(result, assigneeNames(result)).withLevels(result)
                 .withDataFreshness(dataFreshnessResolver.resolve(TenantContextHolder.get(), projectId)));
     }
 

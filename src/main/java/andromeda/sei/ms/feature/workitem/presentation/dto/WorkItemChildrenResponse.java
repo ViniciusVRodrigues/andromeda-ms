@@ -27,7 +27,8 @@ public record WorkItemChildrenResponse(
                                 output.metricsFor(child.getId()),
                                 child.getAssigneeUserId() == null
                                         ? null
-                                        : assigneeNamesByUserId.get(child.getAssigneeUserId())))
+                                        : assigneeNamesByUserId.get(child.getAssigneeUserId()),
+                                output.infoFor(child.getId())))
                         .toList(),
                 output.truncated());
     }

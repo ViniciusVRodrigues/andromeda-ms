@@ -1,9 +1,13 @@
 package andromeda.sei.ms.feature.workitem.presentation.dto;
 
+import andromeda.sei.ms.feature.workitem.domain.BacklogItemInfo;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
 
 /**
+ * @param rank           rank do tipo do item no mapeamento da hierarquia, ou null
+ * @param parentMissing  true quando o pai não está entre os itens sincronizados do projeto
+ * @param parentRawType  tipo do pai quando ele resolve, null caso contrário
  * @param hasChildren          whether this item has children that are valid under the project's
  *                             declared hierarchy — lets the UI hide the expand toggle on leaves
  *                             instead of discovering emptiness only after a click.
@@ -47,7 +51,10 @@ public record WorkItemSummaryResponse(
         boolean hasChildren,
         Double rolledUpComplexity,
         Double rolledUpEffort,
-        int descendantCount
+        int descendantCount,
+        Integer rank,
+        boolean parentMissing,
+        String parentRawType
 ) {
     public static WorkItemSummaryResponse from(WorkItem item) {
         return from(item, WorkItemHierarchyMetrics.EMPTY, null);
@@ -63,6 +70,12 @@ public record WorkItemSummaryResponse(
      */
     public static WorkItemSummaryResponse from(WorkItem item, WorkItemHierarchyMetrics metrics,
                                                 String assigneeName) {
+        return from(item, metrics, assigneeName, BacklogItemInfo.NONE);
+    }
+
+    public static WorkItemSummaryResponse from(WorkItem item, WorkItemHierarchyMetrics metrics,
+                                                String assigneeName, BacklogItemInfo info) {
+        BacklogItemInfo placement = info == null ? BacklogItemInfo.NONE : info;
         WorkItemHierarchyMetrics effective = metrics == null ? WorkItemHierarchyMetrics.EMPTY : metrics;
         return new WorkItemSummaryResponse(
                 item.getId(),
@@ -85,6 +98,9 @@ public record WorkItemSummaryResponse(
                 effective.hasChildren(),
                 effective.rolledUpComplexity(),
                 effective.rolledUpEffort(),
-                effective.descendantCount());
+                effective.descendantCount(),
+                placement.rank(),
+                placement.parentMissing(),
+                placement.parentRawType());
     }
 }
