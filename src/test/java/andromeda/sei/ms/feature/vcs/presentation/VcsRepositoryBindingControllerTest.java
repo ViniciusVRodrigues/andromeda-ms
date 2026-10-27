@@ -2,11 +2,20 @@ package andromeda.sei.ms.feature.vcs.presentation;
 
 import andromeda.sei.ms.feature.vcs.application.dto.BindRepositoryInput;
 import andromeda.sei.ms.feature.vcs.application.dto.BindableRepositoryOutput;
+import andromeda.sei.ms.feature.vcs.application.dto.BranchListOutput;
+import andromeda.sei.ms.feature.vcs.application.port.VcsBranch;
+import andromeda.sei.ms.feature.vcs.domain.VcsSyncState;
+import andromeda.sei.ms.feature.vcs.domain.exception.RepoBranchNotFoundException;
+import andromeda.sei.ms.feature.vcs.domain.exception.RepoBranchesInvalidException;
+import andromeda.sei.ms.feature.vcs.domain.exception.RepoSyncRunningException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsListBranchesFailedException;
 import andromeda.sei.ms.feature.vcs.application.dto.RepoBindingOutput;
 import andromeda.sei.ms.feature.vcs.application.usecase.BindRepositoryUseCase;
 import andromeda.sei.ms.feature.vcs.application.usecase.ListBindableRepositoriesUseCase;
 import andromeda.sei.ms.feature.vcs.application.usecase.ListRepositoryBindingsUseCase;
-import andromeda.sei.ms.feature.vcs.application.usecase.ToggleRepositorySyncUseCase;
+import andromeda.sei.ms.feature.vcs.application.usecase.BindingBranchSettings;
+import andromeda.sei.ms.feature.vcs.application.usecase.ListRepositoryBranchesUseCase;
+import andromeda.sei.ms.feature.vcs.application.usecase.UpdateRepositoryBindingUseCase;
 import andromeda.sei.ms.feature.vcs.application.usecase.UnbindRepositoryUseCase;
 import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoAlreadyBoundException;
@@ -47,7 +56,8 @@ class VcsRepositoryBindingControllerTest {
     @Mock private ListBindableRepositoriesUseCase listBindableRepositoriesUseCase;
     @Mock private BindRepositoryUseCase bindRepositoryUseCase;
     @Mock private ListRepositoryBindingsUseCase listRepositoryBindingsUseCase;
-    @Mock private ToggleRepositorySyncUseCase toggleRepositorySyncUseCase;
+    @Mock private UpdateRepositoryBindingUseCase updateRepositoryBindingUseCase;
+    @Mock private ListRepositoryBranchesUseCase listRepositoryBranchesUseCase;
     @Mock private UnbindRepositoryUseCase unbindRepositoryUseCase;
 
     @InjectMocks
@@ -163,13 +173,121 @@ class VcsRepositoryBindingControllerTest {
     }
 
     @Test
-    void should_toggleSync() throws Exception {
-        when(toggleRepositorySyncUseCase.execute("b-1", false)).thenReturn(output(false));
+    void should_toggleSync_withTheOldBody() throws Exception {
+        when(updateRepositoryBindingUseCase.execute("b-1", new BindingBranchSettings.Change(false, null, null, null)))
+                .thenReturn(output(false));
 
         mockMvc.perform(patch("/api/v1/repos/bindings/b-1").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"syncEnabled\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.syncEnabled").value(false));
+    }
+
+    @Test
+    void should_patchBranchesAndReturnTheContractFields() throws Exception {
+        when(updateRepositoryBindingUseCase.execute("b-1", new BindingBranchSettings.Change(
+                null, List.of("develop", "main"), "main", true))).thenReturn(output(true));
+
+        mockMvc.perform(patch("/api/v1/repos/bindings/b-1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"branches\":[\"develop\",\"main\"],\"productionBranch\":\"main\","
+                                + "\"filterPullRequestsByBranch\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.defaultBranch").value("develop"))
+                .andExpect(jsonPath("$.branches[1]").value("main"))
+                .andExpect(jsonPath("$.productionBranch").value("main"))
+                .andExpect(jsonPath("$.branchesConfigured").value(true))
+                .andExpect(jsonPath("$.filterPullRequestsByBranch").value(true))
+                .andExpect(jsonPath("$.missingBranches").isArray())
+                .andExpect(jsonPath("$.syncState").value("PENDING"))
+                .andExpect(jsonPath("$.maxBranches").value(10))
+                .andExpect(jsonPath("$.backfillDays").value(90))
+                .andExpect(jsonPath("$.resynced").value(true));
+    }
+
+    @Test
+    void should_mapTheBranchErrors() throws Exception {
+        when(updateRepositoryBindingUseCase.execute(eq("b-1"), any()))
+                .thenThrow(new RepoSyncRunningException("b-1"))
+                .thenThrow(new RepoBranchesInvalidException("at most 10 branches"))
+                .thenThrow(new RepoBranchNotFoundException(List.of("gone")));
+
+        mockMvc.perform(patch("/api/v1/repos/bindings/b-1").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REPO_SYNC_RUNNING"));
+        mockMvc.perform(patch("/api/v1/repos/bindings/b-1").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("REPO_BRANCHES_INVALID"));
+        mockMvc.perform(patch("/api/v1/repos/bindings/b-1").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("REPO_BRANCH_NOT_FOUND"));
+    }
+
+    @Test
+    void should_bindWithBranches() throws Exception {
+        when(bindRepositoryUseCase.execute(eq("proj-1"), any())).thenReturn(output(true));
+
+        mockMvc.perform(post("/api/v1/repos/projects/proj-1/bindings").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"provider\":\"GITHUB\",\"externalRepoId\":\"123\","
+                                + "\"branches\":[\"develop\",\"main\"],\"productionBranch\":\"main\","
+                                + "\"filterPullRequestsByBranch\":true}"))
+                .andExpect(status().isOk());
+
+        org.mockito.ArgumentCaptor<BindRepositoryInput> captor = org.mockito.ArgumentCaptor.forClass(BindRepositoryInput.class);
+        verify(bindRepositoryUseCase).execute(eq("proj-1"), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().branches()).containsExactly("develop", "main");
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().productionBranch()).isEqualTo("main");
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().filterPullRequestsByBranch()).isTrue();
+    }
+
+    @Test
+    void should_listAvailableBranches_withTheContractShape() throws Exception {
+        when(listRepositoryBranchesUseCase.ofAvailable(VcsProvider.AZURE_REPOS, "guid-1", null)).thenReturn(
+                new BranchListOutput(List.of(new VcsBranch("develop", true), new VcsBranch("main", false)), 2, false));
+
+        mockMvc.perform(get("/api/v1/repos/available/branches").param("provider", "AZURE_REPOS")
+                        .param("externalRepoId", "guid-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.branches[0].name").value("develop"))
+                .andExpect(jsonPath("$.branches[0].isDefault").value(true))
+                .andExpect(jsonPath("$.branches[1].isDefault").value(false))
+                .andExpect(jsonPath("$.total").value(2))
+                .andExpect(jsonPath("$.truncated").value(false));
+    }
+
+    @Test
+    void should_listBindingBranches_and404ForForeignBinding() throws Exception {
+        when(listRepositoryBranchesUseCase.ofBinding("b-1")).thenReturn(
+                new BranchListOutput(List.of(new VcsBranch("main", true)), 1, true));
+        when(listRepositoryBranchesUseCase.ofBinding("b-2")).thenThrow(new RepoBindingNotFoundException("b-2"));
+
+        mockMvc.perform(get("/api/v1/repos/bindings/b-1/branches"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.truncated").value(true));
+        mockMvc.perform(get("/api/v1/repos/bindings/b-2/branches"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("REPO_BINDING_NOT_FOUND"));
+    }
+
+    @Test
+    void should_answer409_404_and502_forTheListingErrors() throws Exception {
+        when(listRepositoryBranchesUseCase.ofAvailable(eq(VcsProvider.GITHUB), any(), any()))
+                .thenThrow(new VcsConnectionNotFoundException("GITHUB"))
+                .thenThrow(new RepoNotFoundException("x"))
+                .thenThrow(new VcsListBranchesFailedException(new IllegalStateException("down")));
+
+        mockMvc.perform(get("/api/v1/repos/available/branches").param("fullName", "a/b"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("VCS_CONNECTION_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/repos/available/branches").param("fullName", "a/b"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("REPO_NOT_FOUND"));
+        mockMvc.perform(get("/api/v1/repos/available/branches").param("fullName", "a/b"))
+                .andExpect(status().isBadGateway()).andExpect(jsonPath("$.code").value("VCS_LIST_BRANCHES_FAILED"));
+    }
+
+    @Test
+    void should_requireReposConfigureOnTheNewRoutes() throws Exception {
+        for (String method : new String[]{"update", "listAvailableBranches", "listBindingBranches"}) {
+            java.lang.reflect.Method handler = java.util.Arrays.stream(
+                            andromeda.sei.ms.feature.vcs.presentation.VcsRepositoryBindingController.class.getDeclaredMethods())
+                    .filter(m -> m.getName().equals(method)).findFirst().orElseThrow();
+            org.springframework.security.access.prepost.PreAuthorize pre = handler
+                    .getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class);
+            org.assertj.core.api.Assertions.assertThat(pre.value()).isEqualTo("hasAuthority('REPOS_CONFIGURE')");
+        }
     }
 
     @Test
@@ -185,7 +303,8 @@ class VcsRepositoryBindingControllerTest {
 
     private static RepoBindingOutput output(boolean syncEnabled) {
         return new RepoBindingOutput("b-1", "proj-1", "repo-1", VcsProvider.GITHUB, "octo/hello", syncEnabled,
-                Instant.parse("2026-09-01T00:00:00Z"));
+                Instant.parse("2026-09-01T00:00:00Z"), "develop", List.of("develop", "main"), "main", true, true,
+                List.of(), VcsSyncState.PENDING, 10, 90, true);
     }
 
     @Test

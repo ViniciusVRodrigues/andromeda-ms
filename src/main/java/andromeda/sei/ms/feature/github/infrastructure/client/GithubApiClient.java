@@ -10,8 +10,11 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
+import org.springframework.web.util.UriUtils;
 import reactor.util.retry.Retry;
 
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -264,8 +267,19 @@ public class GithubApiClient {
     // ------------------------------------------------------------------
 
     public List<GhCommitDto> getCommits(String owner, String repo, String authHeader, Instant since) {
+        return getCommits(owner, repo, authHeader, null, since);
+    }
+
+    /**
+     * Commits reachable from {@code branch} ({@code sha=}; {@code null} = the repository's default branch).
+     * An unknown branch answers 404 or 422, left to the caller.
+     */
+    public List<GhCommitDto> getCommits(String owner, String repo, String authHeader, String branch, Instant since) {
         List<GhCommitDto> all = new ArrayList<>();
         StringBuilder urlBuilder = new StringBuilder(BASE_URL + "/repos/" + owner + "/" + repo + "/commits?per_page=100");
+        if (branch != null && !branch.isBlank()) {
+            urlBuilder.append("&sha=").append(UriUtils.encode(branch, StandardCharsets.UTF_8));
+        }
         if (since != null) {
             urlBuilder.append("&since=").append(since);
         }
@@ -278,6 +292,19 @@ public class GithubApiClient {
             url = page.nextUrl();
         }
         return all;
+    }
+
+    /** Branches of the repository, following {@code Link: rel="next"} until {@code limit} are collected. */
+    public List<GhBranchDto> getBranches(String owner, String repo, String authHeader, int limit) {
+        List<GhBranchDto> all = new ArrayList<>();
+        String url = BASE_URL + "/repos/" + owner + "/" + repo + "/branches?per_page=100";
+        while (url != null && all.size() < limit) {
+            PagedResult<GhBranchDto> page = fetchPage(url, authHeader,
+                    new ParameterizedTypeReference<List<GhBranchDto>>() {});
+            all.addAll(page.items());
+            url = page.nextUrl();
+        }
+        return all.size() > limit ? new ArrayList<>(all.subList(0, limit)) : all;
     }
 
     // ------------------------------------------------------------------
@@ -384,7 +411,7 @@ public class GithubApiClient {
         GithubResponseCache.CacheEntry cached = responseCache.get(url);
 
         WebClient.RequestHeadersSpec<?> request = githubWebClient.get()
-                .uri(url)
+                .uri(URI.create(url)) // already encoded (branch names carry &, #, + ...): no template re-encoding
                 .header("Authorization", authHeader)
                 .headers(h -> {
                     if (cached != null && cached.etag() != null) {

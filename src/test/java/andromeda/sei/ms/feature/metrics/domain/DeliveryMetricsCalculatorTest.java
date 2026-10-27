@@ -46,6 +46,27 @@ class DeliveryMetricsCalculatorTest {
     }
 
     @Test
+    void should_countOnlyMergesIntoTheProductionBranch_when3MergeIntoDevelopAnd1IntoMain() {
+        Instant at = FROM.plus(Duration.ofDays(1));
+        List<MergedChange> changes = List.of(
+                production("d1", "develop", "main", at), production("d2", "develop", "main", at),
+                production("d3", "develop", "main", at), production("m1", "main", "main", at));
+
+        DeliveryMetrics metrics = DeliveryMetricsCalculator.calculate(changes, List.of(), RULES, FROM, TO);
+
+        assertThat(metrics.mergedPrs()).isEqualTo(1);
+    }
+
+    @Test
+    void should_followAProductionBranchOtherThanTheDefault() {
+        Instant at = FROM.plus(Duration.ofDays(1));
+        List<MergedChange> changes = List.of(
+                production("d1", "develop", "develop", at), production("m1", "main", "develop", at));
+
+        assertThat(DeliveryMetricsCalculator.calculate(changes, List.of(), RULES, FROM, TO).mergedPrs()).isEqualTo(1);
+    }
+
+    @Test
     void should_countUnknownBranches_when_legacyRowsHaveNoBranchData() {
         MergedChange legacy = new MergedChange("l", "x", null, null, null, false, FROM, null, FROM.plus(Duration.ofDays(1)));
 
@@ -165,6 +186,11 @@ class DeliveryMetricsCalculatorTest {
 
         assertThat(metrics.method()).isEqualTo(DeliveryMethod.VCS_PROXY);
         assertThat(metrics.changeFailRatePercent()).isEqualTo(0.0);
+    }
+
+    private MergedChange production(String id, String baseBranch, String productionBranch, Instant mergedAt) {
+        return new MergedChange(id, "Change " + id, "feature/" + id, baseBranch, productionBranch, false,
+                mergedAt.minus(Duration.ofHours(2)), null, mergedAt);
     }
 
     private MergedChange merged(String id, String baseBranch, boolean bug, Instant mergedAt) {

@@ -51,6 +51,12 @@ public class VcsDocumentMapper {
         binding.setCreatedAt(doc.getCreatedAt());
         binding.setUpdatedAt(doc.getUpdatedAt());
         binding.setVersion(doc.getVersion());
+        binding.setBranches(doc.getBranches());
+        binding.setProductionBranch(doc.getProductionBranch());
+        binding.setFilterPullRequestsByBranch(doc.isFilterPullRequestsByBranch());
+        binding.setMissingBranches(doc.getMissingBranches());
+        binding.setSyncState(doc.getSyncState());
+        binding.setSyncStateAt(doc.getSyncStateAt());
         return binding;
     }
 
@@ -67,6 +73,12 @@ public class VcsDocumentMapper {
                 .createdAt(binding.getCreatedAt())
                 .updatedAt(binding.getUpdatedAt())
                 .version(binding.getVersion())
+                .branches(binding.getBranches())
+                .productionBranch(binding.getProductionBranch())
+                .filterPullRequestsByBranch(binding.isFilterPullRequestsByBranch())
+                .missingBranches(binding.getMissingBranches())
+                .syncState(binding.getSyncState())
+                .syncStateAt(binding.getSyncStateAt())
                 .build();
     }
 

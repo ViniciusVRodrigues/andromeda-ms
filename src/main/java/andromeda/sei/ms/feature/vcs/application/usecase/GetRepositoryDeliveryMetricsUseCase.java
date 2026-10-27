@@ -44,7 +44,7 @@ public class GetRepositoryDeliveryMetricsUseCase {
         if (!start.isBefore(end)) return List.of();
 
         List<MergedChange> changes = deliveryMetricsService.mergedChanges(orgId, List.of(repo), start, end)
-                .stream().filter(MergedChange::isIntoDefaultBranch).toList();
+                .stream().filter(MergedChange::isIntoProductionBranch).toList();
         RemediationRules rules = deliveryMetricsService.remediationRules(orgId);
 
         List<DeliveryMetricPointOutput> series = new ArrayList<>();

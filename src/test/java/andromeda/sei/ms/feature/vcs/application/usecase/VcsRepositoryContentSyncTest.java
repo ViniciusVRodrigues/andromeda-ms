@@ -14,7 +14,9 @@ import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequestRepository;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEvent;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEventRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +38,7 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -78,7 +81,7 @@ class VcsRepositoryContentSyncTest {
 
     @Test
     void should_resolveCommitAuthorUserId_andKeepLogin() {
-        when(client.commitsSince(CREDENTIALS, repository, T0)).thenReturn(List.of(
+        when(client.commitsSince(CREDENTIALS, repository, null, T0)).thenReturn(List.of(
                 new VcsRemoteCommit("sha-1", "msg", "octocat", "58421", T0)));
         when(authors.resolveUserId(ORG, "58421")).thenReturn("user-42");
 
@@ -96,7 +99,7 @@ class VcsRepositoryContentSyncTest {
 
     @Test
     void should_storeAuthorExternalIdAndEmail_forLaterAttribution() {
-        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+        when(client.commitsSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
                 new VcsRemoteCommit("sha-3", "msg", "Ana", null, T0, "ana@x.com")));
 
         contentSync.syncCommits(context, null);
@@ -113,7 +116,7 @@ class VcsRepositoryContentSyncTest {
         existing.setAuthorUserId("user-42");
         when(commitRepository.findByOrganizationIdAndRepositoryIdAndSha(ORG, "repo-1", "sha-4"))
                 .thenReturn(Optional.of(existing));
-        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+        when(client.commitsSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
                 new VcsRemoteCommit("sha-4", "msg", "octocat", "58421", T0)));
 
         contentSync.syncCommits(context, null);
@@ -123,7 +126,7 @@ class VcsRepositoryContentSyncTest {
 
     @Test
     void should_leaveCommitAuthorUserIdNull_when_actorUnlinked() {
-        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+        when(client.commitsSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
                 new VcsRemoteCommit("sha-2", "msg", "stranger", "999", T0)));
 
         contentSync.syncCommits(context, null);
@@ -135,12 +138,116 @@ class VcsRepositoryContentSyncTest {
 
     @Test
     void should_skipOnlyTheFailingCommit() {
-        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+        when(client.commitsSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
                 new VcsRemoteCommit("bad", "m", null, null, T0), new VcsRemoteCommit("good", "m", null, null, T0)));
         when(commitRepository.findByOrganizationIdAndRepositoryIdAndSha(ORG, "repo-1", "bad"))
                 .thenThrow(new IllegalStateException("corrupt"));
 
         assertThat(contentSync.syncCommits(context, null)).isEqualTo(1);
+    }
+
+    // ---- branches (branches-por-vinculo D3)
+
+    private VcsRepoBinding chosen(boolean filter, String... branches) {
+        VcsRepoBinding binding = new VcsRepoBinding("b1", ORG, "p1", "repo-1", VcsProvider.GITHUB, true);
+        binding.setBranches(List.of(branches));
+        binding.setProductionBranch(branches[0]);
+        binding.setFilterPullRequestsByBranch(filter);
+        return binding;
+    }
+
+    private VcsRepositoryContentSync.Context contextOf(VcsRepoBinding binding) {
+        return new VcsRepositoryContentSync.Context(CREDENTIALS, client, authors, repository,
+                WorkItemLinkConfig.defaults(), binding);
+    }
+
+    @Test
+    void should_readEachChosenBranch_andWriteASharedCommitOnce() {
+        VcsRemoteCommit shared = new VcsRemoteCommit("same", "m", "a", "1", T0);
+        when(client.commitsSince(CREDENTIALS, repository, "develop", null)).thenReturn(List.of(shared));
+        when(client.commitsSince(CREDENTIALS, repository, "main", null)).thenReturn(List.of(shared,
+                new VcsRemoteCommit("only-main", "m", "a", "1", T0)));
+
+        int processed = contentSync.syncCommits(contextOf(chosen(false, "develop", "main")), null);
+
+        assertThat(processed).isEqualTo(2);
+        verify(client, never()).commitsSince(any(), any(), eq("trunk"), any());
+    }
+
+    @Test
+    void should_readOnlyTheDefaultBranch_when_legacyBinding() {
+        repository.setDefaultBranch("develop");
+        VcsRepoBinding legacy = new VcsRepoBinding("b1", ORG, "p1", "repo-1", VcsProvider.GITHUB, true);
+        when(client.commitsSince(CREDENTIALS, repository, "develop", null)).thenReturn(List.of());
+
+        contentSync.syncCommits(contextOf(legacy), null);
+
+        verify(client).commitsSince(CREDENTIALS, repository, "develop", null);
+        verifyNoMoreInteractions(client);
+    }
+
+    @Test
+    void should_skipAMissingBranchAndRecordIt_butKeepTheOthers() {
+        when(client.commitsSince(CREDENTIALS, repository, "gone", null))
+                .thenThrow(new VcsBranchNotFoundException("gone", null));
+        when(client.commitsSince(CREDENTIALS, repository, "main", null)).thenReturn(List.of(
+                new VcsRemoteCommit("c1", "m", "a", "1", T0)));
+        VcsRepositoryContentSync.Context ctx = contextOf(chosen(false, "main", "gone"));
+
+        int processed = contentSync.syncCommits(ctx, null);
+
+        assertThat(processed).isEqualTo(1);
+        assertThat(ctx.missingBranches()).containsExactly("gone");
+    }
+
+    @Test
+    void should_failTheSync_when_aBranchReadFailsForAnotherReason() {
+        when(client.commitsSince(CREDENTIALS, repository, "main", null)).thenThrow(new IllegalStateException("boom"));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> contentSync.syncCommits(contextOf(chosen(false, "main")), null))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void should_notSaveAPullRequestToAnUnchosenBranch_whenFilterIsOn() {
+        VcsRemotePullRequest toMain = remote("1", 1, PullRequestStatus.OPEN, "f/a", null, "t1");
+        VcsRemotePullRequest toFeature = withBase(remote("2", 2, PullRequestStatus.OPEN, "f/b", null, "t2"), "feature/x");
+        VcsRemotePullRequest noBase = withBase(remote("3", 3, PullRequestStatus.OPEN, "f/c", null, "t3"), null);
+        when(client.pullRequestsChangedSince(CREDENTIALS, repository, null, null))
+                .thenReturn(List.of(toMain, toFeature, noBase));
+
+        List<VcsPullRequest> synced = contentSync.syncPullRequests(contextOf(chosen(true, "main")), null, null);
+
+        assertThat(synced).extracting(VcsPullRequest::getExternalId).containsExactly("1", "3");
+    }
+
+    @Test
+    void should_keepEveryPullRequest_whenFilterIsOff() {
+        when(client.pullRequestsChangedSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
+                withBase(remote("2", 2, PullRequestStatus.OPEN, "f/b", null, "t2"), "feature/x")));
+
+        assertThat(contentSync.syncPullRequests(contextOf(chosen(false, "main")), null, null)).hasSize(1);
+    }
+
+    @Test
+    void should_deactivateASavedPullRequest_thatNowTargetsAnUnchosenBranch() {
+        VcsPullRequest saved = pr("pr-2", 2, null);
+        when(pullRequestRepository.findByOrganizationIdAndRepositoryIdAndExternalId(ORG, "repo-1", "2"))
+                .thenReturn(Optional.of(saved));
+        when(client.pullRequestsChangedSince(CREDENTIALS, repository, null, null)).thenReturn(List.of(
+                withBase(remote("2", 2, PullRequestStatus.OPEN, "f/b", null, "t2"), "feature/x")));
+
+        assertThat(contentSync.syncPullRequests(contextOf(chosen(true, "main")), null, null)).isEmpty();
+
+        assertThat(saved.isActive()).isFalse();
+        verify(pullRequestRepository).save(saved);
+    }
+
+    private static VcsRemotePullRequest withBase(VcsRemotePullRequest r, String base) {
+        return new VcsRemotePullRequest(r.externalId(), r.number(), r.title(), r.body(), r.status(), r.authorLogin(),
+                r.authorExternalId(), r.createdAt(), r.updatedAt(), r.mergedAt(), r.closedAt(), r.sourceBranch(),
+                base, r.draft(), r.labels(), r.authorEmail());
     }
 
     // ---- pull requests

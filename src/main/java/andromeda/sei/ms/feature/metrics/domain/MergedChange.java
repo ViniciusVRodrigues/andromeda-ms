@@ -8,7 +8,8 @@ import java.util.Objects;
  *
  * @param id               stable id, used to de-duplicate a repository bound to several projects
  * @param baseBranch       branch the change was merged into; {@code null} when unknown
- * @param defaultBranch    the repository's default branch; {@code null} when unknown
+ * @param productionBranch the binding's production branch (the repository's default branch when
+ *                         there is no binding or none was chosen); {@code null} when unknown
  * @param linkedToBug      the linked work item resolves to type BUG
  * @param earliestCommitAt authoring time of the earliest commit; {@code null} when not fetched
  */
@@ -17,7 +18,7 @@ public record MergedChange(
         String title,
         String sourceBranch,
         String baseBranch,
-        String defaultBranch,
+        String productionBranch,
         boolean linkedToBug,
         Instant createdAt,
         Instant earliestCommitAt,
@@ -29,12 +30,12 @@ public record MergedChange(
     }
 
     /**
-     * Merged into the default branch. Unknown branches (rows synced before the branch fields
-     * existed, until a repair re-reads them) count as default-branch merges: {@code null} means
+     * Merged into the production branch. Unknown branches (rows synced before the branch fields
+     * existed, until a repair re-reads them) count as production merges: {@code null} means
      * "not known", not "another branch", and excluding them would blank every metric until then.
      */
-    public boolean isIntoDefaultBranch() {
-        return baseBranch == null || defaultBranch == null || baseBranch.equals(defaultBranch);
+    public boolean isIntoProductionBranch() {
+        return baseBranch == null || productionBranch == null || baseBranch.equals(productionBranch);
     }
 
     /** Change lead time start: first commit when known, pull request creation otherwise. */

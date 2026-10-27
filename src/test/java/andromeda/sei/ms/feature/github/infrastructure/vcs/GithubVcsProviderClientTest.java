@@ -1,11 +1,14 @@
 package andromeda.sei.ms.feature.github.infrastructure.vcs;
 
+import andromeda.sei.ms.feature.github.infrastructure.client.GhBranchDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhCommitDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhPullRequestDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhRepoDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhReviewDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
+import andromeda.sei.ms.feature.vcs.application.port.VcsBranch;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
+import andromeda.sei.ms.feature.vcs.application.port.VcsProviderClient;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteCommit;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemotePullRequest;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteRepository;
@@ -16,6 +19,10 @@ import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoIdInvalidException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
+import org.springframework.http.HttpHeaders;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -120,9 +127,9 @@ class GithubVcsProviderClientTest {
         GhCommitDto dto = new GhCommitDto("abc", new GhCommitDto.CommitDetailDto("msg",
                 new GhCommitDto.GitAuthorDto("A", "a@x", "2024-01-05T10:00:00Z")), null);
         Instant since = Instant.parse("2024-01-01T00:00:00Z");
-        when(githubApiClient.getCommits("octo", "hello", AUTH, since)).thenReturn(List.of(dto));
+        when(githubApiClient.getCommits("octo", "hello", AUTH, "main", since)).thenReturn(List.of(dto));
 
-        VcsRemoteCommit commit = client.commitsSince(CREDENTIALS, repo, since).get(0);
+        VcsRemoteCommit commit = client.commitsSince(CREDENTIALS, repo, "main", since).get(0);
 
         assertThat(commit.sha()).isEqualTo("abc");
         assertThat(commit.authorLogin()).isNull();
@@ -134,13 +141,46 @@ class GithubVcsProviderClientTest {
     void should_mapCommitAuthor_when_githubAccountPresent() {
         GhCommitDto dto = new GhCommitDto("def", new GhCommitDto.CommitDetailDto("msg", null),
                 new GhCommitDto.AuthorDto("octocat", 58421L));
-        when(githubApiClient.getCommits("octo", "hello", AUTH, null)).thenReturn(List.of(dto));
+        when(githubApiClient.getCommits("octo", "hello", AUTH, "release/1", null)).thenReturn(List.of(dto));
 
-        VcsRemoteCommit commit = client.commitsSince(CREDENTIALS, repo, null).get(0);
+        VcsRemoteCommit commit = client.commitsSince(CREDENTIALS, repo, "release/1", null).get(0);
 
         assertThat(commit.authorLogin()).isEqualTo("octocat");
         assertThat(commit.authorExternalId()).isEqualTo("58421");
         assertThat(commit.authoredAt()).isNull();
+    }
+
+    @Test
+    void should_raiseBranchNotFound_when_githubAnswers404Or422() {
+        for (int status : new int[]{404, 422}) {
+            org.mockito.Mockito.doThrow(
+                    WebClientResponseException.create(status, "x", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8))
+                    .when(githubApiClient).getCommits("octo", "hello", AUTH, "gone", null);
+
+            assertThatThrownBy(() -> client.commitsSince(CREDENTIALS, repo, "gone", null))
+                    .isInstanceOf(VcsBranchNotFoundException.class);
+        }
+    }
+
+    @Test
+    void should_notSwallowOtherProviderErrors_when_readingBranchCommits() {
+        when(githubApiClient.getCommits("octo", "hello", AUTH, "main", null)).thenThrow(
+                WebClientResponseException.create(500, "x", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> client.commitsSince(CREDENTIALS, repo, "main", null))
+                .isInstanceOf(WebClientResponseException.class);
+    }
+
+    @Test
+    void should_listBranchesWithDefaultFirst() {
+        repo.setDefaultBranch("develop");
+        when(githubApiClient.getBranches("octo", "hello", AUTH, VcsProviderClient.MAX_BRANCHES_LISTED + 1))
+                .thenReturn(List.of(new GhBranchDto("feature/x"), new GhBranchDto("develop"), new GhBranchDto("main")));
+
+        List<VcsBranch> branches = client.listBranches(CREDENTIALS, repo);
+
+        assertThat(branches).extracting(VcsBranch::name).containsExactly("develop", "feature/x", "main");
+        assertThat(branches).extracting(VcsBranch::isDefault).containsExactly(true, false, false);
     }
 
     // ---- review signals (spec: APPROVED/CHANGES_REQUESTED/COMMENTED 1:1, DISMISSED flagged, PENDING dropped)

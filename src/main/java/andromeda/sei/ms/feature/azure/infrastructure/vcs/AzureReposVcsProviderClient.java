@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.azure.domain.exception.AzureReposScopeMissingExc
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzCommitDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzPullRequestDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzPullRequestQuery;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzRefDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzRepositoryDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzWorkItemRefDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzureDevOpsAccessProbeAdapter;
@@ -14,6 +15,7 @@ import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.VcsSettings;
 import andromeda.sei.ms.feature.vcs.application.port.VcsBindableRepository;
+import andromeda.sei.ms.feature.vcs.application.port.VcsBranch;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
 import andromeda.sei.ms.feature.vcs.application.port.VcsProviderClient;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteCommit;
@@ -24,6 +26,7 @@ import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoNotFoundException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -106,13 +109,36 @@ public class AzureReposVcsProviderClient implements VcsProviderClient {
         }
     }
 
-    /** Default-branch commits authored since {@code since} (design D8); none for an empty repository. */
+    /** Branches of the repository: the default first, the rest by name, at most {@code MAX_BRANCHES_LISTED + 1} read. */
     @Override
-    public List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, Instant since) {
-        if (repository.getDefaultBranch() == null) return List.of();
-        List<AzCommitDto> commits = guarded(credentials, () -> apiClient.listCommits(credentials.baseUrl(),
-                repository.getExternalProjectId(), repository.getExternalRepoId(), repository.getDefaultBranch(),
-                since, credentials.token()));
+    public List<VcsBranch> listBranches(VcsCredentials credentials, VcsRepository repository) {
+        List<AzRefDto> refs = guarded(credentials, () -> apiClient.listBranchRefs(credentials.baseUrl(),
+                repository.getExternalProjectId(), repository.getExternalRepoId(), MAX_BRANCHES_LISTED + 1,
+                credentials.token()));
+        String defaultBranch = repository.getDefaultBranch();
+        return refs.stream()
+                .map(ref -> AzureReposApiClient.shortBranch(ref.name()))
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .map(name -> new VcsBranch(name, name.equals(defaultBranch)))
+                .sorted(Comparator.comparing(VcsBranch::isDefault).reversed()
+                        .thenComparing(VcsBranch::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    /** Commits of one branch authored since {@code since} (design D8); none when no branch is given (empty repository). */
+    @Override
+    public List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, String branch,
+                                              Instant since) {
+        if (branch == null || branch.isBlank()) return List.of();
+        List<AzCommitDto> commits;
+        try {
+            commits = guarded(credentials, () -> apiClient.listCommits(credentials.baseUrl(),
+                    repository.getExternalProjectId(), repository.getExternalRepoId(), branch, since,
+                    credentials.token()));
+        } catch (WebClientResponseException.NotFound e) {
+            throw new VcsBranchNotFoundException(branch, e);
+        }
         return commits.stream()
                 .filter(commit -> commit.commitId() != null)
                 .map(AzureCommitMapper::map)

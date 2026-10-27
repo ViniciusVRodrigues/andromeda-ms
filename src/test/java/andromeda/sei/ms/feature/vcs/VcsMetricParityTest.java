@@ -237,10 +237,10 @@ class VcsMetricParityTest {
         assertThat(changes).extracting(MergedChange::title).containsExactlyInAnyOrder("P1", "P2", "P6", "Q1");
         MergedChange p1 = changes.stream().filter(c -> "P1".equals(c.title())).findFirst().orElseThrow();
         assertThat(p1.linkedToBug()).isTrue();
-        assertThat(p1.defaultBranch()).isEqualTo("main");
+        assertThat(p1.productionBranch()).isEqualTo("main");
         assertThat(p1.leadTimeStart()).isEqualTo(T.minus(Duration.ofHours(2)));
         MergedChange p6 = changes.stream().filter(c -> "P6".equals(c.title())).findFirst().orElseThrow();
-        assertThat(p6.isIntoDefaultBranch()).isFalse();
+        assertThat(p6.isIntoProductionBranch()).isFalse();
     }
 
     @Test

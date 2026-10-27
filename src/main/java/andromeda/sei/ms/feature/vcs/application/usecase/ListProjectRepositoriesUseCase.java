@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.vcs.domain.ReviewMetrics;
 import andromeda.sei.ms.feature.vcs.domain.ReviewMetricsPolicy;
 import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 import andromeda.sei.ms.shared.domain.metrics.Percentiles;
@@ -20,6 +21,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
@@ -52,15 +55,19 @@ public class ListProjectRepositoriesUseCase {
         Window window = new Window(firstDay.atStartOfDay(ZoneOffset.UTC).toInstant(),
                 lastDay.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant());
 
+        Map<String, VcsRepoBinding> bindingByRepository = new HashMap<>();
+        vcsReadPort.bindingsOfProject(orgId, projectId)
+                .forEach(binding -> bindingByRepository.putIfAbsent(binding.getRepositoryId(), binding));
         return vcsReadPort.repositoriesOfProject(orgId, projectId).stream()
                 .filter(repo -> !repo.isPendingFirstSync())
-                .map(repo -> summarize(orgId, repo, window, now))
+                .map(repo -> summarize(orgId, repo, bindingByRepository.get(repo.getId()), window, now))
                 .sorted(Comparator.comparing(ProjectRepositoryOutput::displayName,
                         Comparator.nullsLast(String::compareToIgnoreCase)))
                 .toList();
     }
 
-    private ProjectRepositoryOutput summarize(String orgId, VcsRepository repo, Window window, Instant now) {
+    private ProjectRepositoryOutput summarize(String orgId, VcsRepository repo, VcsRepoBinding binding, Window window,
+                                              Instant now) {
         List<VcsPullRequest> all = vcsReadPort.pullRequestsOfRepository(orgId, repo.getId());
         List<VcsPullRequest> open = all.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).toList();
         long staleCount = open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, now)).count();
@@ -81,7 +88,17 @@ public class ListProjectRepositoriesUseCase {
                 average(createdInWindow, VcsPullRequest::getTimeToFirstReviewHours),
                 cfr, cfr != null ? Boolean.TRUE : null, cfr != null ? window.to() : null,
                 prCycleTime, review, delivery,
-                repo.getId(), repo.getProvider(), repo.getDisplayName(), repo.getDefaultBranch());
+                repo.getId(), repo.getProvider(), repo.getDisplayName(), repo.getDefaultBranch(),
+                binding != null ? binding.effectiveBranches(repo.getDefaultBranch()) : defaultBranches(repo),
+                binding != null ? binding.effectiveProductionBranch(repo.getDefaultBranch()) : repo.getDefaultBranch(),
+                binding != null && binding.isFilterPullRequestsByBranch(),
+                binding != null ? binding.getMissingBranches() : List.of(),
+                binding != null ? binding.effectiveSyncState(now) : null,
+                binding != null ? binding.getLastSyncAt() : null);
+    }
+
+    private static List<String> defaultBranches(VcsRepository repo) {
+        return repo.getDefaultBranch() == null ? List.of() : List.of(repo.getDefaultBranch());
     }
 
     /** Deprecated average, kept for one release next to the percentiles. */

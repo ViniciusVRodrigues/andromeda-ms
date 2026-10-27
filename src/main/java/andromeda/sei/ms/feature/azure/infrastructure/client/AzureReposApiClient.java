@@ -126,6 +126,32 @@ public class AzureReposApiClient {
         }, authHeader, new ParameterizedTypeReference<ListResponse<AzCommitDto>>() {});
     }
 
+    /**
+     * Branch refs ({@code refs/heads/...}) of a repository, paged by the {@code x-ms-continuationtoken}
+     * response header and read until {@code limit} refs are collected (the caller asks for one more than
+     * it shows, to know whether the listing was cut).
+     */
+    public List<AzRefDto> listBranchRefs(String orgUrl, String projectId, String repositoryId, int limit,
+                                         String authHeader) {
+        List<AzRefDto> all = new ArrayList<>();
+        String continuation = null;
+        for (int page = 0; page < MAX_PAGES && all.size() < limit; page++) {
+            UriComponentsBuilder builder = repositoryPath(orgUrl, projectId, repositoryId, "/refs")
+                    .queryParam("filter", "heads/").queryParam("$top", PAGE_SIZE);
+            if (continuation != null) builder.queryParam("continuationToken", continuation);
+            URI uri = builder.queryParam("api-version", API_VERSION).buildAndExpand(repositoryId).encode().toUri();
+            ResponseEntity<ListResponse<AzRefDto>> response = azureWebClient.get().uri(uri)
+                    .header("Authorization", authHeader).retrieve()
+                    .toEntity(new ParameterizedTypeReference<ListResponse<AzRefDto>>() {})
+                    .retryWhen(AzureRetryPolicy.retrySpec()).block();
+            if (response == null) break;
+            all.addAll(valuesOf(response.getBody()));
+            continuation = response.getHeaders().getFirst(CONTINUATION_HEADER);
+            if (continuation == null || continuation.isBlank()) break;
+        }
+        return all.size() > limit ? new ArrayList<>(all.subList(0, limit)) : all;
+    }
+
     public static String shortBranch(String ref) {
         if (ref == null) return null;
         return ref.startsWith(HEADS_PREFIX) ? ref.substring(HEADS_PREFIX.length()) : ref;

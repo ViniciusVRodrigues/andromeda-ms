@@ -14,7 +14,9 @@ import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequestRepository;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEvent;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +24,10 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -42,7 +47,31 @@ public class VcsRepositoryContentSync {
 
     /** What every step needs about the repository being synced. */
     public record Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
-                          VcsRepository repository, WorkItemLinkConfig linkConfig) {
+                          VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding,
+                          List<String> missingBranches) {
+
+        /** Legacy context: no binding, so the default branch only and no pull request filter. */
+        public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
+                       VcsRepository repository, WorkItemLinkConfig linkConfig) {
+            this(credentials, client, authors, repository, linkConfig, null, new ArrayList<>());
+        }
+
+        public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
+                       VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding) {
+            this(credentials, client, authors, repository, linkConfig, binding, new ArrayList<>());
+        }
+
+        /** The branches read; a legacy binding (or none) reads the default branch only. */
+        List<String> branches() {
+            String defaultBranch = repository.getDefaultBranch();
+            return binding == null
+                    ? (defaultBranch == null || defaultBranch.isBlank() ? List.of() : List.of(defaultBranch))
+                    : binding.effectiveBranches(defaultBranch);
+        }
+
+        boolean filterPullRequests() {
+            return binding != null && binding.isFilterPullRequestsByBranch();
+        }
 
         String organizationId() {
             return repository.getOrganizationId();
@@ -53,15 +82,36 @@ public class VcsRepositoryContentSync {
     // Commits
     // ------------------------------------------------------------------
 
+    /**
+     * Reads the commits of every effective branch. A branch the provider no longer has is skipped and
+     * recorded in {@code context.missingBranches()}; any other failure fails the sync. A commit seen on
+     * more than one branch is written once.
+     */
     public int syncCommits(Context context, Instant since) {
         int processed = 0;
-        for (VcsRemoteCommit remote : context.client().commitsSince(context.credentials(), context.repository(), since)) {
+        Set<String> seen = new HashSet<>();
+        List<String> branches = context.branches();
+        // a legacy repository without a known default branch is still read once, as before
+        List<String> toRead = branches.isEmpty() ? java.util.Collections.singletonList((String) null) : branches;
+        for (String branch : toRead) {
+            List<VcsRemoteCommit> commits;
             try {
-                upsertCommit(context, remote);
-                processed++;
-            } catch (RuntimeException e) {
-                log.warn("Failed to upsert commit sha={} repo={}: {}", remote.sha(),
-                        context.repository().getDisplayName(), e.getMessage());
+                commits = context.client().commitsSince(context.credentials(), context.repository(), branch, since);
+            } catch (VcsBranchNotFoundException e) {
+                log.warn("Branch {} of repo={} no longer exists; skipped", branch,
+                        context.repository().getDisplayName());
+                context.missingBranches().add(branch);
+                continue;
+            }
+            for (VcsRemoteCommit remote : commits) {
+                if (!seen.add(remote.sha())) continue;
+                try {
+                    upsertCommit(context, remote);
+                    processed++;
+                } catch (RuntimeException e) {
+                    log.warn("Failed to upsert commit sha={} repo={}: {}", remote.sha(),
+                            context.repository().getDisplayName(), e.getMessage());
+                }
             }
         }
         return processed;
@@ -91,9 +141,34 @@ public class VcsRepositoryContentSync {
         return context.client()
                 .pullRequestsChangedSince(context.credentials(), context.repository(), watermark, backfillFrom)
                 .stream()
+                .filter(remote -> keepPullRequest(context, remote))
                 .map(remote -> upsertIsolated(context, remote))
                 .filter(Objects::nonNull)
                 .toList();
+    }
+
+    /**
+     * With the branch filter on, a pull request whose target is not a chosen branch is not saved; one
+     * saved earlier that now targets another branch is deactivated. A null target is kept.
+     */
+    private boolean keepPullRequest(Context context, VcsRemotePullRequest remote) {
+        if (!context.filterPullRequests() || remote.baseBranch() == null) return true;
+        String base = remote.baseBranch().startsWith("refs/heads/")
+                ? remote.baseBranch().substring("refs/heads/".length()) : remote.baseBranch();
+        if (context.branches().contains(base)) return true;
+        try {
+            pullRequestRepository.findByOrganizationIdAndRepositoryIdAndExternalId(
+                            context.organizationId(), context.repository().getId(), remote.externalId())
+                    .filter(VcsPullRequest::isActive)
+                    .ifPresent(pr -> {
+                        pr.setActive(false);
+                        pullRequestRepository.save(pr);
+                    });
+        } catch (RuntimeException e) {
+            log.warn("Could not deactivate pull request #{} of repo={}: {}", remote.number(),
+                    context.repository().getDisplayName(), e.getMessage());
+        }
+        return false;
     }
 
     private VcsPullRequest upsertIsolated(Context context, VcsRemotePullRequest remote) {

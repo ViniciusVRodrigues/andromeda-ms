@@ -2,6 +2,7 @@ package andromeda.sei.ms.shared.presentation.handler;
 
 import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderInvalidException;
 import andromeda.sei.ms.feature.vcs.domain.exception.PullRequestCommitsUnavailableException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsListBranchesFailedException;
 import andromeda.sei.ms.shared.domain.exception.BusinessRuleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.shared.domain.exception.ResourceConflictException;
@@ -89,6 +90,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(PullRequestCommitsUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleCommitsUnavailable(
             PullRequestCommitsUnavailableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.from(ex));
+    }
+
+    /** 502 (branches-por-vinculo D5): the provider failed while listing the branches of a repository. */
+    @ExceptionHandler(VcsListBranchesFailedException.class)
+    public ResponseEntity<ErrorResponse> handleListBranchesFailed(VcsListBranchesFailedException ex) {
         return ResponseEntity.status(HttpStatus.BAD_GATEWAY).body(ErrorResponse.from(ex));
     }
 

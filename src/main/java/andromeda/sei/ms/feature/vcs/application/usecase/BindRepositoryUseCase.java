@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.vcs.application.usecase;
 
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.vcs.application.dto.BindRepositoryInput;
 import andromeda.sei.ms.feature.vcs.application.dto.RepoBindingOutput;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
@@ -38,6 +39,8 @@ public class BindRepositoryUseCase {
     private final VcsProviderRegistry providerRegistry;
     private final VcsRepositoryRepository repositoryRepository;
     private final VcsRepoBindingRepository bindingRepository;
+    private final OrganizationRepository organizationRepository;
+    private final BindingBranchSettings branchSettings;
 
     public RepoBindingOutput execute(String projectId, BindRepositoryInput input) {
         String orgId = TenantContextHolder.get();
@@ -45,6 +48,7 @@ public class BindRepositoryUseCase {
         VcsCredentials credentials = providerRegistry.credentialsProvider(provider).credentials(orgId)
                 .orElseThrow(() -> new VcsConnectionNotFoundException(provider.name()));
 
+        if (input.branches() != null) VcsRepoBinding.validateBranches(input.branches(), input.productionBranch());
         VcsRepository repository = upsertRepository(orgId, provider, credentials, input);
         Optional<VcsRepoBinding> active = bindingRepository.findActiveByOrganizationIdAndRepositoryId(
                 orgId, repository.getId());
@@ -52,10 +56,21 @@ public class BindRepositoryUseCase {
             throw new RepoAlreadyBoundException(repository.getDisplayName());
         }
 
-        VcsRepoBinding binding = active.orElseGet(() ->
-                new VcsRepoBinding(null, orgId, projectId, repository.getId(), provider, input.syncEnabled()));
-        binding.setSyncEnabled(input.syncEnabled());
-        return RepoBindingOutputs.of(bindingRepository.save(binding), repository);
+        BindingBranchSettings.Change change = new BindingBranchSettings.Change(input.syncEnabled(), input.branches(),
+                input.productionBranch(), input.filterPullRequestsByBranch());
+        Integer backfillDays = RepoBindingOutputs.backfillDays(organizationRepository, orgId);
+        if (active.isPresent()) {
+            /* Re-bind in the same project: the same rules as editing the binding. */
+            BindingBranchSettings.Applied applied = branchSettings.update(active.get(), repository, change);
+            return RepoBindingOutputs.of(applied.binding(), repository, backfillDays, applied.resynced());
+        }
+
+        VcsRepoBinding binding = new VcsRepoBinding(null, orgId, projectId, repository.getId(), provider,
+                input.syncEnabled());
+        branchSettings.configureNew(binding, repository, change);
+        VcsRepoBinding saved = bindingRepository.save(binding);
+        branchSettings.submit(saved);
+        return RepoBindingOutputs.of(saved, repository, backfillDays);
     }
 
     private VcsRepository upsertRepository(String orgId, VcsProvider provider, VcsCredentials credentials,
@@ -66,26 +81,9 @@ public class BindRepositoryUseCase {
                     .findByOrganizationIdAndProviderAndExternalRepoId(orgId, provider, externalRepoId);
             if (known.isPresent() && known.get().isActive()) return known.get();
         }
-        VcsRemoteRepository remote = fetch(providerRegistry.client(provider), credentials, provider,
+        VcsRemoteRepository remote = RemoteRepositoryLookup.fetch(providerRegistry.client(provider), credentials, provider,
                 externalRepoId, blankToNull(input.fullName()));
         return save(orgId, provider, remote);
-    }
-
-    private VcsRemoteRepository fetch(VcsProviderClient client, VcsCredentials credentials, VcsProvider provider,
-                                      String externalRepoId, String fullName) {
-        if (externalRepoId == null && fullName == null) throw new RepoIdInvalidException("(empty)");
-        String requested = externalRepoId != null ? externalRepoId : fullName;
-        try {
-            if (externalRepoId != null) {
-                return client.getRepository(credentials, new VcsRepository(null, credentials.organizationId(),
-                        provider, externalRepoId, fullName));
-            }
-            return client.resolveRepository(credentials, fullName);
-        } catch (DomainException e) {
-            throw e;
-        } catch (RuntimeException e) {
-            throw new RepoNotFoundException(requested);
-        }
     }
 
     /**

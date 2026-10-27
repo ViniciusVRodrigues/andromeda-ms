@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.metrics.application;
 import andromeda.sei.ms.feature.vcs.VcsLegacyFixtures;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.metrics.domain.CompletedWorkItem;
@@ -58,7 +60,34 @@ class DeliveryMetricsServiceTest {
 
         assertThat(changes).extracting(MergedChange::id).containsExactly("pr-1", "pr-2");
         assertThat(changes).extracting(MergedChange::linkedToBug).containsExactly(true, false);
-        assertThat(changes).extracting(MergedChange::defaultBranch).containsOnly("trunk");
+        assertThat(changes).extracting(MergedChange::productionBranch).containsOnly("trunk");
+    }
+
+    @Test
+    void should_useTheBindingsProductionBranch_overTheRepositoryDefault() {
+        VcsRepository repo = repo("repo-1", "trunk");
+        VcsRepoBinding binding = new VcsRepoBinding("b1", ORG, "p1", "repo-1", VcsProvider.GITHUB, true);
+        binding.setBranches(List.of("develop", "release"));
+        binding.setProductionBranch("release");
+        when(vcsReadPort.mergedPullRequests(ORG, List.of("repo-1"), FROM, TO))
+                .thenReturn(List.of(merged("pr-1", "repo-1", null)));
+        when(vcsReadPort.activeBindingsOfRepositories(any(), any())).thenReturn(List.of(binding));
+
+        List<MergedChange> changes = service.mergedChanges(ORG, List.of(repo), FROM, TO);
+
+        assertThat(changes).extracting(MergedChange::productionBranch).containsOnly("release");
+    }
+
+    @Test
+    void should_useTheRepositoryDefault_whenTheBindingIsLegacy() {
+        VcsRepository repo = repo("repo-1", "trunk");
+        when(vcsReadPort.mergedPullRequests(ORG, List.of("repo-1"), FROM, TO))
+                .thenReturn(List.of(merged("pr-1", "repo-1", null)));
+        when(vcsReadPort.activeBindingsOfRepositories(any(), any())).thenReturn(List.of(
+                new VcsRepoBinding("b1", ORG, "p1", "repo-1", VcsProvider.GITHUB, true)));
+
+        assertThat(service.mergedChanges(ORG, List.of(repo), FROM, TO))
+                .extracting(MergedChange::productionBranch).containsOnly("trunk");
     }
 
     @Test

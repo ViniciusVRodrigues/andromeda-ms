@@ -26,11 +26,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,11 +52,19 @@ class BindRepositoryUseCaseTest {
     @Mock private VcsRepositoryRepository repositoryRepository;
     @Mock private VcsRepoBindingRepository bindingRepository;
 
-    @InjectMocks
+    @Mock private andromeda.sei.ms.feature.organization.domain.OrganizationRepository organizationRepository;
+    @Mock private andromeda.sei.ms.feature.vcs.application.port.VcsRepositoryDataWiper dataWiper;
+    @Mock private andromeda.sei.ms.feature.sync.application.SyncOrchestrator syncOrchestrator;
+    @Mock private andromeda.sei.ms.feature.sync.application.SyncCooldownService cooldownService;
+
     private BindRepositoryUseCase useCase;
 
     @BeforeEach
     void setUp() {
+        BindingBranchSettings branchSettings = new BindingBranchSettings(providerRegistry, bindingRepository,
+                dataWiper, syncOrchestrator, cooldownService);
+        useCase = new BindRepositoryUseCase(providerRegistry, repositoryRepository, bindingRepository,
+                organizationRepository, branchSettings);
         TenantContextHolder.set(ORG);
         lenient().when(providerRegistry.credentialsProvider(VcsProvider.GITHUB)).thenReturn(credentialsProvider);
         lenient().when(credentialsProvider.credentials(ORG)).thenReturn(Optional.of(CREDENTIALS));
@@ -195,6 +205,106 @@ class BindRepositoryUseCaseTest {
 
         assertThat(useCase.execute("proj-1", new BindRepositoryInput(null, "123", null, true)).provider())
                 .isEqualTo(VcsProvider.GITHUB);
+    }
+
+    // ---- branches (branches-por-vinculo 2.10)
+
+    private static BindRepositoryInput withBranches(List<String> branches, String production, Boolean filter) {
+        return new BindRepositoryInput(VcsProvider.GITHUB, "123", null, true, branches, production, filter);
+    }
+
+    private void givenProviderBranches(String... names) {
+        when(client.listBranches(eq(CREDENTIALS), any())).thenReturn(java.util.Arrays.stream(names)
+                .map(name -> new andromeda.sei.ms.feature.vcs.application.port.VcsBranch(name, false)).toList());
+    }
+
+    @Test
+    void should_saveANewBindingPending_andSubmitItsSyncOnce() {
+        givenKnownRepository();
+        givenProviderBranches("develop", "main");
+        when(bindingRepository.findActiveByOrganizationIdAndRepositoryId(ORG, "repo-1")).thenReturn(Optional.empty());
+
+        RepoBindingOutput result = useCase.execute("proj-1", withBranches(List.of("develop", "main"), "main", true));
+
+        assertThat(result.branches()).containsExactly("develop", "main");
+        assertThat(result.productionBranch()).isEqualTo("main");
+        assertThat(result.branchesConfigured()).isTrue();
+        assertThat(result.filterPullRequestsByBranch()).isTrue();
+        assertThat(result.syncState()).isEqualTo(andromeda.sei.ms.feature.vcs.domain.VcsSyncState.PENDING);
+        org.mockito.ArgumentCaptor<andromeda.sei.ms.feature.sync.application.SyncRequest> request =
+                org.mockito.ArgumentCaptor.forClass(andromeda.sei.ms.feature.sync.application.SyncRequest.class);
+        verify(syncOrchestrator).submit(request.capture());
+        assertThat(request.getValue().trigger()).isEqualTo(andromeda.sei.ms.feature.integration.domain.SyncTrigger.MANUAL);
+        assertThat(request.getValue().targets()).hasSize(1);
+        assertThat(request.getValue().targets().getFirst().bindingId()).isEqualTo("binding-new");
+        verify(dataWiper, never()).wipeRepository(any(), any());
+    }
+
+    @Test
+    void should_notFailTheBinding_when_theSyncCannotBeSubmitted() {
+        givenKnownRepository();
+        when(bindingRepository.findActiveByOrganizationIdAndRepositoryId(ORG, "repo-1")).thenReturn(Optional.empty());
+        when(syncOrchestrator.submit(any())).thenThrow(new andromeda.sei.ms.feature.sync.domain.exception.SyncQueueFullException());
+
+        RepoBindingOutput result = useCase.execute("proj-1", new BindRepositoryInput(VcsProvider.GITHUB, "123", null, true));
+
+        assertThat(result.id()).isEqualTo("binding-new");
+        assertThat(result.syncState()).isEqualTo(andromeda.sei.ms.feature.vcs.domain.VcsSyncState.PENDING);
+    }
+
+    @Test
+    void should_bindLegacy_withoutReadingBranches_whenNoneAreSent() {
+        givenKnownRepository();
+        when(bindingRepository.findActiveByOrganizationIdAndRepositoryId(ORG, "repo-1")).thenReturn(Optional.empty());
+
+        RepoBindingOutput result = useCase.execute("proj-1", new BindRepositoryInput(VcsProvider.GITHUB, "123", null, true));
+
+        assertThat(result.branchesConfigured()).isFalse();
+        verify(client, never()).listBranches(any(), any());
+    }
+
+    @Test
+    void should_answer422_when_elevenBranches() {
+        List<String> eleven = java.util.stream.IntStream.rangeClosed(0, 10).mapToObj(i -> "b" + i).toList();
+
+        assertThatThrownBy(() -> useCase.execute("proj-1", withBranches(eleven, "b0", false)))
+                .hasFieldOrPropertyWithValue("code", "REPO_BRANCHES_INVALID");
+        verify(bindingRepository, never()).save(any());
+    }
+
+    @Test
+    void should_answer422_when_productionIsOutsideTheList_orTheListIsEmpty() {
+        assertThatThrownBy(() -> useCase.execute("proj-1", withBranches(List.of("a", "b"), "c", false)))
+                .hasFieldOrPropertyWithValue("code", "REPO_BRANCHES_INVALID");
+        assertThatThrownBy(() -> useCase.execute("proj-1", withBranches(List.of(), null, false)))
+                .hasFieldOrPropertyWithValue("code", "REPO_BRANCHES_INVALID");
+    }
+
+    @Test
+    void should_answer422_when_aBranchIsNotInTheProvider() {
+        givenKnownRepository();
+        givenProviderBranches("main");
+        when(bindingRepository.findActiveByOrganizationIdAndRepositoryId(ORG, "repo-1")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> useCase.execute("proj-1", withBranches(List.of("main", "ghost"), "main", false)))
+                .hasFieldOrPropertyWithValue("code", "REPO_BRANCH_NOT_FOUND");
+        verify(bindingRepository, never()).save(any());
+        verify(syncOrchestrator, never()).submit(any());
+    }
+
+    @Test
+    void should_applyThePatchRule_when_rebindingTheSameProjectWithOtherBranches() {
+        givenKnownRepository();
+        givenProviderBranches("develop", "main");
+        VcsRepoBinding existing = binding("binding-1", "proj-1", true);
+        existing.setBranches(List.of("main"));
+        existing.setProductionBranch("main");
+        when(bindingRepository.findActiveByOrganizationIdAndRepositoryId(ORG, "repo-1")).thenReturn(Optional.of(existing));
+
+        RepoBindingOutput result = useCase.execute("proj-1", withBranches(List.of("develop", "main"), "main", false));
+
+        assertThat(result.resynced()).isTrue();
+        verify(dataWiper).wipeRepository(ORG, "repo-1");
     }
 
     private void givenKnownRepository() {

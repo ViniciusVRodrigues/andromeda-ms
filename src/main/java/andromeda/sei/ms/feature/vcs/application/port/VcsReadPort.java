@@ -21,6 +21,9 @@ public interface VcsReadPort {
     /** Active bindings of a project (any provider). */
     List<VcsRepoBinding> bindingsOfProject(String organizationId, String projectId);
 
+    /** The active bindings of the given repositories, whatever the project. */
+    List<VcsRepoBinding> activeBindingsOfRepositories(String organizationId, java.util.Collection<String> repositoryIds);
+
     /** Active repositories bound to the project through active bindings (pending ones included). */
     List<VcsRepository> repositoriesOfProject(String organizationId, String projectId);
 

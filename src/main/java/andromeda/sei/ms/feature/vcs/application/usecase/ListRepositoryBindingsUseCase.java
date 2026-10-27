@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.vcs.application.usecase;
 
+import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.vcs.application.dto.RepoBindingOutput;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
@@ -21,6 +22,7 @@ public class ListRepositoryBindingsUseCase {
 
     private final VcsRepoBindingRepository bindingRepository;
     private final VcsRepositoryRepository repositoryRepository;
+    private final OrganizationRepository organizationRepository;
 
     /** @param projectId {@code null} lists every active binding of the organization */
     public List<RepoBindingOutput> execute(String projectId) {
@@ -32,8 +34,9 @@ public class ListRepositoryBindingsUseCase {
                 .findAllByOrganizationIdAndIdIn(orgId, bindings.stream().map(VcsRepoBinding::getRepositoryId).toList())
                 .stream()
                 .collect(Collectors.toMap(VcsRepository::getId, Function.identity(), (a, b) -> a));
+        Integer backfillDays = RepoBindingOutputs.backfillDays(organizationRepository, orgId);
         return bindings.stream()
-                .map(binding -> RepoBindingOutputs.of(binding, repositories.get(binding.getRepositoryId())))
+                .map(binding -> RepoBindingOutputs.of(binding, repositories.get(binding.getRepositoryId()), backfillDays))
                 .toList();
     }
 }
