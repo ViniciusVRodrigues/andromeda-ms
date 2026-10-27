@@ -20,29 +20,39 @@ public class RecalculateAiCostsUseCase {
     private final OrganizationRepository organizationRepository;
     private final CalculateAiCostUseCase calculateAiCostUseCase;
 
+    /**
+     * Rewrites {@code costUsd} of every record of the organization (the new cost, or {@code null}
+     * when the model has no price; an empty price table clears all costs).
+     *
+     * @return how many records had their cost changed
+     */
     public int execute(String organizationId) {
         List<AiPriceEntry> prices = organizationRepository.findById(organizationId)
                 .map(org -> org.getAiPrices() != null ? org.getAiPrices() : List.<AiPriceEntry>of())
                 .orElse(List.of());
 
         if (prices.isEmpty()) {
-            log.warn("recalculate-costs: no AI prices configured for org={}", organizationId);
-            return 0;
+            log.warn("recalculate-costs: no AI prices configured for org={}, clearing costs", organizationId);
         }
 
         List<AIUsage> usages = aiUsageRepository.findAllByOrganizationId(organizationId);
-        int updated = 0;
+        int changed = 0;
         for (AIUsage usage : usages) {
             BigDecimal cost = calculateAiCostUseCase.execute(usage, prices);
-            if (cost != null) {
-                aiUsageRepository.updateCost(
-                        usage.getOrganizationId(), usage.getUserId(), usage.getDatasetId(),
-                        usage.getDay(), usage.getModel(), usage.getWorkspaceId(), usage.getMachineId(),
-                        cost);
-                updated++;
+            if (!sameCost(usage.getCostUsd(), cost)) {
+                changed++;
             }
+            aiUsageRepository.updateCost(
+                    usage.getOrganizationId(), usage.getUserId(), usage.getDatasetId(),
+                    usage.getDay(), usage.getModel(), usage.getWorkspaceId(), usage.getMachineId(),
+                    cost);
         }
-        log.info("recalculate-costs: org={} updated={} of total={}", organizationId, updated, usages.size());
-        return updated;
+        log.info("recalculate-costs: org={} changed={} of total={}", organizationId, changed, usages.size());
+        return changed;
+    }
+
+    private static boolean sameCost(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null) return a == b;
+        return a.compareTo(b) == 0;
     }
 }

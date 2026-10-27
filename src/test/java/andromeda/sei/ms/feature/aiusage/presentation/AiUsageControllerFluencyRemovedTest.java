@@ -22,7 +22,7 @@ class AiUsageControllerFluencyRemovedTest {
         AiUsageController controller = new AiUsageController(
                 Mockito.mock(GetAiUsageSummaryUseCase.class), Mockito.mock(GetAiUsageSummaryByMonthUseCase.class),
                 null, null, Mockito.mock(RecalculateAiCostsUseCase.class), Mockito.mock(GetDailyAiUsageUseCase.class),
-                Mockito.mock(CurrentUserPermissions.class));
+                Mockito.mock(CurrentUserPermissions.class), null);
         MockMvc mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(get("/api/v1/ai/fluency-score")).andExpect(status().isNotFound());

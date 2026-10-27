@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.aiusage.presentation;
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryByMonthUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetDailyAiUsageUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.GetAiUsageSummaryUseCase;
+import andromeda.sei.ms.feature.aiusage.application.dto.UnpricedModelOutput;
+import andromeda.sei.ms.feature.aiusage.application.usecase.ListUnpricedModelsUseCase;
 import andromeda.sei.ms.feature.aiusage.application.usecase.RecalculateAiCostsUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetSprintItemsUseCase;
 import andromeda.sei.ms.feature.allocation.presentation.dto.SprintItemResponse;
@@ -52,6 +54,7 @@ public class AiUsageController {
 
     private final GetDailyAiUsageUseCase getDailyAiUsageUseCase;
     private final CurrentUserPermissions currentUserPermissions;
+    private final ListUnpricedModelsUseCase listUnpricedModelsUseCase;
 
     /**
      * Own usage (AI_READ_OWN, ORG_ONLY) or other members' usage (AI_READ_ALL, PROJECT_SCOPABLE — held
@@ -191,6 +194,17 @@ public class AiUsageController {
         String orgId = TenantContextHolder.get();
         int updated = recalculateAiCostsUseCase.execute(orgId);
         return ResponseEntity.ok(new RecalculateCostsResponse(updated));
+    }
+
+    @Operation(summary = "Models without a price", description = "Models used in the period (default all recorded usage) with no row in the price table. Requires PRICE_TABLE_MANAGE.")
+    @ApiResponse(responseCode = "200", description = "Unpriced models, most output tokens first")
+    @ApiResponse(responseCode = "400", description = "AI_USAGE_PERIOD_INVALID")
+    @GetMapping("/unpriced-models")
+    @PreAuthorize("hasAuthority('PRICE_TABLE_MANAGE')")
+    public ResponseEntity<List<UnpricedModelOutput>> unpricedModels(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return ResponseEntity.ok(listUnpricedModelsUseCase.execute(TenantContextHolder.get(), from, to));
     }
 
     /**

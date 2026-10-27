@@ -7,6 +7,7 @@ import andromeda.sei.ms.shared.infrastructure.persistence.ParallelChunks;
 import andromeda.sei.ms.shared.infrastructure.persistence.RawDocuments;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageModelOutput;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageSummary;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageSummaryByModel;
 import andromeda.sei.ms.feature.aiusage.domain.DailyAiUsage;
@@ -142,6 +143,28 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 toLong(result.get("totalInteractions")),
                 toBigDecimal(result.get("totalCostUsd"))
         );
+    }
+
+    @Override
+    public List<AiUsageModelOutput> summarizeOutputByModel(String organizationId, LocalDate from, LocalDate to) {
+        Criteria criteria = Criteria.where("organizationId").is(organizationId).and("active").is(true);
+        if (from != null && to != null) {
+            criteria = criteria.and("day").gte(from).lte(to);
+        } else if (from != null) {
+            criteria = criteria.and("day").gte(from);
+        } else if (to != null) {
+            criteria = criteria.and("day").lte(to);
+        }
+        MatchOperation match = Aggregation.match(criteria);
+        GroupOperation group = Aggregation.group("model")
+                .sum("outputTokens").as("outputTokens")
+                .count().as("records");
+        Aggregation agg = Aggregation.newAggregation(match, group);
+        AggregationResults<Map> results = mongoTemplate.aggregate(agg, AiUsageDocument.class, Map.class);
+        return results.getMappedResults().stream()
+                .map(r -> new AiUsageModelOutput((String) r.get("_id"),
+                        toLong(r.get("outputTokens")), toLong(r.get("records"))))
+                .toList();
     }
 
     @Override

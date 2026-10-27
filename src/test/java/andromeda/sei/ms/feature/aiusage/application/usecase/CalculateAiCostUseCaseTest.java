@@ -37,8 +37,8 @@ class CalculateAiCostUseCaseTest {
 
         BigDecimal cost = useCase.execute(usage, prices);
 
-        // (1000 * 0.005 / 1000) + (2000 * 0.015 / 1000) = 0.005 + 0.030 = 0.035
-        assertThat(cost).isEqualByComparingTo(new BigDecimal("0.035000"));
+        // output only: 2000 * 0.015 / 1000 = 0.030 (the input price/tokens are ignored)
+        assertThat(cost).isEqualByComparingTo(new BigDecimal("0.030000"));
     }
 
     @Test
@@ -85,14 +85,83 @@ class CalculateAiCostUseCaseTest {
 
     @Test
     void should_maintainPrecision_when_singleTokenWithSmallPrice() {
-        AIUsage usage = usage("gpt-4o", 1L, 0L);
+        AIUsage usage = usage("gpt-4o", 0L, 1L);
         List<AiPriceEntry> prices = List.of(
                 new AiPriceEntry("gpt-4o", new BigDecimal("0.003"), new BigDecimal("0.015"))
         );
 
         BigDecimal cost = useCase.execute(usage, prices);
 
-        // 1 * 0.003 / 1000 = 0.000003
-        assertThat(cost).isEqualByComparingTo(new BigDecimal("0.000003"));
+        // 1 * 0.015 / 1000 = 0.000015
+        assertThat(cost).isEqualByComparingTo(new BigDecimal("0.000015"));
+    }
+
+    private static List<AiPriceEntry> one(String model) {
+        return List.of(new AiPriceEntry(model, new BigDecimal("1"), new BigDecimal("10")));
+    }
+
+    @Test
+    void should_ignoreInput_when_inputTokensAreHuge() {
+        BigDecimal cost = useCase.execute(usage("gpt-4o", 9_000_000L, 1000L), one("gpt-4o"));
+
+        assertThat(cost).isEqualByComparingTo(new BigDecimal("10.000000"));
+    }
+
+    @Test
+    void should_priceFree_when_outputPriceIsZero() {
+        List<AiPriceEntry> prices = List.of(new AiPriceEntry("free", null, BigDecimal.ZERO));
+
+        assertThat(useCase.execute(usage("free", 5L, 5L), prices)).isEqualByComparingTo(BigDecimal.ZERO);
+    }
+
+    @Test
+    void should_returnNull_when_rowHasNoOutputPrice() {
+        List<AiPriceEntry> prices = List.of(new AiPriceEntry("gpt-4o", BigDecimal.ONE, null));
+        assertThat(useCase.execute(usage("gpt-4o", 1000, 1000), prices)).isNull();
+        assertThat(useCase.findPrice("gpt-4o", prices)).isEmpty();
+    }
+
+    @Test
+    void should_matchModel_when_usageHasDateSuffix() {
+        assertThat(useCase.findPrice("claude-sonnet-4-5-20250929", one("claude-sonnet-4-5"))).isPresent();
+        assertThat(useCase.findPrice("gpt-4o-2024-08-06", one("gpt-4o"))).isPresent();
+        assertThat(useCase.findPrice("claude-3-opus@20240229", one("claude-3-opus"))).isPresent();
+    }
+
+    @Test
+    void should_matchModel_when_tablehasDateSuffixAndUsageDoesNot() {
+        assertThat(useCase.findPrice("gpt-4o", one("gpt-4o-2024-08-06"))).isPresent();
+    }
+
+    @Test
+    void should_matchModel_when_dotVersusDashCaseAndSpaces() {
+        assertThat(useCase.findPrice("Claude-Opus-4.7 ", one("claude-opus-4-7"))).isPresent();
+        assertThat(useCase.findPrice("claude-opus-4-7", one("claude-opus-4.7"))).isPresent();
+    }
+
+    @Test
+    void should_notMatch_when_differentModelOrPartialSuffix() {
+        assertThat(useCase.findPrice("gpt-4o-mini", one("gpt-4o"))).isEmpty();
+        assertThat(useCase.findPrice("gpt-4o-123", one("gpt-4o"))).isEmpty();
+    }
+
+    @Test
+    void should_preferExactMatch_overNormalized() {
+        List<AiPriceEntry> prices = List.of(
+                new AiPriceEntry("gpt-4o", BigDecimal.ONE, new BigDecimal("1")),
+                new AiPriceEntry("gpt-4o-2024-08-06", BigDecimal.ONE, new BigDecimal("2")));
+
+        assertThat(useCase.findPrice("gpt-4o-2024-08-06", prices).orElseThrow().getPricePerKOutput())
+                .isEqualByComparingTo("2");
+    }
+
+    @Test
+    void should_neverPrice_autoUnknownBlankOrNull_evenWithARowByThatName() {
+        for (String m : new String[] {"auto", "AUTO", "unknown", "Unknown", "", "  ", null}) {
+            assertThat(useCase.isBillable(m)).as("billable %s", m).isFalse();
+            assertThat(useCase.findPrice(m, one(m == null ? "x" : m))).as("price %s", m).isEmpty();
+        }
+        assertThat(useCase.isBillable("gpt-4o")).isTrue();
+        assertThat(useCase.execute(usage("auto", 1L, 1000L), one("auto"))).isNull();
     }
 }

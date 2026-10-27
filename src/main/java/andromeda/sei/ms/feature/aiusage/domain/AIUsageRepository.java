@@ -46,6 +46,12 @@ public interface AIUsageRepository {
 
     List<AIUsage> findAllByOrganizationId(String organizationId);
 
+    /**
+     * Active usage of the organization with {@code day} within {@code [from, to]} (inclusive; a null end is open), summed
+     * per model in the database: output tokens and record count.
+     */
+    List<AiUsageModelOutput> summarizeOutputByModel(String organizationId, LocalDate from, LocalDate to);
+
     /** Tenant-scoped, active-only lookup by ids. */
     List<AIUsage> findByOrganizationIdAndIdIn(String organizationId, java.util.Collection<String> ids);
 
