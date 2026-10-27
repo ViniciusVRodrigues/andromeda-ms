@@ -78,6 +78,8 @@ public class AzureProjectBindingDocument {
     public static class TypeMappingDocument {
         private String rawType;
         private WorkItem.ResolvedType resolvedType;
+        /** Nulo em documentos antigos; lido como false. */
+        private Boolean receivesAi;
     }
 
     @Data

@@ -68,4 +68,31 @@ class IntegrationSyncLogRepositoryImplTest {
         return new IntegrationSyncLog(null, orgId, Integration.AZURE_DEVOPS, SyncOperation.SYNC_SPRINTS,
                 SyncStatus.SUCCESS, SyncTrigger.SCHEDULED, projectId, NOW, NOW, 100L, 5, 0, null, null);
     }
+    @Test
+    void save_shouldPersistUnmappedTypeFields() {
+        var log = syncLog(ORG_ID, null);
+        log.setItemsUnmappedType(5);
+        log.setUnmappedTypes(java.util.List.of("Issue", "Risk"));
+
+        var saved = repository.save(log);
+        var found = repository.findByOrganizationIdAndIntegration(ORG_ID, Integration.AZURE_DEVOPS, null, 10);
+
+        assertThat(saved.getItemsUnmappedType()).isEqualTo(5);
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).getItemsUnmappedType()).isEqualTo(5);
+        assertThat(found.get(0).getUnmappedTypes()).containsExactly("Issue", "Risk");
+    }
+
+    @Test
+    void findBy_shouldReadOldDocumentsWithoutUnmappedFieldsAsZeroAndEmpty() {
+        mongoRepository.save(new IntegrationSyncLogDocumentMapper().toDocument(syncLog(ORG_ID, null)));
+        var raw = mongoRepository.findAll().get(0);
+        raw.setUnmappedTypes(null);
+        mongoRepository.save(raw);
+
+        var found = repository.findByOrganizationIdAndIntegration(ORG_ID, Integration.AZURE_DEVOPS, null, 10);
+
+        assertThat(found.get(0).getItemsUnmappedType()).isZero();
+        assertThat(found.get(0).getUnmappedTypes()).isEmpty();
+    }
 }

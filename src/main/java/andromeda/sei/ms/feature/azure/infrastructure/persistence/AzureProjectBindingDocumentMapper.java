@@ -62,7 +62,7 @@ public class AzureProjectBindingDocumentMapper {
                         .toList();
         List<TypeMapping> typeMappings = doc.getTypeMappings() == null ? List.of() :
                 doc.getTypeMappings().stream()
-                        .map(t -> new TypeMapping(t.getRawType(), t.getResolvedType()))
+                        .map(t -> new TypeMapping(t.getRawType(), t.getResolvedType(), Boolean.TRUE.equals(t.getReceivesAi())))
                         .toList();
         List<FieldMapping> fieldMappings = doc.getFieldMappings() == null ? List.of() :
                 doc.getFieldMappings().stream()
@@ -92,7 +92,7 @@ public class AzureProjectBindingDocumentMapper {
                         .toList();
         List<AzureProjectBindingDocument.TypeMappingDocument> typeMappings = config.getTypeMappings() == null ? List.of() :
                 config.getTypeMappings().stream()
-                        .map(t -> new AzureProjectBindingDocument.TypeMappingDocument(t.getRawType(), t.getResolvedType()))
+                        .map(t -> new AzureProjectBindingDocument.TypeMappingDocument(t.getRawType(), t.getResolvedType(), t.isReceivesAi()))
                         .toList();
         List<AzureProjectBindingDocument.FieldMappingDocument> fieldMappings = config.getFieldMappings() == null ? List.of() :
                 config.getFieldMappings().stream()

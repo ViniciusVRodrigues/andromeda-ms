@@ -22,5 +22,7 @@ public record SyncLogOutput(
         String errorCode,
         String errorMessage,
         Integer httpStatus,
-        String errorDetail
+        String errorDetail,
+        int itemsUnmappedType,
+        java.util.List<String> unmappedTypes
 ) {}

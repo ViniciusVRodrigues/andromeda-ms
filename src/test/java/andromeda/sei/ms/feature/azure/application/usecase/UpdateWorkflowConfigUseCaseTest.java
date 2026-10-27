@@ -270,4 +270,27 @@ class UpdateWorkflowConfigUseCaseTest {
                         List.of(), null, WorkflowConfig.ConfigSource.CUSTOM),
                 true, NOW, NOW, null);
     }
+    @Test
+    void shouldStoreReceivesAiPerTypeAndTreatAbsentAsFalse() {
+        AzureProjectBinding binding = bindingWithNonEmptyMappings();
+        when(azureProjectBindingRepository.findByIdAndOrganizationIdAndActiveTrue("bind-1", "org-1"))
+                .thenReturn(Optional.of(binding));
+        when(azureProjectBindingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var input = new UpdateWorkflowConfigInput(
+                List.of(new UpdateWorkflowConfigInput.StatusMappingInput("Bug", "Active", WorkItem.ResolvedStatus.IN_PROGRESS)),
+                List.of(new UpdateWorkflowConfigInput.TypeMappingInput("Bug", WorkItem.ResolvedType.BUG, true),
+                        new UpdateWorkflowConfigInput.TypeMappingInput("Task", WorkItem.ResolvedType.TASK, null),
+                        new UpdateWorkflowConfigInput.TypeMappingInput("Epic", WorkItem.ResolvedType.EPIC, false)),
+                List.of(), null, List.of());
+
+        AzureProjectBinding result = useCase.execute("bind-1", input);
+
+        var types = result.getWorkflowConfig().getTypeMappings();
+        assertThat(types).extracting(TypeMapping::getRawType, TypeMapping::isReceivesAi)
+                .containsExactly(
+                        org.assertj.core.groups.Tuple.tuple("Bug", true),
+                        org.assertj.core.groups.Tuple.tuple("Task", false),
+                        org.assertj.core.groups.Tuple.tuple("Epic", false));
+    }
 }

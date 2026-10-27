@@ -22,7 +22,8 @@ public record UpdateWorkflowConfigRequest(
 
     public record TypeMappingRequest(
             @NotNull String rawType,
-            @NotNull WorkItem.ResolvedType resolvedType
+            @NotNull WorkItem.ResolvedType resolvedType,
+            Boolean receivesAi
     ) {}
 
     public record FieldMappingRequest(

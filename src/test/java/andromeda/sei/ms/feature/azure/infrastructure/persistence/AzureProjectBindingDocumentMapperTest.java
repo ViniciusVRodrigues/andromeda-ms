@@ -110,4 +110,29 @@ class AzureProjectBindingDocumentMapperTest {
         assertThat(binding.getLastSyncAt()).isEqualTo(NOW);
         assertThat(binding.getWorkItemsWatermark()).isNull();
     }
+    @Test
+    void shouldReadNullReceivesAiAsFalseAndRoundTripTrue() {
+        var legacy = new AzureProjectBindingDocument.TypeMappingDocument();
+        legacy.setRawType("Bug");
+        legacy.setResolvedType(WorkItem.ResolvedType.BUG);
+        var withAi = new AzureProjectBindingDocument.TypeMappingDocument("Task", WorkItem.ResolvedType.TASK, true);
+        AzureProjectBindingDocument doc = AzureProjectBindingDocument.builder()
+                .id("bind-1").organizationId("org-1").projectId("proj-1").azureProjectId("azure-1")
+                .azureProjectName("Azure Proj").syncEnabled(true)
+                .workflowConfig(AzureProjectBindingDocument.WorkflowConfigDocument.builder()
+                        .statusMappings(List.of()).typeMappings(List.of(legacy, withAi))
+                        .fieldMappings(List.of()).hierarchyLevels(List.of())
+                        .configSource(WorkflowConfig.ConfigSource.CUSTOM.name()).build())
+                .active(true).createdAt(NOW).updatedAt(NOW).build();
+
+        AzureProjectBinding binding = mapper.toDomain(doc);
+
+        var types = binding.getWorkflowConfig().getTypeMappings();
+        assertThat(types.get(0).isReceivesAi()).isFalse();
+        assertThat(types.get(1).isReceivesAi()).isTrue();
+
+        var back = mapper.toDocument(binding).getWorkflowConfig().getTypeMappings();
+        assertThat(back.get(0).getReceivesAi()).isFalse();
+        assertThat(back.get(1).getReceivesAi()).isTrue();
+    }
 }
