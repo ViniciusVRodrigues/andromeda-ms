@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.azure.domain;
 
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -7,8 +9,11 @@ public class WorkflowConfig {
 
     public enum ConfigSource { DEFAULT, CUSTOM }
 
-    public static final String DEFAULT_EFFORT_FIELD_REFERENCE_NAME = "Microsoft.VSTS.Scheduling.StoryPoints";
-    public static final String DEFAULT_EFFORT_FIELD_TYPE = "double";
+    /** Default COMPLEXITY field of an unconfigured binding: the story points of Story-level types. */
+    public static final String DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME = "Microsoft.VSTS.Scheduling.StoryPoints";
+    /** Default EFFORT field of an unconfigured binding: the hours logged on Task-level types. */
+    public static final String DEFAULT_EFFORT_FIELD_REFERENCE_NAME = "Microsoft.VSTS.Scheduling.CompletedWork";
+    public static final String DEFAULT_FIELD_TYPE = "double";
 
     private List<StatusMapping> statusMappings;
     private List<TypeMapping> typeMappings;
@@ -69,8 +74,11 @@ public class WorkflowConfig {
      *   <li>Exact match on (target, rawType), case/whitespace-insensitive.</li>
      *   <li>Wildcard match: an entry for target whose {@code workItemType} is {@code null}
      *       (legacy-compatibility sentinel meaning "applies to all work item types").</li>
-     *   <li>Implicit default EFFORT-to-StoryPoints mapping when this config is DEFAULT
-     *       (unconfigured) and no explicit/wildcard mapping exists. CUSTOM configs never receive
+     *   <li>Implicit default when this config is DEFAULT (unconfigured) and no explicit/wildcard
+     *       mapping exists (complexity-effort D5): COMPLEXITY to StoryPoints on Story-level types
+     *       (STORY, FEATURE, BUG) and EFFORT to CompletedWork on Task-level types (TASK, SUB_TASK).
+     *       The level comes from the type mapping, with an unmapped type taken as TASK like the sync
+     *       does; without a {@code rawType} the target's default applies. CUSTOM configs never receive
      *       an implicit default.</li>
      *   <li>Empty.</li>
      * </ol>
@@ -92,14 +100,32 @@ public class WorkflowConfig {
             if (wildcard.isPresent()) return wildcard;
         }
 
-        if (configSource == ConfigSource.DEFAULT && target == FieldMapping.InternalFieldTarget.EFFORT) {
-            return Optional.of(new FieldMapping(
-                    FieldMapping.InternalFieldTarget.EFFORT,
-                    null,
-                    DEFAULT_EFFORT_FIELD_REFERENCE_NAME,
-                    DEFAULT_EFFORT_FIELD_TYPE));
+        if (configSource == ConfigSource.DEFAULT) return implicitDefault(target, rawType);
+        return Optional.empty();
+    }
+
+    private Optional<FieldMapping> implicitDefault(FieldMapping.InternalFieldTarget target, String rawType) {
+        WorkItem.ResolvedType level = rawType == null ? null : resolvedTypeOf(rawType);
+        boolean storyLevel = level == WorkItem.ResolvedType.STORY || level == WorkItem.ResolvedType.FEATURE
+                || level == WorkItem.ResolvedType.BUG;
+        boolean taskLevel = level == WorkItem.ResolvedType.TASK || level == WorkItem.ResolvedType.SUB_TASK;
+        if (target == FieldMapping.InternalFieldTarget.COMPLEXITY && (rawType == null || storyLevel)) {
+            return Optional.of(new FieldMapping(target, null, DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME, DEFAULT_FIELD_TYPE));
+        }
+        if (target == FieldMapping.InternalFieldTarget.EFFORT && (rawType == null || taskLevel)) {
+            return Optional.of(new FieldMapping(target, null, DEFAULT_EFFORT_FIELD_REFERENCE_NAME, DEFAULT_FIELD_TYPE));
         }
         return Optional.empty();
+    }
+
+    /** Same rule as the sync's {@code resolveType}: the type mapping, or TASK when the type is not mapped. */
+    private WorkItem.ResolvedType resolvedTypeOf(String rawType) {
+        if (typeMappings == null) return WorkItem.ResolvedType.TASK;
+        return typeMappings.stream()
+                .filter(m -> rawType.equalsIgnoreCase(m.getRawType()))
+                .map(TypeMapping::getResolvedType)
+                .findFirst()
+                .orElse(WorkItem.ResolvedType.TASK);
     }
 
     // Matches the normalization idiom used elsewhere for Azure raw type/status comparisons (see

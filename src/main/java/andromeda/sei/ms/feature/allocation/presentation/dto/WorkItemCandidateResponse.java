@@ -6,5 +6,7 @@ public record WorkItemCandidateResponse(
         String sprintName,
         String type,
         String externalId,
-        Double storyPoints
+        Double storyPoints,
+        Double complexity,
+        Double effort
 ) {}

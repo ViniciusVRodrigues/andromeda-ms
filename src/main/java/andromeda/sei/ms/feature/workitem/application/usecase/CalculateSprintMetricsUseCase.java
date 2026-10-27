@@ -75,6 +75,8 @@ public class CalculateSprintMetricsUseCase {
         DurationStat cycle = Percentiles.of(done.stream().map(WorkItem::getCycleTimeHours).toList());
         DurationStat lead = Percentiles.of(done.stream().map(WorkItem::getLeadTimeHours).toList());
         metrics.setPlannedEffort(summary.plannedOrZero());
+        metrics.setPlannedComplexity(summary.plannedComplexity());
+        metrics.setDeliveredComplexity(summary.deliveredComplexity());
         metrics.setCycleTimeP50(cycle.p50());
         metrics.setCycleTimeP90(cycle.p90());
         metrics.setLeadTimeP50(lead.p50());

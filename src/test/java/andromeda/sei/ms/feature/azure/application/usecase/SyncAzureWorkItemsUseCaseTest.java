@@ -183,7 +183,7 @@ class SyncAzureWorkItemsUseCaseTest {
     }
 
     @Test
-    void shouldApplyEffortFromDefaultStoryPointsMappingAndDualWriteStoryPoints() {
+    void shouldApplyComplexityFromDefaultStoryPointsMappingOnStoryTierItems() {
         when(azureDevOpsClient.queryWorkItemIdsPage(anyString(), anyString(), anyString(), isNull(), isNull(), any()))
                 .thenReturn(List.of(100));
         AdoWorkItemDto item = new AdoWorkItemDto(100, Map.of(
@@ -206,9 +206,10 @@ class SyncAzureWorkItemsUseCaseTest {
         ArgumentCaptor<WorkItem> captor = ArgumentCaptor.forClass(WorkItem.class);
         verify(workItemRepository, atLeastOnce()).save(captor.capture());
         WorkItem firstSaved = captor.getAllValues().get(0);
-        assertThat(firstSaved.getEffort()).isEqualTo(5.0);
-        assertThat(firstSaved.getEffortSource()).isEqualTo(FieldValueSource.AZURE_SYNC);
-        assertThat(firstSaved.getStoryPoints()).isEqualTo(5.0);
+        // story-tier (Bug) + default mapping: StoryPoints is Complexity; Effort is for Tasks (CompletedWork)
+        assertThat(firstSaved.getComplexity()).isEqualTo(5.0);
+        assertThat(firstSaved.getComplexitySource()).isEqualTo(FieldValueSource.AZURE_SYNC);
+        assertThat(firstSaved.getEffort()).isNull();
     }
 
     @Test

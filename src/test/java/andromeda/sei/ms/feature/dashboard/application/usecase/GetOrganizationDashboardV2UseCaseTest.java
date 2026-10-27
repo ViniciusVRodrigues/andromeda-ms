@@ -12,6 +12,7 @@ import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.PortfolioRow;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.SprintPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectCost;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.SyncOutcomeDay;
 import andromeda.sei.ms.feature.dashboard.application.v2.OrganizationDashboardData;
@@ -322,6 +323,36 @@ class GetOrganizationDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_reportComplexityDeliveredAndRatios_perProject_withoutDividingByZero() {
+        WorkItem story = done("a1", A, WorkItem.ResolvedType.STORY, 20.0, "2026-08-04T10:00:00Z");
+        story.setComplexity(3.0);
+        WorkItem t1 = done("t1", A, WorkItem.ResolvedType.TASK, 4.0, "2026-08-04T10:00:00Z");
+        t1.setParentExternalId(story.getExternalId());
+        WorkItem t2 = done("t2", A, WorkItem.ResolvedType.TASK, 8.0, "2026-08-04T10:00:00Z");
+        t2.setParentExternalId(story.getExternalId());
+        itemsByProject.get(A).addAll(List.of(story, t1, t2));
+        WorkItem noPoints = done("b1", B, WorkItem.ResolvedType.STORY, null, "2026-08-04T10:00:00Z");
+        noPoints.setComplexity(null);
+        itemsByProject.get(B).add(noPoints);
+        usage.add(usage("au1", "u-a", "2026-08-04", "al1", "6.00", "claude"));
+        allocations(allocation("al1", "u-a", "2026-08-04", "au1", split("a1", "1.00")));
+
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A, B), 90);
+
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.kpis().aiCostPerHour()).isEqualByComparingTo("0.5");
+        PortfolioRow rowA = out.portfolio().stream().filter(r -> r.projectId().equals(A)).findFirst().orElseThrow();
+        assertThat(rowA.complexityDelivered()).isEqualTo(3.0);
+        assertThat(rowA.aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(rowA.aiCostPerHour()).isEqualByComparingTo("0.5");
+        PortfolioRow rowB = out.portfolio().stream().filter(r -> r.projectId().equals(B)).findFirst().orElseThrow();
+        assertThat(rowB.complexityDelivered()).isNull();
+        assertThat(rowB.aiCostPerPoint()).isNull();
+        assertThat(rowB.aiCostPerHour()).isNull();
+    }
+
+    @Test
     void should_splitTheAllocatedCostByProject_andReportTheUnclaimedCostApart_toACallerWhoSeesEverything() {
         itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 4.0, "2026-08-04T10:00:00Z"));
         itemsByProject.get(B).add(done("b1", B, WorkItem.ResolvedType.STORY, 1.0, "2026-08-04T10:00:00Z"));
@@ -456,6 +487,117 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(integrations.projects().getFirst().azureProject()).isEqualTo("Orion Azure");
     }
 
+
+    /** complexity-effort MS-4: one project, two sprints crossing the period (one current), AI and hours per sprint. */
+    @Test
+    void should_listTheSprintsCrossingThePeriod_withAiCostTokensHoursAndRatios() {
+        sprints.add(sprint("s1", A, Sprint.TimeFrame.PAST, "2026-09-21", "2026-10-02"));
+        sprints.add(sprint("s2", A, Sprint.TimeFrame.CURRENT, "2026-10-05", "2026-10-16"));
+        sprints.add(sprint("s0", A, Sprint.TimeFrame.PAST, "2026-01-05", "2026-01-16"));
+        WorkItem delivered = inSprint(done("a1", A, WorkItem.ResolvedType.STORY, 5.0, "2026-09-25T10:00:00Z"), "s1");
+        delivered.setLeadTimeHours(40.0);
+        WorkItem task = WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 10.0, "ext-a1");
+        task.setProjectId(A);
+        task.setSprintId("s1");
+        task.setCompletedAt(Instant.parse("2026-09-25T10:00:00Z"));
+        itemsByProject.get(A).addAll(List.of(delivered, task,
+                inSprint(item("a2", A, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 5.0), "s1"),
+                inSprint(item("a3", A, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 8.0), "s2")));
+        usage.add(usage("au1", "u-a", "2026-09-25", "al1", "6.00", "claude"));
+        allocations(allocation("al1", "u-a", "2026-09-25", "au1", split("a1", "1")));
+
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A), 90);
+
+        assertThat(out.sprintHistory().projects()).hasSize(1);
+        var project = out.sprintHistory().projects().getFirst();
+        assertThat(project.projectId()).isEqualTo(A);
+        assertThat(project.name()).isEqualTo("Andromeda");
+        assertThat(project.sprints()).as("s0 ended before the period").extracting(SprintPoint::sprintId)
+                .containsExactly("s1", "s2");
+        SprintPoint past = project.sprints().get(0);
+        assertThat(past.startDate()).isEqualTo("2026-09-21");
+        assertThat(past.endDate()).isEqualTo("2026-10-02");
+        assertThat(past.current()).isFalse();
+        assertThat(past.aiCostUsd()).isEqualByComparingTo("6");
+        assertThat(past.aiTokens()).isEqualTo(150L);
+        assertThat(past.complexityPlanned()).isEqualTo(10.0);
+        assertThat(past.complexityDelivered()).isEqualTo(5.0);
+        assertThat(past.effortLogged()).isEqualTo(10.0);
+        assertThat(past.aiCostPerPoint()).isEqualByComparingTo("1.2");
+        assertThat(past.aiCostPerHour()).isEqualByComparingTo("0.6");
+        assertThat(past.hoursPerPoint()).isEqualTo(2.0);
+        assertThat(past.predictabilityPct()).isEqualTo(50.0);
+        assertThat(past.leadTimeHours().p50()).isEqualTo(40.0);
+        assertThat(past.leadTimeHours().n()).isEqualTo(1);
+        assertThat(past.itemsDone()).isEqualTo(1);
+        SprintPoint current = project.sprints().get(1);
+        assertThat(current.current()).isTrue();
+        assertThat(current.complexityPlanned()).isEqualTo(8.0);
+        // nothing delivered: zero divisor, so the ratios stay null (mutation: dividing by zero)
+        assertThat(current.aiCostPerPoint()).isNull();
+        assertThat(current.aiCostPerHour()).isNull();
+        assertThat(current.hoursPerPoint()).isNull();
+        assertThat(current.aiTokens()).isNull();
+        assertThat(current.itemsDone()).isZero();
+        assertThat(current.leadTimeHours().n()).isZero();
+    }
+
+    @Test
+    void should_leaveTheComplexityRatiosNull_when_aSprintHasNoComplexity() {
+        sprints.add(sprint("sb", B, Sprint.TimeFrame.PAST, "2026-09-21", "2026-10-02"));
+        itemsByProject.get(B).add(inSprint(done("b1", B, WorkItem.ResolvedType.BUG, 2.0, "2026-09-25T10:00:00Z"), "sb"));
+        usage.add(usage("au2", "u-b", "2026-09-25", "al2", "4.00", "claude"));
+        allocations(allocation("al2", "u-b", "2026-09-25", "au2", split("b1", "1")));
+
+        SprintPoint point = useCase.execute(ORG, Set.of(B), 90).sprintHistory().projects().getFirst().sprints().getFirst();
+
+        assertThat(point.complexityDelivered()).isNull();
+        assertThat(point.complexityPlanned()).isNull();
+        assertThat(point.hoursPerPoint()).isNull();
+        assertThat(point.aiCostPerPoint()).isNull();
+        assertThat(point.predictabilityPct()).isNull();
+        assertThat(point.aiCostUsd()).isEqualByComparingTo("4");
+        assertThat(point.itemsDone()).isEqualTo(1);
+    }
+
+    /** Mutation "every project": C's sprints, items and cost must not reach the history. */
+    @Test
+    void should_leaveOutTheProjectsWithoutDashboardStrategic() {
+        sprints.add(sprint("sa", A, Sprint.TimeFrame.PAST, "2026-09-21", "2026-10-02"));
+        sprints.add(sprint("sc", C, Sprint.TimeFrame.PAST, "2026-09-21", "2026-10-02"));
+        itemsByProject.get(C).add(inSprint(done("c1", C, WorkItem.ResolvedType.STORY, 8.0, "2026-09-25T10:00:00Z"), "sc"));
+
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A), 90);
+
+        assertThat(out.sprintHistory().projects()).extracting(p -> p.projectId()).containsExactly(A);
+        assertThat(out.sprintHistory().projects().getFirst().sprints()).extracting(SprintPoint::sprintId)
+                .containsExactly("sa");
+        verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(ORG, C);
+    }
+
+    @Test
+    void should_readNothingOfAnotherOrganization_forTheSprintHistory() {
+        sprints.add(sprint("sa", A, Sprint.TimeFrame.PAST, "2026-09-21", "2026-10-02"));
+
+        OrganizationDashboardV2Output out = useCase.execute("org-2", Set.of(A), 90);
+
+        assertThat(out.sprintHistory().projects()).isEmpty();
+        verify(sprintRepository, never()).findAllByOrganizationId(ORG);
+    }
+
+    @Test
+    void should_reachBackToTheStartOfASprintThatBeganBeforeThePreviousPeriod() {
+        // 30 days: current 2026-09-12..10-11, previous 2026-08-13..09-11; the sprint began 2026-07-01
+        sprints.add(sprint("long", A, Sprint.TimeFrame.CURRENT, "2026-07-01", "2026-10-30"));
+        itemsByProject.get(A).add(inSprint(item("a1", A, WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 3.0), "long"));
+        useCase.execute(ORG, Set.of(A), 30);
+
+        var from = org.mockito.ArgumentCaptor.forClass(LocalDate.class);
+        verify(allocationRepository).findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                from.capture(), any());
+        assertThat(from.getValue()).isEqualTo(LocalDate.of(2026, 7, 1));
+    }
+
     private void allocations(AiUsageAllocation... allocations) {
         when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
                 any(), any())).thenReturn(List.of(allocations));
@@ -492,6 +634,7 @@ class GetOrganizationDashboardV2UseCaseTest {
                                  Double effort) {
         WorkItem item = WorkItemFixture.item(id, type, status, effort, null);
         item.setProjectId(projectId);
+        if (type == WorkItem.ResolvedType.STORY) item.setComplexity(effort);
         return item;
     }
 

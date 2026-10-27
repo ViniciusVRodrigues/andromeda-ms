@@ -4,7 +4,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import org.junit.jupiter.api.BeforeEach;
@@ -38,7 +38,7 @@ class AcceptAllocationUseCaseTest {
     private WorkItemRepository workItemRepository;
 
     @Mock
-    private CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    private CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
     @InjectMocks
     private AcceptAllocationUseCase useCase;

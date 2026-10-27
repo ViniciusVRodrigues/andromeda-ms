@@ -53,7 +53,9 @@ public record IndividualDashboardV2Output(
     public record SprintStats(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
                               DurationStat cycleTimeHours, DurationStat leadTimeHours, int prsMerged,
                               DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
-                              Double avgTokensPerSp) {}
+                              Double avgTokensPerSp, Double complexityPlanned, Double complexityDelivered,
+                              Double effortLogged, Double avgTokensPerPoint, Double avgTokensPerHour,
+                              int unitsWithoutComplexity) {}
 
     /**
      * {@link SprintStats} of the selected sprint plus the person's open pull requests (any age) — a
@@ -62,7 +64,9 @@ public record IndividualDashboardV2Output(
     public record Kpis(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
                        DurationStat cycleTimeHours, DurationStat leadTimeHours, int prsMerged,
                        DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
-                       Double avgTokensPerSp, Integer prsOpen) {}
+                       Double avgTokensPerSp, Integer prsOpen, Double complexityPlanned, Double complexityDelivered,
+                       Double effortLogged, Double avgTokensPerPoint, Double avgTokensPerHour,
+                       int unitsWithoutComplexity) {}
 
     /** Reviews the person submitted on the project's pull requests in the sprint (bots excluded). */
     public record ReviewsGiven(int total, int approved, int changesRequested, int commented, int rejected) {
@@ -94,5 +98,6 @@ public record IndividualDashboardV2Output(
                                @JsonProperty("isSelected") boolean isSelected,
                                @JsonProperty("isCurrent") boolean isCurrent,
                                Double spPlanned, Double spDelivered, DurationStat cycleTimeHours,
-                               BigDecimal aiCostUsd, Long aiTokens) {}
+                               BigDecimal aiCostUsd, Long aiTokens, Double complexityPlanned,
+                               Double complexityDelivered, Double effortLogged) {}
 }

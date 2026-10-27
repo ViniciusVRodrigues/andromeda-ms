@@ -193,7 +193,8 @@ public class AiUsageAllocationController {
                 .execute(orgId, user.getUserId(), day)
                 .stream()
                 .map(c -> new WorkItemCandidateResponse(
-                        c.workItemId(), c.title(), c.sprintName(), c.type(), c.externalId(), c.storyPoints()))
+                        c.workItemId(), c.title(), c.sprintName(), c.type(), c.externalId(), c.storyPoints(),
+                        c.complexity(), c.effort()))
                 .toList();
         return ResponseEntity.ok(response);
     }

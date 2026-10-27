@@ -155,7 +155,7 @@ class GetProjectOverviewV2UseCaseTest {
                 sprint("s2", "Sprint 2", Sprint.TimeFrame.PAST, "2026-08-17", "2026-08-28"),
                 sprint("s3", "Sprint 3", Sprint.TimeFrame.CURRENT, "2026-10-05", "2026-10-16"));
         items.addAll(List.of(inSprint(done("a1", WorkItem.ResolvedType.STORY, 5.0, "2026-08-10T10:00:00Z"), "s1"),
-                inSprint(WorkItemFixture.item("a2", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 3.0, null), "s1"),
+                inSprint(withPoints(WorkItemFixture.item("a2", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 3.0, null)), "s1"),
                 inSprint(done("b1", WorkItem.ResolvedType.STORY, 4.0, "2026-08-20T10:00:00Z"), "s2"),
                 inSprint(done("c1", WorkItem.ResolvedType.STORY, 2.0, "2026-06-20T10:00:00Z"), "s0")));
         AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "10.00", "claude");
@@ -184,6 +184,38 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.ai().costByBucket().get(0).byModel().get("claude")).isEqualByComparingTo("0");
         assertThat(out.project().team()).isEqualTo("Core");
         assertThat(out.dataQuality().itemsWithEstimatePct()).isEqualTo(100.0);
+    }
+
+    /** complexity-effort 3.1: Story 3 pts (Tasks 4 h + 8 h), Bug without points, cost US$ 6. */
+    @Test
+    void should_reportComplexityEffortAndRatios_fromTheCommonFixture() {
+        sprints(sprint("s1", "Sprint 1", Sprint.TimeFrame.PAST, "2026-08-03", "2026-08-14"));
+        WorkItem story = inSprint(done("a1", WorkItem.ResolvedType.STORY, 20.0, "2026-08-10T10:00:00Z"), "s1");
+        story.setComplexity(3.0);
+        WorkItem t1 = inSprint(WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 4.0, "ext-a1"), "s1");
+        WorkItem t2 = inSprint(WorkItemFixture.item("t2", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 8.0, "ext-a1"), "s1");
+        WorkItem bug = inSprint(WorkItemFixture.item("bg", WorkItem.ResolvedType.BUG, WorkItem.ResolvedStatus.TODO), "s1");
+        items.addAll(List.of(story, t1, t2, bug));
+        AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "6.00", "claude");
+        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+                any(), any())).thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
+        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
+                .thenReturn(List.of(usage));
+
+        ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
+        assertThat(out.kpis().effortLogged()).isEqualTo(12.0);
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.kpis().aiCostPerHour()).isEqualByComparingTo("0.5");
+        var row = out.sprints().get(0);
+        assertThat(row.complexityPlanned()).isEqualTo(3.0);
+        assertThat(row.complexityDelivered()).isEqualTo(3.0);
+        assertThat(row.predictabilityPct()).isEqualTo(100.0);
+        assertThat(row.aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(row.aiCostPerHour()).isEqualByComparingTo("0.5");
+        assertThat(out.dataQuality().itemsWithComplexity()).isEqualTo(1);
+        assertThat(out.dataQuality().tasksWithEffort()).isEqualTo(2);
     }
 
     @Test
@@ -374,7 +406,7 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.ai().models()).isEmpty();
         assertThat(out.ai().costByBucket()).hasSize(6).allSatisfy(b -> assertThat(b.byModel()).isEmpty());
         assertThat(out.ai().tokensPerSp()).isNull();
-        assertThat(out.dataQuality()).isEqualTo(new ProjectOverviewV2Output.DataQuality(null, null, null));
+        assertThat(out.dataQuality()).isEqualTo(new ProjectOverviewV2Output.DataQuality(null, null, null, 0, 0));
         assertThat(out.project().team()).isNull();
         assertThat(out.asOf()).isEqualTo(NOW);
     }
@@ -388,6 +420,11 @@ class GetProjectOverviewV2UseCaseTest {
         item.setCompletedAt(Instant.parse(completedAt));
         item.setCycleTimeHours(10.0);
         item.setLeadTimeHours(20.0);
+        return withPoints(item);
+    }
+
+    private static WorkItem withPoints(WorkItem item) {
+        if (item.getResolvedType() == WorkItem.ResolvedType.STORY) item.setComplexity(item.getEffort());
         return item;
     }
 

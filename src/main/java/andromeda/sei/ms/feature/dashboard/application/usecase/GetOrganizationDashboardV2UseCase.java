@@ -28,6 +28,9 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboa
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectSources;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.RepoRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.RepoSource;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectSprints;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.SprintHistory;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.SprintPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Subscription;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.SyncOutcomeDay;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ThroughputByProjectRow;
@@ -43,6 +46,7 @@ import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets;
 import andromeda.sei.ms.feature.dashboard.application.v2.PeriodBuckets.Bucket;
 import andromeda.sei.ms.feature.dashboard.application.v2.PortfolioHealth;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems;
+import andromeda.sei.ms.feature.dashboard.application.v2.AiRatios;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectPeriodItems.SprintFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
 import andromeda.sei.ms.feature.dashboard.application.v2.SyncRunsSummary;
@@ -155,8 +159,9 @@ public class GetOrganizationDashboardV2UseCase {
             var engineering = sections.supply(() -> engineering(ctx));
             var ai = sections.supply(() -> ai(ctx));
             var integrations = sections.supply(() -> integrations(ctx));
+            var sprintHistory = sections.supply(() -> sprintHistory(ctx));
             return new OrganizationDashboardV2Output(periodInfo(ctx), join(kpis), join(previous), join(portfolio),
-                    join(delivery), join(engineering), join(ai), join(integrations), now);
+                    join(delivery), join(engineering), join(ai), join(integrations), join(sprintHistory), now);
         }
     }
 
@@ -178,6 +183,10 @@ public class GetOrganizationDashboardV2UseCase {
         Indexed ix = ctx.indexed();
         List<WorkItem> units = ix.unitsIn(range);
         Double sp = spDelivered(ix, range);
+        Double points = ix.projects().values().stream().map(p -> p.items().complexityDeliveredIn(range))
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
+        Double hours = ix.projects().values().stream().map(p -> p.items().effortLoggedIn(range))
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         AiFigures ai = current ? AiFigures.of(usageIn(ctx, range)) : AiFigures.ofTotals(s.ai().previous());
         // the cost allocated (validated) to the visible projects, for every caller (coordinator's decision)
         BigDecimal cost = sum(ix.allocatedIn(current).values());
@@ -188,7 +197,8 @@ public class GetOrganizationDashboardV2UseCase {
                 cfr(ctx, s.vcs().changes(), ix.completed(), range),
                 (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAt())).count(),
                 (int) s.vcs().commitsIn(range), timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
-                ai.tokens(), perSp(cost, sp), ai.activeUsers());
+                ai.tokens(), AiRatios.per(cost, sp), ai.activeUsers(), points, AiRatios.per(cost, points),
+                AiRatios.per(cost, hours));
     }
 
     /** The people's AI cost, tokens and active users of one period. */
@@ -237,6 +247,10 @@ public class GetOrganizationDashboardV2UseCase {
         DayRange range = ctx.period().current();
         List<WorkItem> units = within(view.units(), range);
         Double sp = items.effort().scope().totalEffort(units);
+        Double points = items.complexityDeliveredIn(range);
+        Double hours = items.effortLoggedIn(range);
+        Double plannedPoints = items.sprintsEndingIn(range).stream().map(SprintFigures::complexityPlanned)
+                .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         BigDecimal cost = ctx.indexed().allocatedIn(true).getOrDefault(project.getId(), BigDecimal.ZERO);
         CurrentSprint current = currentSprint(items, ctx.today());
         Double gap = current == null || current.elapsedPct() == null || current.progressPct() == null ? null
@@ -253,8 +267,9 @@ public class GetOrganizationDashboardV2UseCase {
                 count(view.doneThroughput(), range), sp,
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()), cfr,
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()), stale, cost,
-                perSp(cost, sp), bucketCounts(ctx, view.doneThroughput()),
-                PortfolioHealth.of(lastPredictability, stale, cfr, gap));
+                AiRatios.per(cost, sp), bucketCounts(ctx, view.doneThroughput()),
+                PortfolioHealth.of(lastPredictability, stale, cfr, gap), points, plannedPoints,
+                AiRatios.per(cost, points), AiRatios.per(cost, hours));
     }
 
     /** The current sprint (latest start among those covering today); {@code null} without one. */
@@ -268,7 +283,7 @@ public class GetOrganizationDashboardV2UseCase {
                             : f.delivered() / f.planned() * PERCENT;
                     Double elapsed = meta.dayCount() == 0 ? null : (double) meta.dayIndex() / meta.dayCount() * PERCENT;
                     return new CurrentSprint(f.sprint().getId(), f.sprint().getName(), f.delivered(), f.planned(),
-                            progress, elapsed);
+                            progress, elapsed, f.complexityDelivered(), f.complexityPlanned());
                 })
                 .orElse(null);
     }
@@ -326,6 +341,45 @@ public class GetOrganizationDashboardV2UseCase {
             if (index >= 0) groups.get(index).add(value);
         }
         return groups;
+    }
+
+    // ── sprint history ──
+
+    /**
+     * Per visible project, the sprints crossing the current period (oldest first, one per shared iteration —
+     * the selection of {@link ProjectPeriodItems#sprintsOverlapping}). Cost and tokens are the VALIDATED
+     * allocation to the project over the sprint's days, the base of the project overview's {@code SprintRow};
+     * complexity, hours, predictability and the items done come from the sprint's {@link SprintFigures}.
+     */
+    private static SprintHistory sprintHistory(Context ctx) {
+        DayRange period = ctx.period().current();
+        List<ProjectSprints> projects = ctx.snapshot().projects().stream().map(project -> {
+            ProjectView view = ctx.indexed().projects().get(project.getId());
+            Map<LocalDate, DayAllocation> days = ctx.indexed().allocatedByDay().getOrDefault(project.getId(), Map.of());
+            List<SprintPoint> sprints = view == null ? List.<SprintPoint>of()
+                    : view.items().sprintsOverlapping(period).stream().map(f -> sprintPoint(f, days)).toList();
+            return new ProjectSprints(project.getId(), project.getName(), sprints);
+        }).toList();
+        return new SprintHistory(projects);
+    }
+
+    private static SprintPoint sprintPoint(SprintFigures f, Map<LocalDate, DayAllocation> days) {
+        DayRange window = new DayRange(f.window().startDay(), f.window().endDay());
+        BigDecimal cost = BigDecimal.ZERO;
+        BigDecimal tokens = null;
+        for (Map.Entry<LocalDate, DayAllocation> day : days.entrySet()) {
+            if (!window.containsDay(day.getKey())) continue;
+            cost = cost.add(day.getValue().cost());
+            tokens = tokens == null ? day.getValue().tokens() : tokens.add(day.getValue().tokens());
+        }
+        Double hours = f.summary().effortLogged();
+        List<WorkItem> done = f.summary().doneUnits().stream().filter(u -> !ProjectPeriodItems.isContainer(u)).toList();
+        return new SprintPoint(f.sprint().getId(), f.sprint().getName(), f.window().startDay().toString(),
+                f.window().endDay().toString(), DashboardV2Views.isCurrent(f.sprint()), cost,
+                tokens == null ? null : tokens.setScale(0, RoundingMode.HALF_UP).longValue(), f.complexityPlanned(),
+                f.complexityDelivered(), hours, AiRatios.per(cost, f.complexityDelivered()), AiRatios.per(cost, hours),
+                AiRatios.hoursPer(hours, f.complexityDelivered()), f.predictabilityPct(),
+                Percentiles.of(done.stream().map(WorkItem::getLeadTimeHours).toList()), done.size());
     }
 
     // ── delivery / engineering ──
@@ -598,11 +652,6 @@ public class GetOrganizationDashboardV2UseCase {
         return values.stream().filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    private static BigDecimal perSp(BigDecimal cost, Double delivered) {
-        if (cost == null || delivered == null || delivered <= 0) return null;
-        return cost.divide(BigDecimal.valueOf(delivered), MONEY_SCALE, RoundingMode.HALF_UP);
-    }
-
     private static int count(List<WorkItem> items, DayRange range) {
         return (int) items.stream().filter(i -> range.contains(i.getCompletedAt())).count();
     }
@@ -641,7 +690,8 @@ public class GetOrganizationDashboardV2UseCase {
     record Indexed(Map<String, ProjectView> projects, Map<String, List<VcsPullRequest>> prsByRepo,
                    Map<String, List<MergedChange>> changesByRepo, Map<String, String> projectNamesByRepo,
                    List<CompletedWorkItem> completed, Map<String, BigDecimal> allocatedCurrent,
-                   Map<String, BigDecimal> allocatedPrevious) {
+                   Map<String, BigDecimal> allocatedPrevious,
+                   Map<String, Map<LocalDate, DayAllocation>> allocatedByDay) {
 
         static Indexed of(Snapshot s, DashboardPeriod period) {
             Map<String, List<VcsPullRequest>> prsByRepo = s.vcs().pullRequests().stream()
@@ -664,7 +714,37 @@ public class GetOrganizationDashboardV2UseCase {
                                     set -> String.join(PROJECT_SEPARATOR, set)))));
             List<CompletedWorkItem> completed = projects.values().stream().flatMap(p -> p.completed().stream()).toList();
             return new Indexed(projects, prsByRepo, changesByRepo, projectNamesByRepo, completed,
-                    allocated(s, period.current()), allocated(s, period.previous()));
+                    allocated(s, period.current()), allocated(s, period.previous()), allocatedByDay(s));
+        }
+
+        /**
+         * Cost and tokens (input + output) allocated (validated) to each visible project on each day, over
+         * every allocation loaded: the same basis as {@link #allocated}, weighted by the split percentage.
+         * One pass over allocations × splits; a sprint sums its days from here.
+         */
+        static Map<String, Map<LocalDate, DayAllocation>> allocatedByDay(Snapshot s) {
+            Map<String, Map<LocalDate, DayAllocation>> byProject = new HashMap<>();
+            for (AiUsageAllocation allocation : s.ai().allocations()) {
+                if (allocation.getDay() == null || allocation.getSplits() == null
+                        || allocation.getAiUsageIds() == null) continue;
+                BigDecimal cost = BigDecimal.ZERO;
+                long tokens = 0;
+                for (String id : allocation.getAiUsageIds()) {
+                    BigDecimal c = s.ai().coveredCosts().get(id);
+                    if (c != null) cost = cost.add(c);
+                    tokens += s.ai().coveredTokens().getOrDefault(id, 0L);
+                }
+                if (cost.signum() == 0 && tokens == 0) continue;
+                for (AllocationSplit split : allocation.getSplits()) {
+                    String projectId = split.getWorkItemId() == null ? null : s.itemProject().get(split.getWorkItemId());
+                    if (projectId == null || split.getPercentage() == null) continue;
+                    DayAllocation share = new DayAllocation(cost.multiply(split.getPercentage()),
+                            split.getPercentage().multiply(BigDecimal.valueOf(tokens)));
+                    byProject.computeIfAbsent(projectId, p -> new HashMap<>())
+                            .merge(allocation.getDay(), share, DayAllocation::plus);
+                }
+            }
+            return byProject;
         }
 
         private static ProjectView view(ProjectPeriodItems items, Set<String> repositoryIds,
@@ -717,6 +797,13 @@ public class GetOrganizationDashboardV2UseCase {
 
         List<WorkItem> unitsIn(DayRange range) {
             return projects.values().stream().flatMap(p -> within(p.units(), range).stream()).toList();
+        }
+    }
+
+    /** Cost and (share-weighted) tokens allocated to one project on one day. */
+    record DayAllocation(BigDecimal cost, BigDecimal tokens) {
+        DayAllocation plus(DayAllocation other) {
+            return new DayAllocation(cost.add(other.cost), tokens.add(other.tokens));
         }
     }
 

@@ -5,6 +5,8 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.azure.domain.AzureConnection;
+import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
@@ -14,6 +16,8 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Out
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.Calibration;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.ComplexityRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.Config;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.EffortHours;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.Outlier;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.EffortLevel;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.EffortRow;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectRoadmapV2Output.EpicRow;
@@ -58,6 +62,7 @@ import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
@@ -78,12 +83,15 @@ public class GetProjectRoadmapV2UseCase {
     static final int PACE_WEEKS = 8;
     private static final int TOP_LIMIT = 8;
     private static final int OVERRIDES_LIMIT = 20;
+    private static final int OUTLIERS_LIMIT = 5;
+    private static final double OUTLIER_FACTOR = 2.0;
+    private static final int QUARTILE_LOW = 25;
+    private static final int QUARTILE_HIGH = 75;
     private static final double HOURS_PER_DAY = 24.0;
     private static final long STALE_DAYS = 60;
     private static final List<Integer> PRIORITIES = List.of(1, 2, 3, 4);
     private static final String EFFORT_LABEL = "Esforço";
     private static final String COMPLEXITY_LABEL = "Complexidade";
-    private static final String SP_SUFFIX = " SP";
     private static final List<StaleBandSpec> STALE_BANDS = List.of(new StaleBandSpec("até 30 dias", 0, 30),
             new StaleBandSpec("30–60 dias", 30, 60), new StaleBandSpec("60–90 dias", 60, 90),
             new StaleBandSpec("mais de 90 dias", 90, null));
@@ -93,6 +101,7 @@ public class GetProjectRoadmapV2UseCase {
     private final SprintRepository sprintRepository;
     private final EffortBearingLevelResolver effortResolver;
     private final AzureProjectBindingRepository bindingRepository;
+    private final AzureConnectionRepository connectionRepository;
     private final DashboardPeopleDirectory peopleDirectory;
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
@@ -101,17 +110,17 @@ public class GetProjectRoadmapV2UseCase {
     @Autowired
     public GetProjectRoadmapV2UseCase(ProjectRepository projectRepository, WorkItemRepository workItemRepository,
                                       SprintRepository sprintRepository, EffortBearingLevelResolver effortResolver,
-                                      AzureProjectBindingRepository bindingRepository,
+                                      AzureProjectBindingRepository bindingRepository, AzureConnectionRepository connectionRepository,
                                       DashboardPeopleDirectory peopleDirectory,
                                       AiUsageAllocationRepository allocationRepository,
                                       AIUsageRepository aiUsageRepository) {
-        this(projectRepository, workItemRepository, sprintRepository, effortResolver, bindingRepository,
+        this(projectRepository, workItemRepository, sprintRepository, effortResolver, bindingRepository, connectionRepository,
                 peopleDirectory, allocationRepository, aiUsageRepository, Clock.systemUTC());
     }
 
     GetProjectRoadmapV2UseCase(ProjectRepository projectRepository, WorkItemRepository workItemRepository,
                                SprintRepository sprintRepository, EffortBearingLevelResolver effortResolver,
-                               AzureProjectBindingRepository bindingRepository, DashboardPeopleDirectory peopleDirectory,
+                               AzureProjectBindingRepository bindingRepository, AzureConnectionRepository connectionRepository, DashboardPeopleDirectory peopleDirectory,
                                AiUsageAllocationRepository allocationRepository, AIUsageRepository aiUsageRepository,
                                Clock clock) {
         this.projectRepository = projectRepository;
@@ -119,6 +128,7 @@ public class GetProjectRoadmapV2UseCase {
         this.sprintRepository = sprintRepository;
         this.effortResolver = effortResolver;
         this.bindingRepository = bindingRepository;
+        this.connectionRepository = connectionRepository;
         this.peopleDirectory = peopleDirectory;
         this.allocationRepository = allocationRepository;
         this.aiUsageRepository = aiUsageRepository;
@@ -136,7 +146,7 @@ public class GetProjectRoadmapV2UseCase {
         ProjectPeriodItems items = ProjectPeriodItems.of(
                 workItemRepository.findAllByOrganizationIdAndProjectId(orgId, projectId), sprints, effortResolver);
         Context ctx = new Context(period.current(), now, items, items.effort().scope(), childrenIndex(items.all()),
-                itemAi(orgId, items.doneUnitsIn(period.current())));
+                itemAi(orgId, items.doneUnitsIn(period.current())), itemUrlBase(orgId, projectId));
         List<FeatureRow> features = features(ctx);
         return new ProjectRoadmapV2Output(
                 new ProjectRoadmapV2Output.Period(periodDays, period.current().first().toString(),
@@ -204,17 +214,38 @@ public class GetProjectRoadmapV2UseCase {
                 .collect(Collectors.groupingBy(WorkItem::getParentExternalId));
     }
 
-    private Config config(String orgId, String projectId, ProjectPeriodItems items) {
-        String effortField = bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
-                .map(GetProjectRoadmapV2UseCase::effortField).orElse(null);
-        return new Config(effortField, new EffortLevel(EffortBearingLevel.AUTO.name(),
-                effortResolver.resolve(null, items.all()).name()));
+    /** {@code {azureOrgUrl}/{azureProject}/_workitems/edit/}; {@code null} when the organization or project is not linked. */
+    private String itemUrlBase(String orgId, String projectId) {
+        Optional<String> orgUrl = connectionRepository.findByOrganizationIdAndActiveTrue(orgId)
+                .map(AzureConnection::getAzureOrgUrl).filter(u -> !u.isBlank());
+        Optional<String> azureProject = bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId)
+                .map(AzureProjectBinding::getAzureProjectName).filter(n -> !n.isBlank());
+        if (orgUrl.isEmpty() || azureProject.isEmpty()) return null;
+        return orgUrl.get().replaceAll("/+$", "") + "/"
+                + java.net.URLEncoder.encode(azureProject.get(), java.nio.charset.StandardCharsets.UTF_8).replace("+", "%20")
+                + "/_workitems/edit/";
     }
 
-    private static String effortField(AzureProjectBinding binding) {
+    private Config config(String orgId, String projectId, ProjectPeriodItems items) {
+        Optional<AzureProjectBinding> binding = bindingRepository
+                .findByOrganizationIdAndProjectIdAndActiveTrue(orgId, projectId);
+        return new Config(binding.map(b -> fieldOf(b, FieldMapping.InternalFieldTarget.EFFORT,
+                        WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME)).orElse(null),
+                new EffortLevel(EffortBearingLevel.AUTO.name(), effortResolver.resolve(null, items.all()).name()),
+                binding.map(b -> fieldOf(b, FieldMapping.InternalFieldTarget.COMPLEXITY,
+                        WorkflowConfig.DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME)).orElse(null));
+    }
+
+    /**
+     * The Azure field mapped to {@code target}: the wildcard or implicit default, else the first per-type
+     * mapping (the migration writes EFFORT per Task type, which the no-type lookup does not see); the
+     * {@code fallback} without a workflow config; {@code null} when nothing is mapped.
+     */
+    private static String fieldOf(AzureProjectBinding binding, FieldMapping.InternalFieldTarget target, String fallback) {
         WorkflowConfig config = binding.getWorkflowConfig();
-        if (config == null) return WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME;
-        return config.resolveFieldMapping(FieldMapping.InternalFieldTarget.EFFORT)
+        if (config == null) return fallback;
+        return config.resolveFieldMapping(target).or(() -> config.getFieldMappings() == null ? Optional.empty()
+                        : config.getFieldMappings().stream().filter(f -> f.getInternalField() == target).findFirst())
                 .map(FieldMapping::getAzureFieldReferenceName).orElse(null);
     }
 
@@ -256,11 +287,18 @@ public class GetProjectRoadmapV2UseCase {
         double recent = orZero(ctx.scope().totalEffort(filter(done, c -> c.getCompletedAt() != null
                 && !c.getCompletedAt().isBefore(paceFrom) && !c.getCompletedAt().isAfter(ctx.now()))));
         Double pace = recent > 0 ? recent / PACE_WEEKS : null;
+        Double complexityTotal = ctx.scope().totalComplexity(children);
+        Double complexityDone = complexityTotal == null ? null : orZero(ctx.scope().totalComplexity(done));
+        double recentPoints = orZero(ctx.scope().totalComplexity(filter(done, c -> c.getCompletedAt() != null
+                && !c.getCompletedAt().isBefore(paceFrom) && !c.getCompletedAt().isAfter(ctx.now()))));
         return new Progress(total, doneEffort, total == null || total <= 0 ? null : doneEffort / total * 100.0,
                 children.size(), done.size(),
                 (int) children.stream().filter(c -> ctx.scope().effectiveEffort(c) == null).count(),
                 total == null ? null : orZero(ctx.scope().totalEffort(filter(done, c -> ctx.range().contains(c.getCompletedAt())))),
-                pace, forecast(total, doneEffort, pace), lastActivity(children));
+                pace, forecast(total, doneEffort, pace), lastActivity(children), complexityTotal, complexityDone,
+                recentPoints > 0 ? recentPoints / PACE_WEEKS : null,
+                complexityTotal == null ? null : orZero(ctx.scope().totalComplexity(
+                        filter(done, c -> ctx.range().contains(c.getCompletedAt())))));
     }
 
     private static Double forecast(Double total, Double done, Double pace) {
@@ -297,7 +335,7 @@ public class GetProjectRoadmapV2UseCase {
                 PRIORITIES.stream().map(p -> priorityRow(ctx, backlog, p)).toList(),
                 dated.stream().sorted(Comparator.comparing(GetProjectRoadmapV2UseCase::changedAt)).limit(TOP_LIMIT)
                         .map(i -> forgotten(ctx, i)).toList(),
-                tagShares(ctx, backlog));
+                tagShares(ctx, backlog), ctx.scope().totalComplexity(backlog));
     }
 
     private static PriorityRow priorityRow(Context ctx, List<WorkItem> backlog, int priority) {
@@ -309,7 +347,8 @@ public class GetProjectRoadmapV2UseCase {
     private static ForgottenItem forgotten(Context ctx, WorkItem item) {
         return new ForgottenItem(item.getExternalId(), item.getTitle(),
                 item.getResolvedType() != null ? item.getResolvedType().name() : null, ProjectPeriodItems.priority(item),
-                ctx.scope().effectiveEffort(item), ageDays(ctx, item), tags(item));
+                ctx.scope().effectiveEffort(item), ageDays(ctx, item), tags(item),
+                ctx.scope().effectiveComplexity(item), ctx.scope().taskEffortRolledUp(item));
     }
 
     private static double ageDays(Context ctx, WorkItem item) {
@@ -317,19 +356,24 @@ public class GetProjectRoadmapV2UseCase {
     }
 
 
-    /** Count and effective effort per tag, by effort then count, top {@value #TOP_LIMIT}. */
+    /** Count, effective effort and effective complexity per tag, by points, effort, then count, top {@value #TOP_LIMIT}. */
     private static List<TagShare> tagShares(Context ctx, Collection<WorkItem> items) {
         Map<String, double[]> byTag = new LinkedHashMap<>();
         for (WorkItem item : items) {
             double effort = orZero(ctx.scope().effectiveEffort(item));
+            double points = orZero(ctx.scope().effectiveComplexity(item));
             for (String tag : tags(item)) {
-                double[] acc = byTag.computeIfAbsent(tag, t -> new double[2]);
+                double[] acc = byTag.computeIfAbsent(tag, t -> new double[3]);
                 acc[0] += 1;
                 acc[1] += effort;
+                acc[2] += points;
             }
         }
-        return byTag.entrySet().stream().map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1]))
-                .sorted(Comparator.comparingDouble(TagShare::sp).reversed().thenComparing(TagShare::count, Comparator.reverseOrder()))
+        return byTag.entrySet().stream()
+                .map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1], e.getValue()[2]))
+                .sorted(Comparator.comparingDouble(TagShare::points).reversed()
+                        .thenComparing(Comparator.comparingDouble(TagShare::sp).reversed())
+                        .thenComparing(TagShare::count, Comparator.reverseOrder()))
                 .limit(TOP_LIMIT).toList();
     }
 
@@ -337,28 +381,74 @@ public class GetProjectRoadmapV2UseCase {
         List<WorkItem> done = ctx.items().doneUnitsIn(ctx.range());
         List<WorkItem> sprintUnits = ctx.items().sprintsOverlapping(ctx.range()).stream()
                 .flatMap(f -> f.summary().units().stream()).toList();
-        return new Calibration(byEffort(done, ctx.ai()), byComplexity(done, ctx.ai()), overrides(ctx, people),
+        List<WorkItem> bandUnits = storyDone(ctx, done);
+        return new Calibration(byEffort(done, ctx.ai()), byComplexity(bandUnits, ctx.ai(), ctx.scope()),
+                overrides(ctx, people),
                 Ratios.percent(sprintUnits.stream().filter(GetProjectRoadmapV2UseCase::isOverridden).count(),
-                        sprintUnits.size()));
+                        sprintUnits.size()),
+                outliers(ctx, bandUnits));
+    }
+
+    /**
+     * Units whose logged hours are above twice or below half the median of their complexity band, largest
+     * deviation first (hours ÷ median, or median ÷ hours when below it), at most {@value #OUTLIERS_LIMIT}.
+     * A band with a zero median has no reference, so none of its units qualifies.
+     */
+    private static List<Outlier> outliers(Context ctx, List<WorkItem> units) {
+        List<Outlier> result = new ArrayList<>();
+        List<Double> deviations = new ArrayList<>();
+        groupedBy(units, WorkItem::getComplexity).forEach((complexity, band) -> {
+            Double median = Percentiles.percentile(band.stream().map(ctx.scope()::taskEffort).toList(),
+                    Percentiles.MEDIAN);
+            if (median == null || median <= 0) return;
+            for (WorkItem unit : band) {
+                Double hours = ctx.scope().taskEffort(unit);
+                if (hours == null) continue;
+                double ratio = hours / median;
+                if (ratio > OUTLIER_FACTOR || ratio < 1 / OUTLIER_FACTOR) {
+                    deviations.add(ratio > 1 ? ratio : (ratio == 0 ? Double.MAX_VALUE : 1 / ratio));
+                    result.add(new Outlier(unit.getExternalId(), unit.getTitle(),
+                            unit.getResolvedType() != null ? unit.getResolvedType().name() : null, complexity, hours,
+                            ctx.itemUrl(unit)));
+                }
+            }
+        });
+        return java.util.stream.IntStream.range(0, result.size()).boxed()
+                .sorted(Comparator.comparing((Integer i) -> deviations.get(i)).reversed())
+                .limit(OUTLIERS_LIMIT).map(result::get).toList();
+    }
+
+    /** The story-tier units delivered in the period (complexity is measured there), else the deliverable units. */
+    private static List<WorkItem> storyDone(Context ctx, List<WorkItem> done) {
+        List<WorkItem> stories = ctx.items().doneComplexityUnitsIn(ctx.range());
+        return ctx.items().effort().complexityUnits().isEmpty() ? done : stories;
     }
 
     private static List<EffortRow> byEffort(List<WorkItem> done, Map<String, ItemAi> ai) {
         return groupedBy(done, WorkItem::getEffort).entrySet().stream().map(e -> {
             BandAi band = BandAi.of(e.getValue(), ai);
-            return new EffortRow(number(e.getKey()) + SP_SUFFIX, e.getKey(), e.getValue().size(),
+            return new EffortRow(number(e.getKey()), e.getKey(), e.getValue().size(),
                     Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
                     band.costUsd(), band.tokens(), band.itemsWithAi());
         }).toList();
     }
 
-    private static List<ComplexityRow> byComplexity(List<WorkItem> done, Map<String, ItemAi> ai) {
+    private static List<ComplexityRow> byComplexity(List<WorkItem> done, Map<String, ItemAi> ai, EffortScope scope) {
         return groupedBy(done, WorkItem::getComplexity).entrySet().stream().map(e -> {
             BandAi band = BandAi.of(e.getValue(), ai);
+            List<Double> hours = e.getValue().stream().map(scope::taskEffort).toList();
             return new ComplexityRow(number(e.getKey()), e.getKey(), e.getValue().size(),
                     Percentiles.of(e.getValue().stream().map(WorkItem::getCycleTimeHours).toList()),
-                    DashboardV2Views.averageOrNull(e.getValue().stream().map(WorkItem::getEffort).toList()),
-                    band.costUsd(), band.tokens(), band.itemsWithAi());
+                    DashboardV2Views.averageOrNull(hours),
+                    band.costUsd(), band.tokens(), band.itemsWithAi(), effortHours(hours),
+                    (int) hours.stream().filter(Objects::isNull).count());
         }).toList();
+    }
+
+    private static EffortHours effortHours(List<Double> hours) {
+        int n = (int) hours.stream().filter(Objects::nonNull).count();
+        return new EffortHours(Percentiles.percentile(hours, QUARTILE_LOW), Percentiles.percentile(hours, Percentiles.MEDIAN),
+                Percentiles.percentile(hours, QUARTILE_HIGH), n);
     }
 
     /** Items by a value of their own field, ascending; items without it are left out. */
@@ -430,5 +520,11 @@ public class GetProjectRoadmapV2UseCase {
     }
 
     private record Context(DayRange range, Instant now, ProjectPeriodItems items, EffortScope scope,
-                           Map<String, List<WorkItem>> children, Map<String, ItemAi> ai) {}
+                           Map<String, List<WorkItem>> children, Map<String, ItemAi> ai, String itemUrlBase) {
+
+        /** The item in Azure DevOps; {@code null} without a known organization URL and project. */
+        String itemUrl(WorkItem item) {
+            return itemUrlBase == null || item.getExternalId() == null ? null : itemUrlBase + item.getExternalId();
+        }
+    }
 }

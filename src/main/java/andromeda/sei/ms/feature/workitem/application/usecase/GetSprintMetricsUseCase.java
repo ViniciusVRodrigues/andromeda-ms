@@ -53,6 +53,8 @@ public class GetSprintMetricsUseCase {
                             m.getAvgCycleTime(),
                             m.getAvgLeadTime(),
                             m.getPlannedEffort(),
+                            m.getPlannedComplexity(),
+                            m.getDeliveredComplexity(),
                             m.getCycleTimeP50(),
                             m.getCycleTimeP90(),
                             m.getLeadTimeP50(),

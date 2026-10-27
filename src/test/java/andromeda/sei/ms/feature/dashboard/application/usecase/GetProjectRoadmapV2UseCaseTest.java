@@ -74,6 +74,7 @@ class GetProjectRoadmapV2UseCaseTest {
     @Mock private WorkItemRepository workItemRepository;
     @Mock private SprintRepository sprintRepository;
     @Mock private AzureProjectBindingRepository bindingRepository;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository connectionRepository;
     @Mock private UserRepository userRepository;
     @Mock private ConnectorTokenRepository connectorTokenRepository;
     @Mock private AiUsageAllocationRepository allocationRepository;
@@ -85,7 +86,7 @@ class GetProjectRoadmapV2UseCaseTest {
     @BeforeEach
     void setUp() {
         useCase = new GetProjectRoadmapV2UseCase(projectRepository, workItemRepository, sprintRepository,
-                new EffortBearingLevelResolver(), bindingRepository,
+                new EffortBearingLevelResolver(), bindingRepository, connectionRepository,
                 new DashboardPeopleDirectory(userRepository, connectorTokenRepository), allocationRepository, aiUsageRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         when(projectRepository.findActiveByIdAndOrganizationId(PROJECT, ORG)).thenReturn(Optional.of(
@@ -96,6 +97,35 @@ class GetProjectRoadmapV2UseCaseTest {
     @Test
     void should_throwProjectNotFound_when_projectIsNotOfTheOrganization() {
         assertThatThrownBy(() -> useCase.execute("org-2", PROJECT, 90)).isInstanceOf(ProjectNotFoundException.class);
+    }
+
+    @Test
+    void should_reportComplexityDoneInThePeriod_nextToTheEffortOne() {
+        WorkItem c1 = child("c1", 3.0, ResolvedStatus.DONE, "f1", daysAgo(10));
+        c1.setComplexity(2.0);
+        WorkItem c2 = child("c2", 5.0, ResolvedStatus.DONE, "f1", daysAgo(200));
+        c2.setComplexity(5.0);
+        WorkItem c3 = child("c3", 8.0, ResolvedStatus.TODO, "f1", null);
+        c3.setComplexity(1.0);
+        items.addAll(List.of(node("e1", ResolvedType.EPIC, ResolvedStatus.IN_PROGRESS, null),
+                node("f1", ResolvedType.FEATURE, ResolvedStatus.IN_PROGRESS, "e1"), c1, c2, c3));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.features().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
+        assertThat(out.features().getFirst().progress().spDoneInPeriod()).isEqualTo(3.0);
+        assertThat(out.epics().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
+    }
+
+    @Test
+    void should_leaveComplexityDoneInThePeriodNull_when_noChildCarriesComplexity() {
+        items.addAll(List.of(node("e1", ResolvedType.EPIC, ResolvedStatus.IN_PROGRESS, null),
+                node("f1", ResolvedType.FEATURE, ResolvedStatus.IN_PROGRESS, "e1"),
+                child("c1", 3.0, ResolvedStatus.DONE, "f1", daysAgo(10))));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.features().getFirst().progress().complexityDoneInPeriod()).isNull();
     }
 
     @Test
@@ -173,7 +203,7 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(backlog.forgotten().getFirst().externalId()).isEqualTo("ext-b3");
         assertThat(backlog.forgotten().getFirst().daysWithoutChange()).isEqualTo(100.0);
         assertThat(backlog.forgotten().getFirst().priority()).isEqualTo(1);
-        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0), new TagShare("ui", 1, 2.0));
+        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0, 0.0), new TagShare("ui", 1, 2.0, 0.0));
     }
 
     @Test
@@ -197,14 +227,14 @@ class GetProjectRoadmapV2UseCaseTest {
 
         assertThat(out.calibration().byEffort()).hasSize(2);
         assertThat(out.calibration().byEffort().getFirst())
-                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3 SP", 3.0, 2, new DurationStat(10.0, 30.0, 2), null, null, 0));
+                .isEqualTo(new ProjectRoadmapV2Output.EffortRow("3", 3.0, 2, new DurationStat(10.0, 30.0, 2), null, null, 0));
         assertThat(out.calibration().byComplexity().getFirst().label()).isEqualTo("2");
         assertThat(out.calibration().byComplexity().getFirst().avgEffort()).isEqualTo(3.0);
         assertThat(out.calibration().overrides()).extracting(ManualOverride::field, ManualOverride::by)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("Complexidade", "user-z"),
                         org.assertj.core.groups.Tuple.tuple("Esforço", "Ana"));
         assertThat(out.calibration().overridePct()).isEqualTo(66.67);
-        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0));
+        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0, 2.0));
     }
 
     @Test
@@ -272,6 +302,37 @@ class GetProjectRoadmapV2UseCaseTest {
     }
 
     @Test
+    void should_reportThePerTypeEffortField_andTheComplexityField_fromTheBinding() {
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(
+                new AzureProjectBinding("b1", ORG, PROJECT, "az", "Orion", true, NOW,
+                        new WorkflowConfig(List.of(), List.of(),
+                                List.of(new FieldMapping(FieldMapping.InternalFieldTarget.EFFORT, "Task",
+                                                "Microsoft.VSTS.Scheduling.CompletedWork", "double"),
+                                        new FieldMapping(FieldMapping.InternalFieldTarget.COMPLEXITY,
+                                                "Custom.Points", "double")),
+                                null, WorkflowConfig.ConfigSource.CUSTOM),
+                        true, NOW, NOW, 0L)));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.config().effortField()).isEqualTo("Microsoft.VSTS.Scheduling.CompletedWork");
+        assertThat(out.config().complexityField()).isEqualTo("Custom.Points");
+    }
+
+    @Test
+    void should_reportTheDefaultFields_when_theBindingHasNoWorkflowConfig_andNullWithoutBinding() {
+        assertThat(useCase.execute(ORG, PROJECT, 90).config().effortField()).isNull();
+        assertThat(useCase.execute(ORG, PROJECT, 90).config().complexityField()).isNull();
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(
+                new AzureProjectBinding("b1", ORG, PROJECT, "az", "Orion", true, NOW, null, true, NOW, NOW, 0L)));
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.config().effortField()).isEqualTo(WorkflowConfig.DEFAULT_EFFORT_FIELD_REFERENCE_NAME);
+        assertThat(out.config().complexityField()).isEqualTo(WorkflowConfig.DEFAULT_COMPLEXITY_FIELD_REFERENCE_NAME);
+    }
+
+    @Test
     void should_returnEmptyListsAndNulls_when_theProjectHasNoItems() {
         ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 365);
 
@@ -287,6 +348,86 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(out.calibration().overridePct()).isNull();
         assertThat(out.config().effortField()).isNull();
         assertThat(out.asOf()).isEqualTo(NOW);
+    }
+
+
+    /** Story of complexity 3 delivered 2026-09-12 with one Task child of {@code hours}. */
+    private void storyWithHours(String id, double complexity, Double hours) {
+        WorkItem story = calibrated(id, null, complexity, 10.0, List.of());
+        items.add(story);
+        if (hours != null) {
+            WorkItem task = WorkItemFixture.item("t-" + id, ResolvedType.TASK, ResolvedStatus.DONE, hours, "ext-" + id);
+            task.setCompletedAt(story.getCompletedAt());
+            items.add(task);
+        }
+    }
+
+    @Test
+    void should_reportTheHoursOfEachComplexityBand_andTheOutliersOutsideHalfToDoubleTheMedian() {
+        storyWithHours("a", 3.0, 6.0);
+        storyWithHours("b", 3.0, 8.0);
+        storyWithHours("c", 3.0, 30.0);
+        storyWithHours("d", 3.0, null);
+        storyWithHours("e", 5.0, 10.0);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        var band3 = out.calibration().byComplexity().stream().filter(r -> r.complexity() == 3.0).findFirst().orElseThrow();
+        assertThat(band3.effortHours().p50()).isEqualTo(8.0);
+        assertThat(band3.effortHours().p25()).isEqualTo(6.0);
+        assertThat(band3.effortHours().p75()).isEqualTo(30.0);
+        assertThat(band3.effortHours().n()).isEqualTo(3);
+        assertThat(band3.unitsWithoutEffort()).isEqualTo(1);
+        assertThat(out.calibration().outliers()).extracting(ProjectRoadmapV2Output.Outlier::externalId,
+                        ProjectRoadmapV2Output.Outlier::complexity, ProjectRoadmapV2Output.Outlier::effortHours)
+                .containsExactly(org.assertj.core.groups.Tuple.tuple("ext-c", 3.0, 30.0));
+    }
+
+    @Test
+    void should_keepAtMostFiveOutliers_largestDeviationFirst_andLinkThemToAzure() {
+        // no connection: the url stays null
+        // median 4 h: seven items at 1 h (4x below... ratio .25) and 4 h core
+        for (int i = 0; i < 8; i++) storyWithHours("n" + i, 2.0, 4.0);
+        for (int i = 0; i < 6; i++) storyWithHours("h" + i, 2.0, 10.0 + i); // above 2x the median 4? band median = 4
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers()).hasSize(5);
+        assertThat(out.calibration().outliers().getFirst().effortHours()).isEqualTo(15.0);
+        assertThat(out.calibration().outliers()).extracting(ProjectRoadmapV2Output.Outlier::effortHours)
+                .isSortedAccordingTo(java.util.Comparator.reverseOrder());
+        assertThat(out.calibration().outliers().getFirst().url()).isNull();
+    }
+
+    @Test
+    void should_buildTheOutlierUrlFromTheAzureOrganizationAndProject() {
+        var connection = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.AzureConnection.class);
+        when(connection.getAzureOrgUrl()).thenReturn("https://dev.azure.com/acme/");
+        when(connectionRepository.findByOrganizationIdAndActiveTrue(ORG)).thenReturn(Optional.of(connection));
+        var binding = org.mockito.Mockito.mock(AzureProjectBinding.class);
+        when(binding.getAzureProjectName()).thenReturn("Meu Projeto");
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, PROJECT)).thenReturn(Optional.of(binding));
+        storyWithHours("a", 3.0, 6.0);
+        storyWithHours("b", 3.0, 6.0);
+        storyWithHours("c", 3.0, 30.0);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers().getFirst().url())
+                .isEqualTo("https://dev.azure.com/acme/Meu%20Projeto/_workitems/edit/ext-c");
+    }
+
+    @Test
+    void should_notFlagOutliers_when_theBandMedianIsZeroOrThereIsNoTaskHours() {
+        storyWithHours("a", 3.0, null);
+        storyWithHours("b", 3.0, null);
+
+        ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
+
+        assertThat(out.calibration().outliers()).isEmpty();
+        var band = out.calibration().byComplexity().getFirst();
+        assertThat(band.effortHours().p50()).isNull();
+        assertThat(band.effortHours().n()).isZero();
+        assertThat(band.unitsWithoutEffort()).isEqualTo(2);
     }
 
     private static FeatureRow feature(ProjectRoadmapV2Output out, String id) {

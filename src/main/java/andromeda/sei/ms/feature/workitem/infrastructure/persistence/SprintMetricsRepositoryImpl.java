@@ -37,6 +37,8 @@ public class SprintMetricsRepositoryImpl implements SprintMetricsRepository {
                 .set("avgCycleTime", metrics.getAvgCycleTime())
                 .set("avgLeadTime", metrics.getAvgLeadTime())
                 .set("plannedEffort", metrics.getPlannedEffort())
+                .set("plannedComplexity", metrics.getPlannedComplexity())
+                .set("deliveredComplexity", metrics.getDeliveredComplexity())
                 .set("cycleTimeP50", metrics.getCycleTimeP50())
                 .set("cycleTimeP90", metrics.getCycleTimeP90())
                 .set("leadTimeP50", metrics.getLeadTimeP50())

@@ -26,6 +26,8 @@ import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirector
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardPeopleDirectory.PersonInfo;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardSprintResolver.SprintSelection;
+import andromeda.sei.ms.feature.dashboard.application.v2.AiRatios;
+import andromeda.sei.ms.feature.dashboard.application.v2.ComplexityEffortFigures;
 import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectVcsActivity;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
@@ -82,7 +84,6 @@ public class GetTeamDashboardV2UseCase {
     private static final int AGING_ITEMS_LIMIT = 8;
     private static final int AGING_PERCENTILE = 85;
     private static final double PERCENT = 100.0;
-    private static final int MONEY_SCALE = 6;
     /** Status × type always lists these three, in this order; other types follow when present. */
     private static final List<WorkItem.ResolvedType> MAIN_TYPES =
             List.of(WorkItem.ResolvedType.STORY, WorkItem.ResolvedType.BUG, WorkItem.ResolvedType.TASK);
@@ -183,15 +184,18 @@ public class GetTeamDashboardV2UseCase {
         boolean hasUsage = hasAiUsage(ctx, window, aiCost);
         BigDecimal cost = hasUsage ? aiCost.totalAllocated() : null;
         Double delivered = DashboardV2Views.deliveredOf(summary.planned(), summary.delivered());
+        ComplexityEffortFigures f = ComplexityEffortFigures.of(summary);
         SprintStats stats = new SprintStats(summary.planned(), delivered, summary.doneUnits().size(),
                 summary.units().size(),
                 (int) summary.units().stream().filter(u -> summary.scope().effectiveEffort(u) != null).count(),
                 (int) summary.units().stream().filter(u -> u.getAssigneeUserId() == null).count(),
                 Percentiles.of(summary.doneUnits().stream().map(WorkItem::getCycleTimeHours).toList()),
                 Percentiles.of(summary.doneUnits().stream().map(WorkItem::getLeadTimeHours).toList()),
-                cost, perSp(cost, delivered),
+                cost, AiRatios.per(cost, delivered),
                 ReviewMetricsPolicy.aggregate(created, ctx.now()).timeToFirstReview(),
-                (int) ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getMergedAt())).count());
+                (int) ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getMergedAt())).count(),
+                f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.itemsWithComplexity(),
+                AiRatios.per(cost, f.complexityDelivered()), AiRatios.per(cost, f.effortLogged()));
         return new TeamSprint(stats, aiCost, hasUsage, summary, items);
     }
 
@@ -204,11 +208,6 @@ public class GetTeamDashboardV2UseCase {
                 ctx.orgId(), ctx.memberIds(), window.startDay(), window.endDay()).isEmpty();
     }
 
-    private static BigDecimal perSp(BigDecimal cost, Double delivered) {
-        if (cost == null || delivered == null || delivered <= 0) return null;
-        return cost.divide(BigDecimal.valueOf(delivered), MONEY_SCALE, RoundingMode.HALF_UP);
-    }
-
     /** The selected sprint's stats; open/stalled pull requests (current state) only for the current sprint. */
     private Kpis kpis(Context ctx, TeamSprint current) {
         SprintStats s = current.stats();
@@ -218,23 +217,26 @@ public class GetTeamDashboardV2UseCase {
                 s.unassigned(), s.cycleTimeHours(), s.leadTimeHours(), s.aiCostUsd(), s.aiCostPerSp(),
                 s.timeToFirstReviewHours(), s.prsMerged(), isCurrent ? open.size() : null,
                 isCurrent ? (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now())).count() : null,
-                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null);
+                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null,
+                s.complexityPlanned(), s.complexityDelivered(), s.effortLogged(), s.itemsWithComplexity(),
+                s.aiCostPerPoint(), s.aiCostPerHour());
     }
 
     private List<BurndownDay> burndown(Context ctx, TeamSprint current) {
         EffortSummary summary = current.summary();
-        boolean noEffort = summary.planned() == null;
-        List<BurndownDay> days = new ArrayList<>(BurndownCalculator.compute(summary.units(), summary.scope(),
+        boolean noEffort = summary.plannedComplexity() == null;
+        List<BurndownDay> days = new ArrayList<>(BurndownCalculator.compute(summary.complexityUnits(), summary.scope(),
                         ctx.window().startDay(), ctx.window().endDay(), ctx.today()).stream()
                 .map(p -> new BurndownDay(p.date().toString(), DashboardV2Views.label(p.date()),
-                        noEffort ? null : p.remainingSp(), p.idealSp()))
+                        noEffort ? null : p.remainingSp(), p.idealSp(),
+                        noEffort ? null : p.remainingPoints(), p.idealPoints()))
                 .toList());
         if (days.isEmpty()) return days;
-        double total = noEffort ? 0d : summary.planned();
+        double total = noEffort ? 0d : summary.plannedComplexity();
         LocalDate next = LocalDate.parse(days.getLast().date()).plusDays(1);
         for (LocalDate day : DashboardV2Views.days(next, ctx.window().endDay())) {
-            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null,
-                    BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day)));
+            double ideal = BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day);
+            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null, ideal, null, ideal));
         }
         return days;
     }
@@ -256,12 +258,12 @@ public class GetTeamDashboardV2UseCase {
     private List<ItemView> agingItems(Context ctx, TeamSprint current) {
         Map<String, VcsPullRequest> prByItem = DashboardV2Views.latestPullRequestByWorkItem(ctx.vcs().pullRequests());
         Map<String, String> repoNames = ctx.vcs().repositoryNames();
-        return current.summary().units().stream()
+        return effortResolver.listedUnits(current.items()).stream()
                 .filter(wi -> DashboardV2Views.daysInProgress(wi, ctx.now()) != null)
                 .sorted(Comparator.comparing((WorkItem wi) -> DashboardV2Views.daysInProgress(wi, ctx.now())).reversed())
                 .limit(AGING_ITEMS_LIMIT)
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), null, prByItem.get(wi.getExternalId()),
-                        repoNames, ctx.now()))
+                        repoNames, ctx.now(), current.summary().scope()))
                 .toList();
     }
 
@@ -292,6 +294,7 @@ public class GetTeamDashboardV2UseCase {
         SprintWindow window = ctx.window();
         List<VcsPullRequest> mine = ctx.vcs().pullRequests().stream()
                 .filter(pr -> userId.equals(pr.getAuthorUserId())).toList();
+        ComplexityEffortFigures f = ComplexityEffortFigures.ofAssignee(current.summary(), userId);
         return new Member(userId, person.name(), userId.equals(ctx.userId()), person.githubLinked(), person.vcsLinked(),
                 done.size(), units.size(), scope.totalEffort(units),
                 DashboardV2Views.deliveredOf(scope.totalEffort(units), scope.totalEffort(done)),
@@ -301,7 +304,9 @@ public class GetTeamDashboardV2UseCase {
                 attributed(person, mine.stream().filter(pr -> window.contains(pr.getMergedAt())).count()),
                 attributed(person, ctx.vcs().reviews().stream().filter(e -> userId.equals(e.getActorUserId())).count()),
                 peopleDirectory.aiConnected(ctx.orgId(), userId) ? current.aiCost().allocatedOf(userId) : null,
-                DashboardV2Views.averageOrNull(units.stream().map(WorkItem::getTokensPerSp).toList()));
+                DashboardV2Views.averageOrNull(units.stream().map(WorkItem::getTokensPerSp).toList()),
+                f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
+                f.avgTokensPerHour());
     }
 
     /** A provider count is "no data" for someone with no linked identity and nothing attributed. */
@@ -402,13 +407,20 @@ public class GetTeamDashboardV2UseCase {
             Long tokens = ts.hasAiUsage() ? ts.aiCost().allocatedTokens() : null;
             return new HistoryPoint(sprint.getId(), DashboardV2Views.historyLabel(sprint), sprint.getName(),
                     sprint.getId().equals(selection.selected().getId()), DashboardV2Views.isCurrent(sprint),
-                    s.spPlanned(), s.spDelivered(), predictability(s), s.cycleTimeHours(), s.aiCostUsd(), s.aiCostPerSp(), tokens);
+                    s.spPlanned(), s.spDelivered(), predictability(s), s.cycleTimeHours(), s.aiCostUsd(), s.aiCostPerSp(), tokens,
+                    s.complexityPlanned(), s.complexityDelivered(), s.aiCostPerPoint(), s.aiCostPerHour(),
+                    s.effortLogged(), hoursPerPoint(s));
         }).toList();
     }
 
+    /** Hours logged on the Tasks of the delivered units ÷ complexity delivered; null with a null or zero divisor. */
+    private static Double hoursPerPoint(SprintStats s) {
+        return AiRatios.hoursPer(s.effortLogged(), s.complexityDelivered());
+    }
+
     private static Double predictability(SprintStats s) {
-        if (s.spPlanned() == null || s.spPlanned() <= 0 || s.spDelivered() == null) return null;
-        return s.spDelivered() / s.spPlanned() * PERCENT;
+        if (s.complexityPlanned() == null || s.complexityPlanned() <= 0 || s.complexityDelivered() == null) return null;
+        return s.complexityDelivered() / s.complexityPlanned() * PERCENT;
     }
 
     private record TeamSprint(SprintStats stats, ProjectAiCost aiCost, boolean hasAiUsage, EffortSummary summary,

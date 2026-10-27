@@ -28,11 +28,12 @@ public record ProjectRoadmapV2Output(
     public record Period(int days, String start, String end) {}
 
     /**
-     * {@code effortField}: Azure field mapped to effort on the project's binding (the default
-     * {@code Microsoft.VSTS.Scheduling.StoryPoints} without a mapping; {@code null} without an
-     * Azure binding).
+     * {@code effortField}: Azure field mapped to effort (the hours logged on Tasks) on the project's binding,
+     * {@code complexityField}: the one mapped to complexity. Without a mapping they are the defaults
+     * ({@code Microsoft.VSTS.Scheduling.CompletedWork} and {@code Microsoft.VSTS.Scheduling.StoryPoints}),
+     * {@code null} without an Azure binding. A per-type mapping is reported when no wildcard exists.
      */
-    public record Config(String effortField, EffortLevel effortBearingLevel) {}
+    public record Config(String effortField, EffortLevel effortBearingLevel, String complexityField) {}
 
     /** {@code configured} is always {@code AUTO} today (no setting pins a level); {@code inferred} from the data. */
     public record EffortLevel(String configured, String inferred) {}
@@ -48,11 +49,17 @@ public record ProjectRoadmapV2Output(
      *       without effort or without recent pace.</li>
      *   <li>{@code lastActivityAt}: latest Azure change ({@code externalUpdatedAt}, else creation) of
      *       a child; {@code null} without children.</li>
+     *   <li>{@code complexityTotal}/{@code complexityDone}: the same in points of complexity (null when no child
+     *       carries it); {@code pointsPerWeek}: complexity completed in the last 8 weeks ÷ 8, null when 0
+     *       (complexity-effort D1).</li>
+     *   <li>{@code complexityDoneInPeriod}: complexity of the units completed in the period, next to
+     *       {@code spDoneInPeriod}; null when no child carries complexity.</li>
      * </ul>
      */
     public record Progress(Double effortTotal, Double effortDone, Double pctDone, int itemsTotal, int itemsDone,
                            int unestimated, Double spDoneInPeriod, Double weeklyPace, Double forecastWeeks,
-                           Instant lastActivityAt) {}
+                           Instant lastActivityAt, Double complexityTotal, Double complexityDone,
+                           Double pointsPerWeek, Double complexityDoneInPeriod) {}
 
     /** Children: the work of its features plus items linked straight to the epic. */
     public record EpicRow(String externalId, String title, String status, List<String> tags, int featureCount,
@@ -68,7 +75,7 @@ public record ProjectRoadmapV2Output(
      */
     public record Backlog(int count, Double sp, Double unestimatedPct, Double withoutParentPct,
                           List<StaleBand> staleness, List<PriorityRow> byPriority, List<ForgottenItem> forgotten,
-                          List<TagShare> byTag) {}
+                          List<TagShare> byTag, Double points) {}
 
     /** {@code [minDays, maxDays)} since the last change; {@code maxDays} {@code null} on the last band. */
     public record StaleBand(String label, int minDays, Integer maxDays, int count) {}
@@ -77,24 +84,43 @@ public record ProjectRoadmapV2Output(
     public record PriorityRow(int priority, int count, int stale) {}
 
     public record ForgottenItem(String externalId, String title, String type, Integer priority, Double effort,
-                                Double daysWithoutChange, List<String> tags) {}
+                                Double daysWithoutChange, List<String> tags, Double complexity,
+                                Double effortRolledUp) {}
 
-    /** {@code sp}: effective effort, items without effort adding 0. */
-    public record TagShare(String tag, int count, double sp) {}
+    /** {@code sp}: effective effort, {@code points}: effective complexity; items without it adding 0. */
+    public record TagShare(String tag, int count, double sp, double points) {}
 
     public record Calibration(List<EffortRow> byEffort, List<ComplexityRow> byComplexity,
-                              List<ManualOverride> overrides, Double overridePct) {}
+                              List<ManualOverride> overrides, Double overridePct, List<Outlier> outliers) {}
 
-    /** Units completed in the period with this effort value (the item's own field). */
+    /**
+     * Hours logged on the Tasks of the units of a complexity band (nearest-rank quartiles, the same rule as the
+     * other percentiles); every figure {@code null} and {@code n = 0} without a sample.
+     */
+    public record EffortHours(Double p25, Double p50, Double p75, int n) {}
+
+    /**
+     * A unit whose logged hours are above twice or below half the median of its band (at most 5, largest
+     * deviation first); {@code url} is the item in Azure DevOps, {@code null} when unknown.
+     */
+    public record Outlier(String externalId, String title, String type, Double complexity, Double effortHours,
+                          String url) {}
+
+    /**
+     * Units completed in the period with this effort value (the item's own field). {@code label} is just the
+     * number: the unit is the ui's to format (complexity-effort D7).
+     */
     public record EffortRow(String label, double effort, int count, DurationStat cycleTimeHours,
                             BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi) {}
 
     /**
      * {@code aiCostUsd}/{@code aiTokens}: VALIDATED allocation to the units of the band (same base as the
      * item's {@code aiCostUsd}); {@code null} and {@code itemsWithAi = 0} when none of them has allocation.
+     * {@code label} is just the number (D7); {@code avgEffort}: the average Task hours logged on the band's units.
      */
     public record ComplexityRow(String label, double complexity, int count, DurationStat cycleTimeHours,
-                                Double avgEffort, BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi) {}
+                                Double avgEffort, BigDecimal aiCostUsd, Long aiTokens, int itemsWithAi,
+                                EffortHours effortHours, int unitsWithoutEffort) {}
 
     /** {@code field}: {@code "Esforço"} or {@code "Complexidade"}; {@code by}: the user's name. */
     public record ManualOverride(String externalId, String title, String field, Double value, String by, Instant at) {}

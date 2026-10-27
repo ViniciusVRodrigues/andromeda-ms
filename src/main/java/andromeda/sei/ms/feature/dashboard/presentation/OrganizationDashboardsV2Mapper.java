@@ -15,7 +15,7 @@ public class OrganizationDashboardsV2Mapper {
 
     public OrganizationDashboardV2Response toResponse(OrganizationDashboardV2Output out, DataFreshness freshness) {
         return new OrganizationDashboardV2Response(out.period(), out.kpis(), out.previous(), out.portfolio(),
-                out.delivery(), out.engineering(), out.ai(), out.integrations(), iso(out.asOf()), freshness);
+                out.delivery(), out.engineering(), out.ai(), out.integrations(), out.sprintHistory(), iso(out.asOf()), freshness);
     }
 
     public IntegrationsDashboardV2Response toResponse(IntegrationsDashboardV2Output out, DataFreshness freshness) {

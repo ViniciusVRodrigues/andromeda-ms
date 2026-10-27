@@ -141,8 +141,10 @@ public class OrganizationDashboardData {
             }
             // kpis.aiCostUsd (and previous) is the allocated cost for every caller: both periods.
             DayRange allocationRange = new DayRange(period.previous().first(), period.current().last());
+            // ... and back to the start of a sprint crossing the period that began before it (sprintHistory).
             CompletableFuture<List<AiUsageAllocation>> allocationsF = loads.supply(
-                    () -> allocations(orgId, itemsF, allocationRange));
+                    () -> allocations(orgId, itemsF, new DayRange(earliestStart(join(sprintsF), projectIds,
+                            period.current(), allocationRange.first()), allocationRange.last())));
             List<User> users = join(usersF);
             Set<String> people = people(seesAll, projects, users);
             CompletableFuture<List<AIUsage>> usageF = loads.supply(() -> usage(orgId, loads, people, period.current()));
@@ -150,7 +152,7 @@ public class OrganizationDashboardData {
                     ? List.<AiUsageUserTotals>of()
                     : aiUsageRepository.summarizeTotalsByUser(orgId, people, period.previous().first(),
                     period.previous().last()));
-            CompletableFuture<Map<String, BigDecimal>> costsF = loads.supply(
+            CompletableFuture<Covered> costsF = loads.supply(
                     () -> coveredCosts(orgId, join(allocationsF), join(usageF)));
             CompletableFuture<Vcs> vcsF = loads.supply(() -> vcs(orgId, loads, join(bindingsF), projectIds, period));
 
@@ -167,12 +169,25 @@ public class OrganizationDashboardData {
                 });
             }
             return new Snapshot(projects, users, people, seesAll, items, itemProject, join(vcsF), join(organizationF),
-                    new Ai(join(usageF), join(previousF), join(allocationsF), join(costsF)), join(tokensF),
+                    new Ai(join(usageF), join(previousF), join(allocationsF), join(costsF).costs(), join(costsF).tokens()), join(tokensF),
                     join(azureF),
                     join(githubF), join(azureBindingsF).stream().filter(b -> projectIds.contains(b.getProjectId())).toList(),
                     join(syncF).stream().filter(c -> c.projectId() == null || projectIds.contains(c.projectId()))
                             .toList());
         }
+    }
+
+    /** The earliest start among the visible projects' sprints crossing {@code range}, when before {@code floor}; else {@code floor}. */
+    static LocalDate earliestStart(List<Sprint> sprints, Set<String> projectIds, DayRange range, LocalDate floor) {
+        LocalDate earliest = floor;
+        for (Sprint sprint : sprints) {
+            if (!sprint.isActive() || sprint.getStartDate() == null || sprint.getEndDate() == null
+                    || !projectIds.contains(sprint.getProjectId())) continue;
+            SprintWindow window = SprintWindow.of(sprint);
+            boolean crosses = !window.startDay().isAfter(range.last()) && !window.endDay().isBefore(range.first());
+            if (crosses && window.startDay().isBefore(earliest)) earliest = window.startDay();
+        }
+        return earliest;
     }
 
     /** The caller sees every active project of the organization (and there is at least one). */
@@ -237,26 +252,36 @@ public class OrganizationDashboardData {
         return slices;
     }
 
-    /** Cost of every record the allocations cover: from the people's usage, the rest read by id. */
-    private Map<String, BigDecimal> coveredCosts(String orgId, List<AiUsageAllocation> allocations, List<AIUsage> usage) {
-        Map<String, BigDecimal> known = new HashMap<>();
+    /** Cost and tokens (input + output) of every record the allocations cover, by record id. */
+    public record Covered(Map<String, BigDecimal> costs, Map<String, Long> tokens) {}
+
+    /** Cost and tokens of every record the allocations cover: from the people's usage, the rest read by id. */
+    private Covered coveredCosts(String orgId, List<AiUsageAllocation> allocations, List<AIUsage> usage) {
+        Map<String, AIUsage> known = new HashMap<>();
         usage.forEach(u -> {
-            if (u.getId() != null && u.getCostUsd() != null) known.put(u.getId(), u.getCostUsd());
+            if (u.getId() != null) known.put(u.getId(), u);
         });
         Map<String, BigDecimal> costs = new HashMap<>();
+        Map<String, Long> tokens = new HashMap<>();
         Set<String> missing = new LinkedHashSet<>();
         allocations.stream().filter(a -> a.getAiUsageIds() != null).flatMap(a -> a.getAiUsageIds().stream())
                 .filter(Objects::nonNull).forEach(id -> {
-                    BigDecimal cost = known.get(id);
-                    if (cost != null) costs.put(id, cost);
+                    AIUsage record = known.get(id);
+                    if (record != null) remember(costs, tokens, record);
                     else missing.add(id);
                 });
         if (!missing.isEmpty()) {
-            aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(orgId, missing).stream()
-                    .filter(u -> u.getId() != null && u.getCostUsd() != null)
-                    .forEach(u -> costs.put(u.getId(), u.getCostUsd()));
+            aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(orgId, missing)
+                    .forEach(u -> {
+                        if (u.getId() != null) remember(costs, tokens, u);
+                    });
         }
-        return costs;
+        return new Covered(costs, tokens);
+    }
+
+    private static void remember(Map<String, BigDecimal> costs, Map<String, Long> tokens, AIUsage record) {
+        if (record.getCostUsd() != null) costs.put(record.getId(), record.getCostUsd());
+        tokens.put(record.getId(), record.getInputTokens() + record.getOutputTokens());
     }
 
     private Vcs vcs(String orgId, ConcurrentLoads loads, List<VcsRepoBinding> allBindings, Set<String> projectIds,
@@ -328,5 +353,5 @@ public class OrganizationDashboardData {
      * splitting to visible work items, of both periods; {@code coveredCosts}: the cost of every record those allocations cover, by record id.
      */
     public record Ai(List<AIUsage> usage, List<AiUsageUserTotals> previous, List<AiUsageAllocation> allocations,
-                     Map<String, BigDecimal> coveredCosts) {}
+                     Map<String, BigDecimal> coveredCosts, Map<String, Long> coveredTokens) {}
 }

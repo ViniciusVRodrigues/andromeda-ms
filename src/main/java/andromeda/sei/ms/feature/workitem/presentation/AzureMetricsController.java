@@ -52,6 +52,8 @@ public class AzureMetricsController {
                         o.avgCycleTime(),
                         o.avgLeadTime(),
                         o.plannedEffort(),
+                        o.plannedComplexity(),
+                        o.deliveredComplexity(),
                         o.cycleTimeP50(),
                         o.cycleTimeP90(),
                         o.leadTimeP50(),

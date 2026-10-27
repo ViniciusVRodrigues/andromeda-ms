@@ -16,6 +16,8 @@ public record SprintMetricsResponse(
         // deprecated since metrics-correctness: use leadTimeP50/leadTimeP90
         @io.swagger.v3.oas.annotations.media.Schema(deprecated = true) Double avgLeadTime,
         Double plannedEffort,
+        Double plannedComplexity,
+        Double deliveredComplexity,
         Double cycleTimeP50,
         Double cycleTimeP90,
         Double leadTimeP50,

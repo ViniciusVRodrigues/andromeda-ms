@@ -5,7 +5,7 @@ import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.application.usecase.CalculatePullRequestMetricsUseCase;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateSprintMetricsUseCase;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateWorkItemMetricsUseCase;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +28,7 @@ class ProjectMetricsRecalculatorTest {
 
     @Mock private CalculateWorkItemMetricsUseCase calculateWorkItemMetricsUseCase;
     @Mock private CalculateSprintMetricsUseCase calculateSprintMetricsUseCase;
-    @Mock private CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    @Mock private CalculateAiRatiosUseCase calculateAiRatiosUseCase;
     @Mock private CalculatePullRequestMetricsUseCase calculatePrMetricsUseCase;
     @Mock private VcsReadPort vcsReadPort;
 
@@ -43,7 +43,7 @@ class ProjectMetricsRecalculatorTest {
 
         verify(calculateWorkItemMetricsUseCase).execute(ORG, PROJECT);
         verify(calculateSprintMetricsUseCase).execute(ORG, PROJECT);
-        verify(calculateTokensPerSpUseCase).execute(ORG, PROJECT);
+        verify(calculateAiRatiosUseCase).execute(ORG, PROJECT);
         verify(calculatePrMetricsUseCase).execute(ORG, "repo-1");
         verify(calculatePrMetricsUseCase).execute(ORG, "repo-2");
     }
@@ -56,7 +56,7 @@ class ProjectMetricsRecalculatorTest {
 
         recalculator.recalculate(ORG, PROJECT);
 
-        verify(calculateTokensPerSpUseCase).execute(ORG, PROJECT);
+        verify(calculateAiRatiosUseCase).execute(ORG, PROJECT);
         verify(calculatePrMetricsUseCase).execute(ORG, "repo-1");
     }
 

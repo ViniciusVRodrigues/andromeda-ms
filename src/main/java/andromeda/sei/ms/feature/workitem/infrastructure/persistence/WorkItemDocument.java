@@ -62,6 +62,8 @@ public class WorkItemDocument {
     private Double cycleTimeHours;
     private Double leadTimeHours;
     private Double tokensPerSp;
+    private Double tokensPerPoint;
+    private Double tokensPerHour;
     private boolean active = true;
     private Instant updatedAt;
     private Double complexity;

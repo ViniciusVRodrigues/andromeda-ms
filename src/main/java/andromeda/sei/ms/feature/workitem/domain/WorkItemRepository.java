@@ -20,7 +20,7 @@ public interface WorkItemRepository {
 
     void updateMetrics(String id, Double cycleTimeHours, Double leadTimeHours);
 
-    void updateTokensPerSp(String id, Double tokensPerSp);
+    void updateAiRatios(String id, Double tokensPerPoint, Double tokensPerHour);
 
     List<WorkItem> findByOrganizationIdAndAssigneeUserIdAndSprintId(
             String organizationId, String userId, String sprintId);

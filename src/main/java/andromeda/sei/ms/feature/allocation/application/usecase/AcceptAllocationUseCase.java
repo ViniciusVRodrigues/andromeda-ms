@@ -6,7 +6,7 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateTokensPerSpUseCase;
+import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ public class AcceptAllocationUseCase {
 
     private final AiUsageAllocationRepository allocationRepository;
     private final WorkItemRepository workItemRepository;
-    private final CalculateTokensPerSpUseCase calculateTokensPerSpUseCase;
+    private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
     public void execute(String organizationId, String userId, String allocationId) {
         AiUsageAllocation allocation = allocationRepository.findById(allocationId, organizationId)
@@ -42,7 +42,7 @@ public class AcceptAllocationUseCase {
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
 
         resolveProjectId(organizationId, allocation).ifPresent(projectId ->
-                calculateTokensPerSpUseCase.execute(organizationId, projectId));
+                calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
     private java.util.Optional<String> resolveProjectId(String organizationId, AiUsageAllocation allocation) {

@@ -13,6 +13,9 @@ public class SprintMetrics {
     private Double avgCycleTime;
     private Double avgLeadTime;
     private Double plannedEffort;
+    /** Complexity of the story-tier units; {@code null} when none carries it (complexity-effort D1). */
+    private Double plannedComplexity;
+    private Double deliveredComplexity;
     private Double cycleTimeP50;
     private Double cycleTimeP90;
     private Double leadTimeP50;
@@ -72,6 +75,10 @@ public class SprintMetrics {
     public Double getAvgLeadTime() { return avgLeadTime; }
     public void setAvgLeadTime(Double avgLeadTime) { this.avgLeadTime = avgLeadTime; }
 
+    public Double getPlannedComplexity() { return plannedComplexity; }
+    public void setPlannedComplexity(Double plannedComplexity) { this.plannedComplexity = plannedComplexity; }
+    public Double getDeliveredComplexity() { return deliveredComplexity; }
+    public void setDeliveredComplexity(Double deliveredComplexity) { this.deliveredComplexity = deliveredComplexity; }
     public Double getPlannedEffort() { return plannedEffort; }
     public void setPlannedEffort(Double plannedEffort) { this.plannedEffort = plannedEffort; }
 

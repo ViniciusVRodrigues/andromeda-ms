@@ -68,6 +68,7 @@ class GetOrganizationDashboardV2ScaleTest {
     private static final Instant NOW = Instant.parse("2026-10-11T12:00:00Z");
     private static final int PROJECTS = 20;
     private static final int ITEMS_PER_PROJECT = 2_000;
+    private static final int SPRINTS_PER_PROJECT = 26;
     private static final int ALLOCATIONS = 20_000;
     private static final int PULL_REQUESTS = 10_000;
     private static final int USERS = 30;
@@ -86,6 +87,7 @@ class GetOrganizationDashboardV2ScaleTest {
         VcsRepositoryRepository repositoryRepository = mock(VcsRepositoryRepository.class);
         VcsReadPort vcsReadPort = mock(VcsReadPort.class);
         OrganizationRepository organizationRepository = mock(OrganizationRepository.class);
+        SprintRepository sprintRepository = mock(SprintRepository.class);
 
         List<String> userIds = new ArrayList<>();
         List<User> users = new ArrayList<>();
@@ -99,6 +101,7 @@ class GetOrganizationDashboardV2ScaleTest {
         List<VcsRepository> repositories = new ArrayList<>();
         Map<String, List<WorkItem>> items = new HashMap<>();
         List<String> allItemIds = new ArrayList<>();
+        List<andromeda.sei.ms.feature.workitem.domain.Sprint> sprints = new ArrayList<>();
         for (int p = 0; p < PROJECTS; p++) {
             String projectId = "p" + p;
             projects.add(new Project(projectId, ORG, "Project " + p, projectId, null, true, userIds.subList(0, 5 + p),
@@ -111,6 +114,7 @@ class GetOrganizationDashboardV2ScaleTest {
                 WorkItem item = WorkItemFixture.item(projectId + "-" + i, TYPES[i % 3],
                         done ? WorkItem.ResolvedStatus.DONE : WorkItem.ResolvedStatus.IN_PROGRESS, (double) (1 + i % 5), null);
                 item.setProjectId(projectId);
+                item.setSprintId(projectId + "-s" + (i % SPRINTS_PER_PROJECT));
                 if (done) item.setCompletedAt(NOW.minus(Duration.ofDays(i % 700)));
                 item.setLeadTimeHours(10.0 + i % 50);
                 item.setCycleTimeHours(5.0 + i % 30);
@@ -118,6 +122,13 @@ class GetOrganizationDashboardV2ScaleTest {
                 allItemIds.add(item.getId());
             }
             items.put(projectId, list);
+            for (int s = 0; s < SPRINTS_PER_PROJECT; s++) {
+                LocalDate start = LocalDate.of(2026, 10, 11).minusDays(14L * (s + 1));
+                sprints.add(new andromeda.sei.ms.feature.workitem.domain.Sprint(projectId + "-s" + s, ORG, projectId,
+                        WorkItem.Source.AZURE_DEVOPS, "ext-s" + s, "team", "Core", "Sprint " + s, "X-" + s,
+                        start.atStartOfDay().toInstant(ZoneOffset.UTC), start.plusDays(13).atStartOfDay().toInstant(ZoneOffset.UTC),
+                        andromeda.sei.ms.feature.workitem.domain.Sprint.TimeFrame.PAST, true, 0L, NOW, null));
+            }
             when(workItemRepository.findMetricFieldsByOrganizationIdAndProjectId(ORG, projectId)).thenReturn(list);
             when(workItemRepository.findActiveIdsByOrganizationIdAndProjectId(ORG, projectId))
                     .thenReturn(new HashSet<>(list.stream().map(WorkItem::getId).toList()));
@@ -163,6 +174,7 @@ class GetOrganizationDashboardV2ScaleTest {
                 });
         when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
                 any(), any())).thenReturn(allocations);
+        when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(sprints);
         when(bindingRepository.findAllActiveByOrganizationId(ORG)).thenReturn(bindings);
         when(repositoryRepository.findAllByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(repositories);
         when(vcsReadPort.pullRequestMetricFieldsTouchedSince(eq(ORG), anyCollection(), any())).thenAnswer(inv -> {
@@ -172,7 +184,7 @@ class GetOrganizationDashboardV2ScaleTest {
         when(organizationRepository.findById(anyString())).thenReturn(java.util.Optional.empty());
 
         OrganizationDashboardData data = new OrganizationDashboardData(projectRepository, userRepository,
-                workItemRepository, mock(SprintRepository.class), new EffortBearingLevelResolver(), bindingRepository,
+                workItemRepository, sprintRepository, new EffortBearingLevelResolver(), bindingRepository,
                 repositoryRepository, vcsReadPort, mock(VcsCommitRepository.class),
                 new DeliveryMetricsService(vcsReadPort, workItemRepository, organizationRepository),
                 organizationRepository, aiUsageRepository, allocationRepository, mock(ConnectorTokenRepository.class),
@@ -192,6 +204,18 @@ class GetOrganizationDashboardV2ScaleTest {
                 PROJECTS, ITEMS_PER_PROJECT, ALLOCATIONS, PULL_REQUESTS, took.toMillis());
         assertThat(took).isLessThan(BOUND);
         assertThat(out.portfolio()).hasSize(PROJECTS);
+        // sprintHistory: every project carries its sprints of the year, loaded in batch (no read per project or sprint)
+        assertThat(out.sprintHistory().projects()).hasSize(PROJECTS)
+                .allSatisfy(p -> assertThat(p.sprints()).hasSize(SPRINTS_PER_PROJECT));
+        org.mockito.Mockito.verify(sprintRepository, org.mockito.Mockito.times(2)).findAllByOrganizationId(ORG);
+        org.mockito.Mockito.verify(allocationRepository, org.mockito.Mockito.times(2))
+                .findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(), any(), any());
+        for (var p : out.sprintHistory().projects()) {
+            BigDecimal inSprints = p.sprints().stream().map(s -> s.aiCostUsd()).reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal ofProject = out.ai().costByProject().stream().filter(r -> p.projectId().equals(r.projectId()))
+                    .findFirst().orElseThrow().costUsd();
+            assertThat(inSprints).as("sprint cost never exceeds the project cost").isLessThanOrEqualTo(ofProject);
+        }
         // every allocation of the window splits in full to visible items: Σ allocated = allocated usage cost
         BigDecimal allocated = out.ai().costByProject().stream().filter(r -> r.projectId() != null)
                 .map(r -> r.costUsd()).reduce(BigDecimal.ZERO, BigDecimal::add);

@@ -135,10 +135,11 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     }
 
     @Override
-    public void updateTokensPerSp(String id, Double tokensPerSp) {
+    public void updateAiRatios(String id, Double tokensPerPoint, Double tokensPerHour) {
         Query query = Query.query(Criteria.where("_id").is(id));
         Update update = new Update()
-                .set("tokensPerSp", tokensPerSp)
+                .set("tokensPerPoint", tokensPerPoint)
+                .set("tokensPerHour", tokensPerHour)
                 .set("updatedAt", Instant.now());
         mongoTemplate.updateFirst(query, update, WorkItemDocument.class);
     }

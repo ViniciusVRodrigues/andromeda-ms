@@ -46,7 +46,7 @@ class AzureMetricsControllerTest {
         SprintMetricsOutput output = new SprintMetricsOutput(
                 "sprint-1", "Sprint 1", Instant.parse("2025-01-01T00:00:00Z"),
                 Instant.parse("2025-01-14T00:00:00Z"), Sprint.TimeFrame.PAST,
-                16.0, 15.0, 20.0, 18.0, 15.0, 20.0, 18.0, 25.0, 3, 5, 3, Instant.parse("2025-01-15T00:00:00Z")
+                16.0, 15.0, 20.0, 18.0, 6.0, 4.0, 15.0, 20.0, 18.0, 25.0, 3, 5, 3, Instant.parse("2025-01-15T00:00:00Z")
         );
 
         when(getSprintMetricsUseCase.execute(eq("proj-1"))).thenReturn(List.of(output));
@@ -57,6 +57,8 @@ class AzureMetricsControllerTest {
                 .andExpect(jsonPath("$[0].velocity").value(16.0))
                 .andExpect(jsonPath("$[0].completedItemCount").value(3))
                 .andExpect(jsonPath("$[0].plannedEffort").value(18.0))
+                .andExpect(jsonPath("$[0].plannedComplexity").value(6.0))
+                .andExpect(jsonPath("$[0].deliveredComplexity").value(4.0))
                 .andExpect(jsonPath("$[0].cycleTimeP50").value(15.0))
                 .andExpect(jsonPath("$[0].leadTimeP90").value(25.0));
     }

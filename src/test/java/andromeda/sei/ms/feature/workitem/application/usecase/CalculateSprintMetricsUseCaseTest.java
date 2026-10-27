@@ -130,6 +130,36 @@ class CalculateSprintMetricsUseCaseTest {
         assertThat(saved.getVelocity()).isEqualTo(5.0);
     }
 
+    @Test
+    void should_saveComplexityDeliveredAndPlanned_when_storiesCarryComplexity() {
+        WorkItem done = story("a", WorkItem.ResolvedStatus.DONE, null, 10.0);
+        done.setComplexity(3.0);
+        WorkItem open = story("b", WorkItem.ResolvedStatus.IN_PROGRESS, null, null);
+        open.setComplexity(5.0);
+        WorkItem bug = WorkItemFixture.item("c", WorkItem.ResolvedType.BUG, WorkItem.ResolvedStatus.DONE);
+        bug.setSprintId(SPRINT_ID);
+        givenItems(done, open, bug,
+                task("t1", WorkItem.ResolvedStatus.DONE, 4.0, done),
+                task("t2", WorkItem.ResolvedStatus.DONE, 8.0, done));
+
+        SprintMetrics saved = calculate();
+
+        assertThat(saved.getDeliveredComplexity()).isEqualTo(3.0);
+        assertThat(saved.getPlannedComplexity()).isEqualTo(8.0);
+        // the effort fields keep measuring effort
+        assertThat(saved.getVelocity()).isEqualTo(12.0);
+    }
+
+    @Test
+    void should_saveNullComplexity_when_noUnitHasComplexity() {
+        givenItems(story("a", WorkItem.ResolvedStatus.DONE, 5.0, 10.0));
+
+        SprintMetrics saved = calculate();
+
+        assertThat(saved.getDeliveredComplexity()).isNull();
+        assertThat(saved.getPlannedComplexity()).isNull();
+    }
+
     private void givenItems(WorkItem... items) {
         when(workItemRepository.findAllByOrganizationIdAndProjectId(ORG_ID, PROJECT_ID)).thenReturn(List.of(items));
     }

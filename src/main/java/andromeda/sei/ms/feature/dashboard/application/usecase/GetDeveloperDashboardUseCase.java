@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.dashboard.application.BurndownCalculator;
+import andromeda.sei.ms.feature.dashboard.application.v2.ComplexityEffortFigures;
 import andromeda.sei.ms.feature.dashboard.application.dto.AiSprintSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.BurndownPoint;
 import andromeda.sei.ms.feature.dashboard.application.dto.DeveloperDashboardOutput;
@@ -135,7 +136,9 @@ public class GetDeveloperDashboardUseCase {
                 .toArray());
 
         // Burndown series
-        List<BurndownPoint> burndownSeries = computeBurndown(storyItems, effortScope, sprintStart, sprintEnd);
+        List<BurndownPoint> burndownSeries = computeBurndown(
+                effortBearingLevelResolver.deliverableUnits(andromeda.sei.ms.feature.workitem.domain.EffortBearingLevel.STORY,
+                        currentSprintItems), effortScope, sprintStart, sprintEnd);
 
         // AI sprint summary
         AiSprintSummary aiSprintSummary = computeAiSprintSummary(orgId, userId, sprintStart, sprintEnd);
@@ -190,7 +193,9 @@ public class GetDeveloperDashboardUseCase {
                 sprintHistory,
                 context,
                 Percentiles.of(doneItems.stream().map(WorkItem::getCycleTimeHours).toList()),
-                Percentiles.of(doneItems.stream().map(WorkItem::getLeadTimeHours).toList())
+                Percentiles.of(doneItems.stream().map(WorkItem::getLeadTimeHours).toList()),
+                ComplexityEffortFigures.of(effortBearingLevelResolver.summarize(currentSprintItems)),
+                effortScope
         );
     }
 
