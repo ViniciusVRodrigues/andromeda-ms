@@ -181,7 +181,7 @@ public class GetTeamFlowV2UseCase {
 
     /** Items of the sprint per category at the end of each working day elapsed so far; empty without items. */
     private static List<FlowDay> cfd(Context ctx) {
-        /* épicos e features não são trabalho da sprint: ficam fora do fluxo, como em reabertos e atRiskSp */
+        /* épicos e features não são trabalho da sprint: ficam fora do fluxo, como em reabertos e no escopo em risco */
         List<WorkItem> items = ctx.sprintItems(ctx.sprint()).stream()
                 .filter(wi -> !ProjectPeriodItems.isContainer(wi)).toList();
         if (items.isEmpty()) return List.of();
@@ -250,18 +250,11 @@ public class GetTeamFlowV2UseCase {
     }
 
     /**
-     * Effort ({@code atRiskSp}) and complexity ({@code points}) of the units not done yet, for the current sprint;
-     * each {@code null} when nothing carries it.
+     * Complexity ({@code points}) of the units not done yet, for the current sprint; {@code null} when
+     * nothing carries it.
      */
     private static Scope scope(Context ctx, EffortSummary current) {
-        if (!DashboardV2Views.isCurrent(ctx.sprint())) return new Scope(null, null);
-        Double effort = null;
-        if (current.planned() != null) {
-            List<WorkItem> notDone = current.units().stream()
-                    .filter(wi -> wi.getResolvedStatus() != ResolvedStatus.DONE).toList();
-            Double sum = current.scope().totalEffort(notDone);
-            effort = sum == null ? Double.valueOf(0d) : sum;
-        }
+        if (!DashboardV2Views.isCurrent(ctx.sprint())) return new Scope(null);
         Double points = null;
         if (current.plannedComplexity() != null) {
             List<WorkItem> notDoneStories = current.complexityUnits().stream()
@@ -269,7 +262,7 @@ public class GetTeamFlowV2UseCase {
             Double sum = current.scope().totalComplexity(notDoneStories);
             points = sum == null ? Double.valueOf(0d) : sum;
         }
-        return new Scope(effort, points);
+        return new Scope(points);
     }
 
     private static ReviewQueue reviewQueue(Context ctx) {

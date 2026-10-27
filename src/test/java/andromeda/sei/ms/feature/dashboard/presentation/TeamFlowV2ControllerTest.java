@@ -74,7 +74,7 @@ class TeamFlowV2ControllerTest {
                 List.of(), List.of(new FlowDay("2026-10-01", "01/10", 3, 2, 1)),
                 new StateTimes(new StageTimes(stat, stat, null),
                         List.of(new StageTimesPoint("s2", "S2*", "Sprint 2", stat, stat, null))),
-                new Rework(List.of(), 4, 25.0), new Scope(7.0, 5.0),
+                new Rework(List.of(), 4, 25.0), new Scope(5.0),
                 new ReviewQueue(3, 1, List.of(new BranchCount("main", 3)), List.of(new LabelCount("bug", 2))), AS_OF));
         when(dataFreshnessResolver.resolve(ORG, "p1")).thenReturn(new DataFreshness(AS_OF, false));
 
@@ -96,7 +96,7 @@ class TeamFlowV2ControllerTest {
                 .andExpect(jsonPath("$.stateTimes.history[0].label").value("S2*"))
                 .andExpect(jsonPath("$.rework.doneInWindow").value(4))
                 .andExpect(jsonPath("$.rework.ratePct").value(25.0))
-                .andExpect(jsonPath("$.scope.atRiskSp").value(7.0))
+                .andExpect(jsonPath("$.scope.atRiskSp").doesNotExist())
                 .andExpect(jsonPath("$.reviewQueue.open").value(3))
                 .andExpect(jsonPath("$.reviewQueue.drafts").value(1))
                 .andExpect(jsonPath("$.reviewQueue.byBaseBranch[0].branch").value("main"))

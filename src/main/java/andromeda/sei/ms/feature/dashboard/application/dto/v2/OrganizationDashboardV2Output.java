@@ -19,7 +19,7 @@ import java.util.Map;
  * project plus a row ({@code projectId null}) with the people's cost no allocation claimed yet.
  *
  * <p><b>AI cost:</b> {@code kpis.aiCostUsd} (and {@code previous}) is, for every caller, the cost
- * allocated (validated) to the visible projects — one meaning, so {@code aiCostPerSp} is comparable.
+ * allocated (validated) to the visible projects — one meaning, so {@code aiCostPerPoint} is comparable.
  * <b>Partial caller</b> (one who does not see every active project): the unallocated row's
  * {@code costUsd} is {@code null}, so no subtraction isolates what the people spent on hidden
  * projects, and {@code integrations.aiConnector.activeTokens} counts only the people's tokens. The
@@ -64,7 +64,7 @@ public record OrganizationDashboardV2Output(
 
     /**
      * Delivery of the visible projects in one period. {@code itemsDone}: STORY, BUG and TASK items
-     * completed; {@code spDelivered}, {@code leadTimeHours}, {@code cycleTimeHours}: deliverable units
+     * completed; {@code leadTimeHours}, {@code cycleTimeHours}: deliverable units
      * (the single velocity definition); {@code cfrPct}: the delivery-metrics proxy over the union of
      * the projects' merges; {@code prsMerged}/{@code commits}/{@code timeToFirstReviewHours}: each
      * pull request and commit once even when its repository is bound to two projects.
@@ -73,10 +73,10 @@ public record OrganizationDashboardV2Output(
      * (complexity-effort D1-D3).
      * {@code projects} and {@code people} only in {@code kpis} ({@code null} in {@code previous}).
      */
-    public record OrgStats(Integer projects, Integer people, int itemsDone, Double spDelivered,
+    public record OrgStats(Integer projects, Integer people, int itemsDone,
                            DurationStat leadTimeHours, DurationStat cycleTimeHours, Double cfrPct, int prsMerged,
                            int commits, DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, long aiTokens,
-                           BigDecimal aiCostPerSp, int activeAiUsers, Double complexityDelivered,
+                           int activeAiUsers, Double complexityDelivered,
                            BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /**
@@ -88,14 +88,14 @@ public record OrganizationDashboardV2Output(
     public record PortfolioRow(String projectId, String name, String team, int memberCount,
                                CurrentSprint currentSprint, Double currentProgressGapPct,
                                Double lastPredictabilityPct, Double predictabilityPct, int throughput,
-                               Double spDelivered, DurationStat leadTimeHours, Double cfrPct,
+                               DurationStat leadTimeHours, Double cfrPct,
                                DurationStat prCycleTimeHours, int stalePrs, BigDecimal aiCostUsd,
-                               BigDecimal aiCostPerSp, List<Integer> throughputTrend, Health health,
+                               List<Integer> throughputTrend, Health health,
                                Double complexityDelivered, Double complexityPlanned,
                                BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
     /** {@code progressPct} = done ÷ planned × 100 ({@code null} without planned effort); {@code elapsedPct} in working days. */
-    public record CurrentSprint(String id, String name, Double spDone, Double spPlanned, Double progressPct,
+    public record CurrentSprint(String id, String name, Double progressPct,
                                 Double elapsedPct, Double pointsDone, Double pointsPlanned) {}
 
     /** {@code level} {@code ok}, {@code attention} (1 reason) or {@code risk} (2+); reasons in pt-BR. */

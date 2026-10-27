@@ -210,9 +210,9 @@ class ProjectBacklogClassificationServiceTest {
         return new WorkItem(externalId, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title", rawType, WorkItem.ResolvedType.TASK,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null,
+                null, List.of(), null, null, null, null,
                 parentExternalId, NOW, null, null,
-                null, null, null,
+                null, null,
                 true, 0L, NOW,
                 null, null, null, null,
                 null, null, null, null);
@@ -222,9 +222,9 @@ class ProjectBacklogClassificationServiceTest {
         return new WorkItem(externalId, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title", "Task", WorkItem.ResolvedType.TASK,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null,
+                null, List.of(), null, null, null, null,
                 parentExternalId, NOW, null, null,
-                null, null, null,
+                null, null,
                 false, 0L, NOW,
                 null, null, null, null,
                 null, null, null, null);

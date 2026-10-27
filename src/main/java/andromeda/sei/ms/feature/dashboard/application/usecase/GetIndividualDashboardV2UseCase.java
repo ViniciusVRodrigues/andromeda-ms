@@ -181,12 +181,9 @@ public class GetIndividualDashboardV2UseCase {
         PrStats prs = prStats(ctx, ctx.window());
         List<WorkItem> units = activeUnits(dev);
         ComplexityEffortFigures f = dev.figures();
-        return new Kpis(dev.totalSpInSprint(),
-                DashboardV2Views.deliveredOf(dev.totalSpInSprint(), dev.storyPointsDelivered()),
-                (int) units.stream().filter(wi -> wi.getResolvedStatus() == WorkItem.ResolvedStatus.DONE).count(),
+        return new Kpis((int) units.stream().filter(wi -> wi.getResolvedStatus() == WorkItem.ResolvedStatus.DONE).count(),
                 units.size(), dev.cycleTime(), dev.leadTime(), prs.merged(), prs.review(),
                 hasUsage ? dev.sprintCostUsd() : null, hasUsage ? dev.aiSprintSummary().totalTokens() : null,
-                dev.avgTokensPerSp(),
                 DashboardV2Views.isCurrent(ctx.sprint())
                         ? (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count()
                         : null,
@@ -204,14 +201,12 @@ public class GetIndividualDashboardV2UseCase {
         List<AIUsage> usage = aiUsageRepository.findByOrganizationIdAndUserIdAndDayBetween(
                 ctx.orgId(), ctx.userId(), window.startDay(), window.endDay());
         PrStats prs = prStats(ctx, window);
-        return new SprintStats(summary.planned(), DashboardV2Views.deliveredOf(summary.planned(), summary.delivered()),
-                summary.doneUnits().size(),
+        return new SprintStats(summary.doneUnits().size(),
                 summary.units().size(), Percentiles.of(cycleTimes(summary.doneUnits())),
                 Percentiles.of(summary.doneUnits().stream().map(WorkItem::getLeadTimeHours).toList()), prs.merged(),
                 prs.review(), usage.isEmpty() ? null : DashboardV2Views.sumOrNull(usage.stream()
                         .map(AIUsage::getCostUsd).toList()),
                 usage.isEmpty() ? null : usage.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
-                DashboardV2Views.averageOrNull(summary.units().stream().map(WorkItem::getTokensPerSp).toList()),
                 f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
                 f.avgTokensPerHour(), f.unitsWithoutComplexity());
     }
@@ -228,33 +223,32 @@ public class GetIndividualDashboardV2UseCase {
             SprintStats stats = stats(ctx, sprint);
             return new HistoryPoint(sprint.getId(), DashboardV2Views.historyLabel(sprint), sprint.getName(),
                     sprint.getId().equals(selection.selected().getId()), DashboardV2Views.isCurrent(sprint),
-                    stats.spPlanned(), stats.spDelivered(), stats.cycleTimeHours(), stats.aiCostUsd(),
+                    stats.cycleTimeHours(), stats.aiCostUsd(),
                     stats.aiTokens(), stats.complexityPlanned(), stats.complexityDelivered(), stats.effortLogged());
         }).toList();
     }
 
     /**
      * The developer dashboard's burndown (up to today) completed to the sprint end with the ideal
-     * line only; {@code remaining} is {@code null} when no unit carries effort.
+     * line only; {@code remainingPoints} is {@code null} when no unit carries complexity.
      */
     private List<BurndownDay> burndown(DeveloperDashboardOutput dev, Context ctx) {
         // The series is in complexity (complexity-effort D1): a sprint total of zero means no unit has it.
-        boolean noEffort = dev.burndownSeries().isEmpty() || dev.burndownSeries().getFirst().idealSp() <= 0d;
+        boolean noEffort = dev.burndownSeries().isEmpty() || dev.burndownSeries().getFirst().idealPoints() <= 0d;
         List<BurndownDay> days = new ArrayList<>(dev.burndownSeries().stream()
                 .map(p -> burndownDay(p, noEffort)).toList());
         if (dev.burndownSeries().isEmpty()) return days;
         LocalDate last = dev.burndownSeries().getLast().date();
-        double total = noEffort ? 0d : dev.burndownSeries().getFirst().idealSp();
+        double total = noEffort ? 0d : dev.burndownSeries().getFirst().idealPoints();
         for (LocalDate day : DashboardV2Views.days(last.plusDays(1), ctx.window().endDay())) {
             double ideal = BurndownCalculator.ideal(total, ctx.window().startDay(), ctx.window().endDay(), day);
-            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null, ideal, null, ideal));
+            days.add(new BurndownDay(day.toString(), DashboardV2Views.label(day), null, ideal));
         }
         return days;
     }
 
     private static BurndownDay burndownDay(BurndownPoint point, boolean noEffort) {
         return new BurndownDay(point.date().toString(), DashboardV2Views.label(point.date()),
-                noEffort ? null : point.remainingSp(), point.idealSp(),
                 noEffort ? null : point.remainingPoints(), point.idealPoints());
     }
 

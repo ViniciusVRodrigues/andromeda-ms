@@ -88,7 +88,7 @@ public final class DashboardV2Views {
                 enumName(item.getResolvedType()), enumName(item.getResolvedStatus()), item.getRawStatus(),
                 item.getPriority(), item.getEffort(), assignee(item, people), item.getStartedAt(),
                 item.getCompletedAt(), item.getCycleTimeHours(), item.getLeadTimeHours(),
-                daysInProgress(item, now), aiCostUsd, item.getTokensPerSp(),
+                daysInProgress(item, now), aiCostUsd,
                 linkedPr == null ? null : new ItemPullRequest(linkedPr.getNumber(),
                         repositoryNames.get(linkedPr.getRepositoryId()), enumName(linkedPr.getStatus()),
                         StalePullRequestPolicy.isStale(linkedPr, now)),

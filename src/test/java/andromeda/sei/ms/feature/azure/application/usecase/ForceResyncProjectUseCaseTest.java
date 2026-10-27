@@ -141,10 +141,10 @@ class ForceResyncProjectUseCaseTest {
                 id, Instant.now(), "Title " + id,
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", storyPoints, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", "user-1", null, null,
                 Instant.now(), startedAt, completedAt,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
         return wi;
     }
 

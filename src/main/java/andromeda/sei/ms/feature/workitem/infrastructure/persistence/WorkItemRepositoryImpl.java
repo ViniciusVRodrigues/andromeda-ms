@@ -52,7 +52,6 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
                 .set("rawStatus", doc.getRawStatus())
                 .set("resolvedStatus", doc.getResolvedStatus())
                 .set("priority", doc.getPriority())
-                .set("storyPoints", doc.getStoryPoints())
                 .set("labels", doc.getLabels())
                 .set("sprintId", doc.getSprintId())
                 .set("sprintName", doc.getSprintName())
@@ -247,9 +246,9 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     static WorkItem leanItem(org.bson.Document d, String organizationId, String projectId) {
         return new WorkItem(d.get("_id").toString(), organizationId, projectId, null, d.getString("externalId"), null,
                 null, null, enumOf(WorkItem.ResolvedType.class, d.getString("resolvedType")), null,
-                enumOf(WorkItem.ResolvedStatus.class, d.getString("resolvedStatus")), null, null, null,
+                enumOf(WorkItem.ResolvedStatus.class, d.getString("resolvedStatus")), null, null,
                 d.getString("sprintId"), null, null, null, d.getString("parentExternalId"), null, null,
-                instant(d.get("completedAt")), number(d.get("cycleTimeHours")), number(d.get("leadTimeHours")), null,
+                instant(d.get("completedAt")), number(d.get("cycleTimeHours")), number(d.get("leadTimeHours")),
                 true, null, null, number(d.get("complexity")), null, null, null, number(d.get("effort")), null, null, null);
     }
 

@@ -42,7 +42,7 @@ public record ProjectRoadmapV2Output(
      * Progress of a set of children by the hierarchy.
      *
      * <ul>
-     *   <li>{@code effortTotal}/{@code effortDone}/{@code spDoneInPeriod}: {@code null} when no
+     *   <li>{@code effortTotal}/{@code effortDone}: {@code null} when no
      *       child carries effort.</li>
      *   <li>{@code weeklyPace}: effort completed in the last 8 weeks ÷ 8, {@code null} when 0.</li>
      *   <li>{@code forecastWeeks}: remaining effort ÷ pace; 0 when nothing remains; {@code null}
@@ -52,12 +52,11 @@ public record ProjectRoadmapV2Output(
      *   <li>{@code complexityTotal}/{@code complexityDone}: the same in points of complexity (null when no child
      *       carries it); {@code pointsPerWeek}: complexity completed in the last 8 weeks ÷ 8, null when 0
      *       (complexity-effort D1).</li>
-     *   <li>{@code complexityDoneInPeriod}: complexity of the units completed in the period, next to
-     *       {@code spDoneInPeriod}; null when no child carries complexity.</li>
+     *   <li>{@code complexityDoneInPeriod}: complexity of the units completed in the period; null when no child carries complexity.</li>
      * </ul>
      */
     public record Progress(Double effortTotal, Double effortDone, Double pctDone, int itemsTotal, int itemsDone,
-                           int unestimated, Double spDoneInPeriod, Double weeklyPace, Double forecastWeeks,
+                           int unestimated, Double weeklyPace, Double forecastWeeks,
                            Instant lastActivityAt, Double complexityTotal, Double complexityDone,
                            Double pointsPerWeek, Double complexityDoneInPeriod) {}
 
@@ -73,7 +72,7 @@ public record ProjectRoadmapV2Output(
      * future one. Staleness by the last Azure change; items without any date are left out of
      * {@code staleness}, {@code byPriority[].stale} and {@code forgotten}.
      */
-    public record Backlog(int count, Double sp, Double unestimatedPct, Double withoutParentPct,
+    public record Backlog(int count, Double unestimatedPct, Double withoutParentPct,
                           List<StaleBand> staleness, List<PriorityRow> byPriority, List<ForgottenItem> forgotten,
                           List<TagShare> byTag, Double points) {}
 
@@ -87,8 +86,8 @@ public record ProjectRoadmapV2Output(
                                 Double daysWithoutChange, List<String> tags, Double complexity,
                                 Double effortRolledUp) {}
 
-    /** {@code sp}: effective effort, {@code points}: effective complexity; items without it adding 0. */
-    public record TagShare(String tag, int count, double sp, double points) {}
+    /** {@code points}: effective complexity; items without it adding 0. */
+    public record TagShare(String tag, int count, double points) {}
 
     public record Calibration(List<EffortRow> byEffort, List<ComplexityRow> byComplexity,
                               List<ManualOverride> overrides, Double overridePct, List<Outlier> outliers) {}

@@ -25,7 +25,7 @@ public record TeamFlowV2Response(
         @Schema(description = "Itens da sprint por categoria (Proposed/InProgress/Completed) no fim de cada dia útil") List<FlowDay> cfd,
         @Schema(description = "Fila e andamento {p50, p90, n} em horas dos itens concluídos; resolvedHours sempre null") StateTimes stateTimes,
         @Schema(description = "Itens concluídos na sprint que depois saíram de concluído") Rework rework,
-        @Schema(description = "atRiskSp: esforço ainda não concluído, só na sprint atual") Scope scope,
+        @Schema(description = "points: complexidade ainda não concluída, só na sprint atual") Scope scope,
         @Schema(description = "PRs abertos (estado atual, null em sprint passada) e labels dos PRs criados na sprint") ReviewQueue reviewQueue,
         @Schema(description = "Instante do cálculo (ISO-8601, UTC)", example = "2026-10-11T12:00:00Z") String asOf,
         @Schema(description = "Frescura dos dados do projeto (sync mais antigo, refresh rodando)") DataFreshness dataFreshness) {}

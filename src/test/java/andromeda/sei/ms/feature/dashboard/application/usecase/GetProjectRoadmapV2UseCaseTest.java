@@ -113,7 +113,6 @@ class GetProjectRoadmapV2UseCaseTest {
         ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
 
         assertThat(out.features().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
-        assertThat(out.features().getFirst().progress().spDoneInPeriod()).isEqualTo(3.0);
         assertThat(out.epics().getFirst().progress().complexityDoneInPeriod()).isEqualTo(2.0);
     }
 
@@ -145,7 +144,6 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(f1.progress().effortDone()).isEqualTo(8.0);
         assertThat(f1.progress().pctDone()).isEqualTo(50.0);
         assertThat(f1.progress().itemsDone()).isEqualTo(2);
-        assertThat(f1.progress().spDoneInPeriod()).isEqualTo(8.0);
         assertThat(f1.progress().weeklyPace()).isEqualTo(0.625);
         assertThat(f1.progress().forecastWeeks()).isCloseTo(12.8, within(1e-9));
         EpicRow e1 = out.epics().getFirst();
@@ -168,7 +166,6 @@ class GetProjectRoadmapV2UseCaseTest {
 
         assertThat(feature(out, "f2").progress().forecastWeeks()).isZero();
         assertThat(feature(out, "f2").progress().weeklyPace()).isNull();
-        assertThat(feature(out, "f2").progress().spDoneInPeriod()).isEqualTo(0.0);
         assertThat(feature(out, "f3").progress().forecastWeeks()).isNull();
         assertThat(feature(out, "f4").progress().effortTotal()).isNull();
         assertThat(feature(out, "f4").progress().pctDone()).isNull();
@@ -194,7 +191,7 @@ class GetProjectRoadmapV2UseCaseTest {
         ProjectRoadmapV2Output.Backlog backlog = useCase.execute(ORG, PROJECT, 90).backlog();
 
         assertThat(backlog.count()).isEqualTo(4);
-        assertThat(backlog.sp()).isEqualTo(5.0);
+        assertThat(backlog.points()).isEqualTo(5.0);
         assertThat(backlog.unestimatedPct()).isEqualTo(50.0);
         assertThat(backlog.withoutParentPct()).isEqualTo(75.0);
         assertThat(backlog.staleness()).extracting(ProjectRoadmapV2Output.StaleBand::count).containsExactly(1, 1, 1, 1);
@@ -203,7 +200,7 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(backlog.forgotten().getFirst().externalId()).isEqualTo("ext-b3");
         assertThat(backlog.forgotten().getFirst().daysWithoutChange()).isEqualTo(100.0);
         assertThat(backlog.forgotten().getFirst().priority()).isEqualTo(1);
-        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0, 0.0), new TagShare("ui", 1, 2.0, 0.0));
+        assertThat(backlog.byTag()).containsExactly(new TagShare("api", 2, 5.0), new TagShare("ui", 1, 2.0));
     }
 
     @Test
@@ -234,7 +231,7 @@ class GetProjectRoadmapV2UseCaseTest {
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("Complexidade", "user-z"),
                         org.assertj.core.groups.Tuple.tuple("Esforço", "Ana"));
         assertThat(out.calibration().overridePct()).isEqualTo(66.67);
-        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 3.0, 2.0));
+        assertThat(out.deliveredByTag()).containsExactly(new TagShare("api", 1, 2.0));
     }
 
     @Test
@@ -340,7 +337,7 @@ class GetProjectRoadmapV2UseCaseTest {
         assertThat(out.epics()).isEmpty();
         assertThat(out.features()).isEmpty();
         assertThat(out.backlog().count()).isZero();
-        assertThat(out.backlog().sp()).isNull();
+        assertThat(out.backlog().points()).isNull();
         assertThat(out.backlog().unestimatedPct()).isNull();
         assertThat(out.backlog().staleness()).hasSize(4).allSatisfy(b -> assertThat(b.count()).isZero());
         assertThat(out.backlog().forgotten()).isEmpty();
@@ -454,6 +451,7 @@ class GetProjectRoadmapV2UseCaseTest {
 
     private static WorkItem backlog(String id, Double effort, String priority, Instant changedAt, List<String> tags) {
         WorkItem item = WorkItemFixture.item(id, ResolvedType.STORY, ResolvedStatus.TODO, effort, null);
+        item.setComplexity(effort);
         item.setPriority(priority);
         item.setExternalUpdatedAt(changedAt);
         item.setLabels(tags);

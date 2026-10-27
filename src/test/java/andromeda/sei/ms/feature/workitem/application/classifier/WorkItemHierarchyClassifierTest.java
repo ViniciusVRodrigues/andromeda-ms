@@ -182,8 +182,8 @@ class WorkItemHierarchyClassifierTest {
         return new WorkItem(externalId, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title " + externalId, rawType, null,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, parentExternalId,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, parentExternalId,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 

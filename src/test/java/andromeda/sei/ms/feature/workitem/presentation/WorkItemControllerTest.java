@@ -2,6 +2,8 @@ package andromeda.sei.ms.feature.workitem.presentation;
 
 import andromeda.sei.ms.feature.workitem.application.dto.UpdateWorkItemManualFieldsInput;
 import andromeda.sei.ms.feature.workitem.application.dto.WorkItemChildrenOutput;
+import andromeda.sei.ms.feature.workitem.application.dto.WorkItemDetailOutput;
+import andromeda.sei.ms.feature.workitem.application.usecase.GetWorkItemDetailUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.ListWorkItemChildrenUseCase;
 import andromeda.sei.ms.feature.workitem.application.usecase.UpdateWorkItemManualFieldsUseCase;
 import andromeda.sei.ms.feature.workitem.domain.FieldValueSource;
@@ -43,6 +45,9 @@ class WorkItemControllerTest {
     @Mock
     private AssigneeNameResolver assigneeNameResolver;
 
+    @Mock
+    private GetWorkItemDetailUseCase getWorkItemDetailUseCase;
+
     @InjectMocks
     private WorkItemController controller;
 
@@ -63,6 +68,19 @@ class WorkItemControllerTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    void detail_shouldExposeTokensPerPointAndHour_withoutTokensPerSp() throws Exception {
+        when(getWorkItemDetailUseCase.execute(any(), eq("wi-1"))).thenReturn(new WorkItemDetailOutput(
+                "wi-1", "10", "T", "STORY", "DONE", "p1", "S1", null, null, List.of(), null,
+                NOW, null, null, null, null, 1200.0, 300.0, true, null, null));
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/v1/work-items/wi-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tokensPerPoint").value(1200.0))
+                .andExpect(jsonPath("$.tokensPerHour").value(300.0))
+                .andExpect(jsonPath("$.tokensPerSp").doesNotExist());
     }
 
     @Test
@@ -181,8 +199,8 @@ class WorkItemControllerTest {
         return new WorkItem("wi-1", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "ext-1", NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, "azure-123", assigneeUserId, "dev@empresa.com", null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, "azure-123", assigneeUserId, "dev@empresa.com", null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 
@@ -190,8 +208,8 @@ class WorkItemControllerTest {
         return new WorkItem("wi-1", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "ext-1", NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 }

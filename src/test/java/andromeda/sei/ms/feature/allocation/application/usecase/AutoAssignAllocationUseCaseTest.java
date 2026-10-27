@@ -512,10 +512,10 @@ class AutoAssignAllocationUseCaseTest {
                 id, Instant.now(), "Task " + id,
                 "Task", WorkItem.ResolvedType.TASK,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", null, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, effort, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, effort, null, null, null);
     }
 
     @Test
@@ -571,10 +571,10 @@ class AutoAssignAllocationUseCaseTest {
                 id, Instant.now(), title,
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 
     private WorkItem featureWorkItem(String id, String title) {
@@ -582,9 +582,9 @@ class AutoAssignAllocationUseCaseTest {
                 id, Instant.now(), title,
                 "Feature", WorkItem.ResolvedType.FEATURE,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }

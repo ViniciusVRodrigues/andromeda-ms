@@ -55,7 +55,6 @@ public class GetSprintItemsUseCase {
                         sprintName,
                         item.getResolvedType() != null ? item.getResolvedType().name() : null,
                         item.getExternalId(),
-                        item.getEffort() != null ? item.getEffort() : item.getStoryPoints(),
                         scope.effectiveComplexity(item),
                         scope.taskEffort(item)));
             }

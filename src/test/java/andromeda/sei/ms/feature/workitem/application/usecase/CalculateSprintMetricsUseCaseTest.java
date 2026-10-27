@@ -77,18 +77,6 @@ class CalculateSprintMetricsUseCaseTest {
     }
 
     @Test
-    void should_ignoreLegacyStoryPoints_when_computingVelocity() {
-        WorkItem legacy = story("a", WorkItem.ResolvedStatus.DONE, null, 10.0);
-        legacy.setStoryPoints(13.0);
-        givenItems(legacy);
-
-        SprintMetrics saved = calculate();
-
-        assertThat(saved.getVelocity()).isEqualTo(0.0);
-        assertThat(saved.getItemsWithPoints()).isZero();
-    }
-
-    @Test
     void should_reportZeroVelocityAndNullPercentiles_when_nothingCompleted() {
         givenItems(story("a", WorkItem.ResolvedStatus.TODO, 3.0, null),
                 story("b", WorkItem.ResolvedStatus.IN_PROGRESS, 2.0, null));

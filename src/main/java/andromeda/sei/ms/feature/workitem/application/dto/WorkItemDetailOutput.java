@@ -8,7 +8,7 @@ public record WorkItemDetailOutput(
         String projectId, String sprintName, String assignee, String priority,
         List<String> labels, String parentExternalId,
         Instant createdAt, Instant startedAt, Instant completedAt,
-        Double cycleTimeHours, Double leadTimeHours, Double tokensPerSp,
+        Double cycleTimeHours, Double leadTimeHours, Double tokensPerPoint, Double tokensPerHour,
         boolean editableType, FieldDetail complexity, FieldDetail effort) {
     public record FieldDetail(Double value, String source, String mappedField, String fieldType) {}
 }

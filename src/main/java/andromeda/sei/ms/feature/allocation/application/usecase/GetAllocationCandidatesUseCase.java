@@ -48,7 +48,6 @@ public class GetAllocationCandidatesUseCase {
                                     sprint.getName(),
                                     wi.getResolvedType() != null ? wi.getResolvedType().name() : null,
                                     wi.getExternalId(),
-                                    wi.getEffort() != null ? wi.getEffort() : wi.getStoryPoints(),
                                     scope.effectiveComplexity(wi),
                                     scope.taskEffort(wi)));
                 })

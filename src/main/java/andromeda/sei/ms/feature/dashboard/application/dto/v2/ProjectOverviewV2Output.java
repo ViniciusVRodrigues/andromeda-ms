@@ -52,7 +52,7 @@ public record ProjectOverviewV2Output(
      * <ul>
      *   <li>{@code throughput}: STORY, BUG and TASK items completed (DONE) in the period;
      *       {@code bugSharePct} is the BUG share among them.</li>
-     *   <li>{@code spDelivered}, {@code leadTimeHours}, {@code cycleTimeHours}: deliverable units
+     *   <li>{@code leadTimeHours}, {@code cycleTimeHours}: deliverable units
      *       completed in the period (the single velocity definition), epics and features excluded.</li>
      *   <li>{@code predictabilityPct}: average of delivered ÷ planned complexity of the past sprints that
      *       ended in the period.</li>
@@ -63,9 +63,9 @@ public record ProjectOverviewV2Output(
      *   <li>{@code stalePrs}: current state, so {@code null} in {@code previous}.</li>
      * </ul>
      */
-    public record PeriodStats(int throughput, Double deployFreqPerWeek, Double spDelivered, Double predictabilityPct,
+    public record PeriodStats(int throughput, Double deployFreqPerWeek, Double predictabilityPct,
                               DurationStat leadTimeHours, DurationStat cycleTimeHours, Double cfrPct,
-                              Double bugSharePct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp, int prsMerged,
+                              Double bugSharePct, BigDecimal aiCostUsd, int prsMerged,
                               DurationStat prCycleTimeHours, DurationStat timeToFirstReviewHours, Integer stalePrs,
                               int commitsCount, Double complexityDelivered, Double effortLogged,
                               BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
@@ -88,9 +88,9 @@ public record ProjectOverviewV2Output(
     public record ThroughputRow(String start, String label, @JsonProperty("STORY") int story,
                                 @JsonProperty("BUG") int bug, @JsonProperty("TASK") int task) {}
 
-    /** A past sprint that ended in the period: committed × delivered and the AI cost per SP. */
-    public record SprintRow(String sprintId, String label, String name, Double spPlanned, Double spDelivered,
-                            Double predictabilityPct, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
+    /** A past sprint that ended in the period: planned × delivered complexity and the AI cost per point and per hour. */
+    public record SprintRow(String sprintId, String label, String name,
+                            Double predictabilityPct, BigDecimal aiCostUsd,
                             Long aiTokens, Double complexityPlanned, Double complexityDelivered,
                             BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
 
@@ -128,7 +128,7 @@ public record ProjectOverviewV2Output(
     public record Subscription(BigDecimal consumptionUsd, BigDecimal subscriptionUsd, BigDecimal perUserMonthUsd) {}
 
     public record Ai(List<String> models, List<CostBucket> costByBucket, Adoption adoption, Subscription subscription,
-                     Double tokensPerSp, Double tokensPerPoint, Double tokensPerHour) {}
+                     Double tokensPerPoint, Double tokensPerHour) {}
 
     public record People(int members, int azureLinked, int githubLinked, int aiConnected) {}
 

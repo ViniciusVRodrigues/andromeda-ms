@@ -308,8 +308,8 @@ class EffortBearingLevelResolverTest {
         return new WorkItem("id-" + externalId, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title " + externalId, rawType, resolvedType,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, parentExternalId,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, parentExternalId,
+                NOW, null, null, null, null, true, null, NOW,
                 complexity, null, null, null, effort, null, null, null);
     }
 }

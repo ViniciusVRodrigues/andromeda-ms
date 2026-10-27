@@ -194,7 +194,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.portfolio()).extracting(PortfolioRow::projectId).containsExactly(A, B);
         assertThat(out.kpis().projects()).isEqualTo(2);
         assertThat(out.kpis().itemsDone()).isEqualTo(2);
-        assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
         assertThat(out.kpis().people()).as("members of A ∪ B").isEqualTo(3);
         // partial caller: the cost allocated to A and B (none here), never the people's whole usage
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
@@ -226,10 +226,10 @@ class GetOrganizationDashboardV2UseCaseTest {
 
         assertThat(out.portfolio()).isEmpty();
         assertThat(out.kpis().itemsDone()).isZero();
-        assertThat(out.kpis().spDelivered()).isNull();
+        assertThat(out.kpis().complexityDelivered()).isNull();
         assertThat(out.kpis().leadTimeHours().n()).isZero();
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
-        assertThat(out.kpis().aiCostPerSp()).isNull();
+        assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.delivery().flow()).hasSize(12);
         assertThat(out.ai().costByProject()).singleElement().extracting(ProjectCost::projectId).isNull();
         verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(anyString(), anyString());
@@ -253,8 +253,8 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(row.team()).isEqualTo("Core");
         assertThat(row.lastPredictabilityPct()).isEqualTo(50.0);
         assertThat(row.currentSprint().name()).isEqualTo("s2");
-        assertThat(row.currentSprint().spPlanned()).isEqualTo(10.0);
-        assertThat(row.currentSprint().spDone()).isEqualTo(0.0);
+        assertThat(row.currentSprint().pointsPlanned()).isEqualTo(10.0);
+        assertThat(row.currentSprint().pointsDone()).isEqualTo(0.0);
         assertThat(row.currentSprint().progressPct()).isEqualTo(0.0);
         // Mon 05/10 → Sun 11/10: 5 of 10 working days
         assertThat(row.currentSprint().elapsedPct()).isEqualTo(50.0);
@@ -367,7 +367,7 @@ class GetOrganizationDashboardV2UseCaseTest {
                 BigDecimal.ZERO, new BigDecimal("3.00"));
         assertThat(out.kpis().aiCostUsd()).as("allocated to the visible projects").isEqualByComparingTo("10.00");
         assertThat(out.ai().subscription().consumptionUsd()).as("the people's whole usage").isEqualByComparingTo("13.00");
-        assertThat(out.portfolio().getFirst().aiCostPerSp()).isEqualByComparingTo("1.875");
+        assertThat(out.portfolio().getFirst().aiCostPerPoint()).isEqualByComparingTo("1.875");
         assertThat(out.ai().costByProject().getLast().name()).isEqualTo("Não alocado a work items");
         assertThat(out.integrations().coverage().aiDaysAllocatedPct()).isEqualTo(50.0);
     }
@@ -394,7 +394,7 @@ class GetOrganizationDashboardV2UseCaseTest {
 
         assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo("10.00");
         assertThat(partial.previous().aiCostUsd()).as("previous period, allocated to A").isEqualByComparingTo("8.00");
-        assertThat(partial.kpis().aiCostPerSp()).isEqualByComparingTo("5.00");
+        assertThat(partial.kpis().aiCostPerPoint()).isEqualByComparingTo("5.00");
         assertThat(partial.ai().costByProject().getLast().projectId()).isNull();
         assertThat(partial.ai().costByProject().getLast().costUsd()).isNull();
         BigDecimal visibleRows = partial.ai().costByProject().stream().map(ProjectCost::costUsd)
@@ -446,7 +446,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo("10.00").isEqualByComparingTo(full.kpis().aiCostUsd());
         assertThat(partial.previous().aiCostUsd()).isEqualByComparingTo("8.00")
                 .isEqualByComparingTo(full.previous().aiCostUsd());
-        assertThat(partial.kpis().aiCostPerSp()).isEqualByComparingTo(full.kpis().aiCostPerSp());
+        assertThat(partial.kpis().aiCostPerPoint()).isEqualByComparingTo(full.kpis().aiCostPerPoint());
         assertThat(partial.ai().costByProject().getLast().costUsd()).as("partial: unallocated hidden").isNull();
         assertThat(full.ai().costByProject().getLast().costUsd()).as("full: unallocated shown").isEqualByComparingTo("5.00");
     }

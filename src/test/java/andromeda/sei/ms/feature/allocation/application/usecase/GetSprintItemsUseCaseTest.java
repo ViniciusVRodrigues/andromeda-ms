@@ -54,22 +54,21 @@ class GetSprintItemsUseCaseTest {
                 Sprint.TimeFrame.CURRENT, true, 1L, Instant.now(), Instant.now());
     }
 
-    private WorkItem item(String id, WorkItem.ResolvedType type, String parent, Double complexity, Double effort, Double sp) {
+    private WorkItem item(String id, WorkItem.ResolvedType type, String parent, Double complexity, Double effort) {
         WorkItem wi = story(id, true);
         wi.setResolvedType(type);
         wi.setParentExternalId(parent);
         wi.setComplexity(complexity);
         wi.setEffort(effort);
-        wi.setStoryPoints(sp);
         return wi;
     }
 
     @Test
     void should_returnComplexityAndTaskEffort_forStoryWithTasks() {
         when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint()));
-        WorkItem story = item("s1", WorkItem.ResolvedType.STORY, null, 3.0, null, 3.0);
-        WorkItem t1 = item("t1", WorkItem.ResolvedType.TASK, "s1", null, 4.0, null);
-        WorkItem t2 = item("t2", WorkItem.ResolvedType.TASK, "s1", null, 8.0, null);
+        WorkItem story = item("s1", WorkItem.ResolvedType.STORY, null, 3.0, null);
+        WorkItem t1 = item("t1", WorkItem.ResolvedType.TASK, "s1", null, 4.0);
+        WorkItem t2 = item("t2", WorkItem.ResolvedType.TASK, "s1", null, 8.0);
         t1.setAssigneeUserId("other");
         t2.setAssigneeUserId("other");
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
@@ -82,13 +81,12 @@ class GetSprintItemsUseCaseTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).complexity()).isEqualTo(3.0);
         assertThat(result.get(0).effort()).isEqualTo(12.0);
-        assertThat(result.get(0).storyPoints()).isEqualTo(3.0);
     }
 
     @Test
     void should_returnOnlyEffort_forTaskAlone() {
         when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint()));
-        WorkItem task = item("t1", WorkItem.ResolvedType.TASK, null, null, 4.0, null);
+        WorkItem task = item("t1", WorkItem.ResolvedType.TASK, null, null, 4.0);
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                 ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of(task));
 
@@ -96,13 +94,12 @@ class GetSprintItemsUseCaseTest {
 
         assertThat(out.effort()).isEqualTo(4.0);
         assertThat(out.complexity()).isNull();
-        assertThat(out.storyPoints()).isEqualTo(4.0);
     }
 
     @Test
     void should_returnNulls_forItemWithNothing() {
         when(sprintRepository.findCurrentSprintsByOrganizationId(ORG)).thenReturn(List.of(sprint()));
-        WorkItem bare = item("s1", WorkItem.ResolvedType.STORY, null, null, null, null);
+        WorkItem bare = item("s1", WorkItem.ResolvedType.STORY, null, null, null);
         when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                 ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of(bare));
 
@@ -110,7 +107,6 @@ class GetSprintItemsUseCaseTest {
 
         assertThat(out.complexity()).isNull();
         assertThat(out.effort()).isNull();
-        assertThat(out.storyPoints()).isNull();
     }
 
     private WorkItem story(String id, boolean active) {
@@ -118,9 +114,9 @@ class GetSprintItemsUseCaseTest {
                 id, Instant.now(), "Title " + id,
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }

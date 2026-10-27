@@ -274,15 +274,14 @@ public class GetProjectOverviewV2UseCase {
     private static PeriodStats stats(Context ctx, DayRange range, DeliveryMetrics delivery, boolean current) {
         List<WorkItem> done = doneOfThroughputTypes(ctx, range);
         List<WorkItem> units = ctx.items().doneUnitsIn(range);
-        Double sp = ctx.items().effort().scope().totalEffort(units);
         Double points = ctx.items().complexityDeliveredIn(range);
         Double hours = ctx.items().effortLoggedIn(range);
         BigDecimal cost = ctx.allocated().total(range);
         List<VcsPullRequest> merged = filter(ctx.vcs().pullRequests(), pr -> range.contains(pr.getMergedAt()));
-        return new PeriodStats(done.size(), delivery.deploymentsPerWeek(), sp, predictability(ctx, range),
+        return new PeriodStats(done.size(), delivery.deploymentsPerWeek(), predictability(ctx, range),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
-                delivery.changeFailRatePercent(), bugShare(done), cost, AiRatios.per(cost, sp), merged.size(),
+                delivery.changeFailRatePercent(), bugShare(done), cost, merged.size(),
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()),
                 timeToFirstReview(ctx, range), current ? staleCount(ctx) : null,
                 (int) (current ? ctx.currentCommits() : ctx.previousCommits()).values().stream()
@@ -361,7 +360,7 @@ public class GetProjectOverviewV2UseCase {
             DayRange window = new DayRange(f.window().startDay(), f.window().endDay());
             BigDecimal cost = ctx.allocated().total(window);
             return new SprintRow(f.sprint().getId(), DashboardV2Views.historyLabel(f.sprint()), f.sprint().getName(),
-                    f.planned(), f.delivered(), f.predictabilityPct(), cost, AiRatios.per(cost, f.delivered()),
+                    f.predictabilityPct(), cost,
                     ctx.allocated().tokens(window), f.complexityPlanned(), f.complexityDelivered(),
                     AiRatios.per(cost, f.complexityDelivered()), AiRatios.per(cost, f.summary().effortLogged()));
         }).toList();
@@ -424,12 +423,10 @@ public class GetProjectOverviewV2UseCase {
                 .map(b -> costBucket(ctx.allocated(), models, b)).toList();
         Adoption adoption = new Adoption((int) ctx.memberUsage().stream().map(AiUsageUserDay::userId)
                 .filter(Objects::nonNull).distinct().count(), ctx.project().getMemberIds().size());
-        Double tokensPerSp = DashboardV2Views.averageOrNull(ctx.items().sprintsEndingIn(current).stream()
-                .flatMap(f -> f.summary().units().stream()).map(WorkItem::getTokensPerSp).toList());
         List<WorkItem> pool = ctx.items().sprintsEndingIn(current).stream()
                 .flatMap(f -> (f.summary().complexityUnits().isEmpty() ? f.summary().units()
                         : f.summary().complexityUnits()).stream()).toList();
-        return new Ai(models, costByBucket, adoption, subscription(ctx), tokensPerSp,
+        return new Ai(models, costByBucket, adoption, subscription(ctx),
                 DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerPoint).toList()),
                 DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerHour).toList()));
     }

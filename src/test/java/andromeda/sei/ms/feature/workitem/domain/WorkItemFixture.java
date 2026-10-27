@@ -15,10 +15,10 @@ public final class WorkItemFixture {
         return new WorkItem(id, ORG, PROJECT, WorkItem.Source.AZURE_DEVOPS,
                 "ext-" + id, null, "Item " + id,
                 type.name(), type, status.name(), status,
-                null, null, null,
+                null, null,
                 null, null, null, null,
                 null, null, null, null,
-                null, null, null,
+                null, null,
                 true, 0L, null,
                 null, null, null, null,
                 null, null, null, null);

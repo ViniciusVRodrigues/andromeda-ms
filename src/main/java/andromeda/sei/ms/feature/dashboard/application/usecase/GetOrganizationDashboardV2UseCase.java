@@ -182,7 +182,6 @@ public class GetOrganizationDashboardV2UseCase {
         Snapshot s = ctx.snapshot();
         Indexed ix = ctx.indexed();
         List<WorkItem> units = ix.unitsIn(range);
-        Double sp = spDelivered(ix, range);
         Double points = ix.projects().values().stream().map(p -> p.items().complexityDeliveredIn(range))
                 .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         Double hours = ix.projects().values().stream().map(p -> p.items().effortLoggedIn(range))
@@ -191,13 +190,13 @@ public class GetOrganizationDashboardV2UseCase {
         // the cost allocated (validated) to the visible projects, for every caller (coordinator's decision)
         BigDecimal cost = sum(ix.allocatedIn(current).values());
         return new OrgStats(current ? s.projects().size() : null, current ? s.people().size() : null,
-                ix.projects().values().stream().mapToInt(p -> count(p.doneThroughput(), range)).sum(), sp,
+                ix.projects().values().stream().mapToInt(p -> count(p.doneThroughput(), range)).sum(),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
                 cfr(ctx, s.vcs().changes(), ix.completed(), range),
                 (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAt())).count(),
                 (int) s.vcs().commitsIn(range), timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
-                ai.tokens(), AiRatios.per(cost, sp), ai.activeUsers(), points, AiRatios.per(cost, points),
+                ai.tokens(), ai.activeUsers(), points, AiRatios.per(cost, points),
                 AiRatios.per(cost, hours));
     }
 
@@ -215,14 +214,6 @@ public class GetOrganizationDashboardV2UseCase {
                     totals.stream().mapToLong(t -> t.inputTokens() + t.outputTokens()).sum(),
                     (int) totals.stream().map(t -> t.userId()).filter(Objects::nonNull).distinct().count());
         }
-    }
-
-    /** Sum of each project's delivered effort (each by its own effort level); {@code null} when none carries effort. */
-    private static Double spDelivered(Indexed ix, DayRange range) {
-        List<Double> perProject = ix.projects().values().stream()
-                .map(p -> p.items().effort().scope().totalEffort(within(p.units(), range))).filter(Objects::nonNull)
-                .toList();
-        return perProject.isEmpty() ? null : perProject.stream().mapToDouble(Double::doubleValue).sum();
     }
 
     private static Double cfr(Context ctx, List<MergedChange> changes, List<CompletedWorkItem> completed, DayRange range) {
@@ -246,7 +237,6 @@ public class GetOrganizationDashboardV2UseCase {
         ProjectPeriodItems items = view.items();
         DayRange range = ctx.period().current();
         List<WorkItem> units = within(view.units(), range);
-        Double sp = items.effort().scope().totalEffort(units);
         Double points = items.complexityDeliveredIn(range);
         Double hours = items.effortLoggedIn(range);
         Double plannedPoints = items.sprintsEndingIn(range).stream().map(SprintFigures::complexityPlanned)
@@ -264,10 +254,10 @@ public class GetOrganizationDashboardV2UseCase {
                 project.getMemberIds() == null ? 0 : project.getMemberIds().size(), current, gap, lastPredictability,
                 DashboardV2Views.averageOrNull(items.sprintsEndingIn(range).stream()
                         .map(SprintFigures::predictabilityPct).toList()),
-                count(view.doneThroughput(), range), sp,
+                count(view.doneThroughput(), range),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()), cfr,
                 Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()), stale, cost,
-                AiRatios.per(cost, sp), bucketCounts(ctx, view.doneThroughput()),
+                bucketCounts(ctx, view.doneThroughput()),
                 PortfolioHealth.of(lastPredictability, stale, cfr, gap), points, plannedPoints,
                 AiRatios.per(cost, points), AiRatios.per(cost, hours));
     }
@@ -282,7 +272,7 @@ public class GetOrganizationDashboardV2UseCase {
                     Double progress = f.planned() == null || f.planned() <= 0 || f.delivered() == null ? null
                             : f.delivered() / f.planned() * PERCENT;
                     Double elapsed = meta.dayCount() == 0 ? null : (double) meta.dayIndex() / meta.dayCount() * PERCENT;
-                    return new CurrentSprint(f.sprint().getId(), f.sprint().getName(), f.delivered(), f.planned(),
+                    return new CurrentSprint(f.sprint().getId(), f.sprint().getName(),
                             progress, elapsed, f.complexityDelivered(), f.complexityPlanned());
                 })
                 .orElse(null);

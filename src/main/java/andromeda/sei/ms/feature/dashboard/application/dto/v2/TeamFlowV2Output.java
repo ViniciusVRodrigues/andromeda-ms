@@ -65,10 +65,10 @@ public record TeamFlowV2Output(
     public record Rework(List<ItemView> reopened, int doneInWindow, Double ratePct) {}
 
     /**
-     * {@code atRiskSp}: effort of the units not done yet, only for the current sprint. {@code points}: the
-     * complexity of the story-tier units not done yet (complexity-effort D1), same rule.
+     * {@code points}: the complexity of the story-tier units not done yet (complexity-effort D1), only for
+     * the current sprint.
      */
-    public record Scope(Double atRiskSp, Double points) {}
+    public record Scope(Double points) {}
 
     /**
      * {@code open}, {@code drafts} and {@code byBaseBranch} are the current state of the project's
