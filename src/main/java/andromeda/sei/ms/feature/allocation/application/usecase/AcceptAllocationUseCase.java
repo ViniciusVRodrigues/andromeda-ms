@@ -41,17 +41,21 @@ public class AcceptAllocationUseCase {
         allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
 
-        resolveProjectId(organizationId, allocation).ifPresent(projectId ->
-                calculateAiRatiosUseCase.execute(organizationId, projectId));
+        resolveProjectIds(organizationId, allocation)
+                .forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
-    private java.util.Optional<String> resolveProjectId(String organizationId, AiUsageAllocation allocation) {
-        if (allocation.getSplits() == null) return java.util.Optional.empty();
+    /** Distinct projects of every split's work item (organization-scoped lookup). */
+    private java.util.Set<String> resolveProjectIds(String organizationId, AiUsageAllocation allocation) {
+        if (allocation.getSplits() == null) return java.util.Set.of();
         return allocation.getSplits().stream()
                 .map(AllocationSplit::getWorkItemId)
                 .filter(id -> id != null && !id.isBlank())
-                .findFirst()
-                .flatMap(workItemRepository::findById)
-                .map(andromeda.sei.ms.feature.workitem.domain.WorkItem::getProjectId);
+                .distinct()
+                .map(id -> workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId))
+                .flatMap(java.util.Optional::stream)
+                .map(andromeda.sei.ms.feature.workitem.domain.WorkItem::getProjectId)
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
     }
 }

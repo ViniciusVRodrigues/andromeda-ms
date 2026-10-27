@@ -64,6 +64,11 @@ class ManualAllocateUseCaseTest {
                 new AllocationSplit("wi-1", "Feature A", new BigDecimal("0.6000")),
                 new AllocationSplit("wi-2", "Feature B", new BigDecimal("0.4000")));
 
+        org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", ORG_ID))
+                .thenReturn(Optional.of(workItem("wi-1", "proj-1")));
+        org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-2", ORG_ID))
+                .thenReturn(Optional.of(workItem("wi-2", "proj-1")));
+
         Instant now = Instant.now();
         pendingAllocation = new AiUsageAllocation(
                 ALLOCATION_ID, ORG_ID, USER_ID, DAY,
@@ -110,6 +115,52 @@ class ManualAllocateUseCaseTest {
 
         verify(allocationRepository).updateAllocationIdOnUsageRecords(
                 eq(List.of("usage-2")), eq("new-alloc-id"));
+    }
+
+    @Test
+    void shouldThrowWorkItemNotFound_andSaveNothing_whenWorkItemIsFromAnotherOrganization_byAllocationId() {
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-foreign", ORG_ID))
+                .thenReturn(Optional.empty());
+        List<AllocationSplit> splits = List.of(
+                new AllocationSplit("wi-1", "A", new BigDecimal("0.5000")),
+                new AllocationSplit("wi-foreign", "B", new BigDecimal("0.5000")));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID, null, splits))
+                .isInstanceOf(andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException.class);
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(any(), any());
+        verify(calculateAiRatiosUseCase, never()).execute(any(), any());
+    }
+
+    @Test
+    void shouldThrowWorkItemNotFound_andDeleteNothing_whenWorkItemIsFromAnotherOrganization_byDay() {
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(pendingAllocation));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("usage-2")));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-foreign", ORG_ID))
+                .thenReturn(Optional.empty());
+        List<AllocationSplit> splits = List.of(new AllocationSplit("wi-foreign", "B", BigDecimal.ONE));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, null, DAY, splits))
+                .isInstanceOf(andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException.class);
+
+        verify(allocationRepository, never()).deleteById(any());
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldRecalculateAiRatiosOfEveryProjectOfTheSplits() {
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.save(any())).thenReturn(pendingAllocation);
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-2", ORG_ID))
+                .thenReturn(Optional.of(workItem("wi-2", "proj-2")));
+
+        useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID, null, validSplits);
+
+        verify(calculateAiRatiosUseCase).execute(ORG_ID, "proj-1");
+        verify(calculateAiRatiosUseCase).execute(ORG_ID, "proj-2");
     }
 
     @Test
@@ -174,5 +225,17 @@ class ManualAllocateUseCaseTest {
                 "gpt-4", "ws-1", "ws-name", "m-1", "m-name",
                 1000L, 500L, 5, "vscode", null, BigDecimal.ZERO,
                 now, true, 0L, now, now);
+    }
+
+    private static andromeda.sei.ms.feature.workitem.domain.WorkItem workItem(String id, String projectId) {
+        return new andromeda.sei.ms.feature.workitem.domain.WorkItem(id, "org-1", projectId,
+                andromeda.sei.ms.feature.workitem.domain.WorkItem.Source.AZURE_DEVOPS,
+                id, Instant.now(), "Item " + id,
+                "Task", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedType.TASK,
+                "Active", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedStatus.IN_PROGRESS,
+                "Medium", null, List.of(),
+                "sprint-1", null, null, null, null,
+                Instant.now(), Instant.now(), null,
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }

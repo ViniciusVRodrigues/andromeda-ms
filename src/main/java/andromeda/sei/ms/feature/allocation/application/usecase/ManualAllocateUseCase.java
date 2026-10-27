@@ -11,7 +11,9 @@ import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToA
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +22,8 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -68,6 +71,8 @@ public class ManualAllocateUseCase {
             throw new AllocationAlreadyValidatedException(allocationId);
         }
 
+        Set<String> projectIds = requireOrganizationWorkItems(organizationId, splits);
+
         allocation.setSplits(splits);
         allocation.setStatus(AiUsageAllocation.Status.VALIDATED);
         allocation.setAssignedBy(AiUsageAllocation.AssignedBy.MANUAL);
@@ -75,8 +80,7 @@ public class ManualAllocateUseCase {
 
         allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
-        resolveProjectId(organizationId, splits).ifPresent(projectId ->
-                calculateAiRatiosUseCase.execute(organizationId, projectId));
+        projectIds.forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
     private void createNewAllocation(String organizationId, String userId,
@@ -93,6 +97,8 @@ public class ManualAllocateUseCase {
             throw new AllocationNothingToAllocateException(day);
         }
 
+        Set<String> projectIds = requireOrganizationWorkItems(organizationId, splits);
+
         // The manual allocation replaces the day's suggestion, like /{id}/manual does.
         ofTheDay.stream()
                 .filter(a -> a.getStatus() == AiUsageAllocation.Status.PENDING_VALIDATION)
@@ -107,17 +113,24 @@ public class ManualAllocateUseCase {
 
         AiUsageAllocation saved = allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(usageIds, saved.getId());
-        resolveProjectId(organizationId, splits).ifPresent(projectId ->
-                calculateAiRatiosUseCase.execute(organizationId, projectId));
+        projectIds.forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
     }
 
-    private Optional<String> resolveProjectId(String organizationId, List<AllocationSplit> splits) {
-        if (splits == null) return Optional.empty();
-        return splits.stream()
-                .map(AllocationSplit::getWorkItemId)
-                .filter(id -> id != null && !id.isBlank())
-                .findFirst()
-                .flatMap(workItemRepository::findById)
-                .map(andromeda.sei.ms.feature.workitem.domain.WorkItem::getProjectId);
+    /**
+     * Every non-blank {@code workItemId} must be an active work item of the organization, or the
+     * whole request is rejected (404) before anything is written. Returns the distinct projects of
+     * the splits, whose AI ratios the caller recalculates.
+     */
+    private Set<String> requireOrganizationWorkItems(String organizationId, List<AllocationSplit> splits) {
+        Set<String> projectIds = new LinkedHashSet<>();
+        if (splits == null) return projectIds;
+        for (AllocationSplit split : splits) {
+            String id = split.getWorkItemId();
+            if (id == null || id.isBlank()) continue;
+            WorkItem item = workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId)
+                    .orElseThrow(() -> new WorkItemNotFoundException(id));
+            if (item.getProjectId() != null) projectIds.add(item.getProjectId());
+        }
+        return projectIds;
     }
 }

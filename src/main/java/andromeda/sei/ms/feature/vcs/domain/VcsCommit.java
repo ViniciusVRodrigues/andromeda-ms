@@ -12,6 +12,8 @@ public class VcsCommit {
     private String sha;
     private String message;
     private String authorLogin;
+    private String authorExternalId;
+    private String authorEmail;
     private String authorUserId;
     private Instant authoredAt;
     private boolean active;
@@ -48,6 +50,12 @@ public class VcsCommit {
 
     public String getAuthorLogin() { return authorLogin; }
     public void setAuthorLogin(String authorLogin) { this.authorLogin = authorLogin; }
+
+    public String getAuthorExternalId() { return authorExternalId; }
+    public void setAuthorExternalId(String authorExternalId) { this.authorExternalId = authorExternalId; }
+
+    public String getAuthorEmail() { return authorEmail; }
+    public void setAuthorEmail(String authorEmail) { this.authorEmail = authorEmail; }
 
     public String getAuthorUserId() { return authorUserId; }
     public void setAuthorUserId(String authorUserId) { this.authorUserId = authorUserId; }

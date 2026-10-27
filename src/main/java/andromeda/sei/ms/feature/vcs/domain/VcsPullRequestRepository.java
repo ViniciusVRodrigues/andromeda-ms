@@ -68,6 +68,13 @@ public interface VcsPullRequestRepository {
 
     VcsPullRequest save(VcsPullRequest pullRequest);
 
+    /**
+     * Gives an owner to the ownerless pull requests of the provider whose {@code authorExternalId} is
+     * one of {@code externalIds}. Never overwrites an existing owner; scoped by organization.
+     */
+    VcsAttribution attributeByAuthorExternalIds(String organizationId, VcsProvider provider,
+                                                Collection<String> externalIds, String userId);
+
     void updateMetrics(String organizationId, String id, Double cycleTimeHours, Double timeToFirstReviewHours,
                        Double timeToFirstApprovalHours);
 }

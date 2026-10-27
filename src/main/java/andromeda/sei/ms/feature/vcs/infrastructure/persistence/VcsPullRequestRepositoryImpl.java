@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.vcs.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
+import andromeda.sei.ms.feature.vcs.domain.VcsAttribution;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequestPage;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequestRepository;
@@ -15,8 +17,10 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * {@code vcs_pull_requests}. {@link #save} is an upsert on {@code (organizationId, repositoryId,
@@ -172,6 +176,20 @@ public class VcsPullRequestRepositoryImpl implements VcsPullRequestRepository {
         return findByOrganizationIdAndRepositoryIdAndExternalId(
                 pullRequest.getOrganizationId(), pullRequest.getRepositoryId(), pullRequest.getExternalId())
                 .orElseThrow();
+    }
+
+    @Override
+    public VcsAttribution attributeByAuthorExternalIds(String organizationId, VcsProvider provider,
+                                                       Collection<String> externalIds, String userId) {
+        if (externalIds == null || externalIds.isEmpty()) return VcsAttribution.none();
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and("provider").is(provider)
+                .and("authorUserId").is(null).and("authorExternalId").in(externalIds));
+        Set<String> repositoryIds = new HashSet<>(
+                mongoTemplate.findDistinct(query, REPOSITORY_ID, VcsPullRequestDocument.class, String.class));
+        if (repositoryIds.isEmpty()) return VcsAttribution.none();
+        Update update = new Update().set("authorUserId", userId).set("updatedAt", Instant.now());
+        long modified = mongoTemplate.updateMulti(query, update, VcsPullRequestDocument.class).getModifiedCount();
+        return new VcsAttribution(modified, repositoryIds);
     }
 
     @Override

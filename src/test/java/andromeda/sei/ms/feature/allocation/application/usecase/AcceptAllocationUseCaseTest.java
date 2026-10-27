@@ -111,4 +111,48 @@ class AcceptAllocationUseCaseTest {
 
         verify(allocationRepository, never()).save(any());
     }
+
+    @Test
+    void shouldRecalculateEveryProjectOfTheSplits_withOrganizationScopedLookup() {
+        pendingAllocation.setSplits(List.of(
+                new andromeda.sei.ms.feature.allocation.domain.AllocationSplit("wi-1", "A", new java.math.BigDecimal("0.5000")),
+                new andromeda.sei.ms.feature.allocation.domain.AllocationSplit("wi-2", "B", new java.math.BigDecimal("0.5000"))));
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.save(any())).thenReturn(pendingAllocation);
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", ORG_ID))
+                .thenReturn(Optional.of(workItem("wi-1", "proj-1")));
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-2", ORG_ID))
+                .thenReturn(Optional.of(workItem("wi-2", "proj-2")));
+
+        useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID);
+
+        verify(calculateAiRatiosUseCase).execute(ORG_ID, "proj-1");
+        verify(calculateAiRatiosUseCase).execute(ORG_ID, "proj-2");
+        verify(workItemRepository, never()).findById(any());
+    }
+
+    @Test
+    void shouldSkipWorkItemsOutsideTheOrganization_whenRecalculating() {
+        pendingAllocation.setSplits(List.of(
+                new andromeda.sei.ms.feature.allocation.domain.AllocationSplit("wi-x", "A", java.math.BigDecimal.ONE)));
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.save(any())).thenReturn(pendingAllocation);
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-x", ORG_ID)).thenReturn(Optional.empty());
+
+        useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID);
+
+        verify(calculateAiRatiosUseCase, never()).execute(any(), any());
+    }
+
+    private static andromeda.sei.ms.feature.workitem.domain.WorkItem workItem(String id, String projectId) {
+        return new andromeda.sei.ms.feature.workitem.domain.WorkItem(id, "org-1", projectId,
+                andromeda.sei.ms.feature.workitem.domain.WorkItem.Source.AZURE_DEVOPS,
+                id, Instant.now(), "Item " + id,
+                "Task", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedType.TASK,
+                "Active", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedStatus.IN_PROGRESS,
+                "Medium", null, List.of(),
+                "sprint-1", null, null, null, null,
+                Instant.now(), Instant.now(), null,
+                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
 }

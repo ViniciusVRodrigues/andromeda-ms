@@ -88,6 +88,8 @@ public class VcsCommitRepositoryImpl implements VcsCommitRepository {
         Update update = new Update()
                 .set("message", commit.getMessage())
                 .set("authorLogin", commit.getAuthorLogin())
+                .set("authorExternalId", commit.getAuthorExternalId())
+                .set("authorEmail", commit.getAuthorEmail())
                 .set("authorUserId", commit.getAuthorUserId())
                 .set("authoredAt", commit.getAuthoredAt())
                 .set("active", commit.isActive())
@@ -100,6 +102,39 @@ public class VcsCommitRepositoryImpl implements VcsCommitRepository {
         mongoTemplate.upsert(query, update, VcsCommitDocument.class);
         return findByOrganizationIdAndRepositoryIdAndSha(commit.getOrganizationId(), commit.getRepositoryId(),
                 commit.getSha()).orElseThrow();
+    }
+
+    @Override
+    public long attributeByAuthorExternalIds(String organizationId, VcsProvider provider,
+                                             Collection<String> externalIds, String userId) {
+        if (externalIds == null || externalIds.isEmpty()) return 0;
+        return attribute(ownerless(organizationId, provider).and("authorExternalId").in(externalIds), userId);
+    }
+
+    @Override
+    public long attributeByLegacyAuthorLogin(String organizationId, VcsProvider provider, String authorLogin,
+                                             String userId) {
+        if (authorLogin == null || authorLogin.isBlank()) return 0;
+        return attribute(ownerless(organizationId, provider).and("authorExternalId").is(null)
+                .and("authorLogin").regex(VcsRegex.exactIgnoreCase(authorLogin)), userId);
+    }
+
+    @Override
+    public long attributeByAuthorEmails(String organizationId, VcsProvider provider, Collection<String> emails,
+                                        String userId) {
+        if (emails == null || emails.isEmpty()) return 0;
+        return attribute(ownerless(organizationId, provider).and("authorEmail")
+                .in(emails.stream().map(VcsRegex::exactIgnoreCase).toList()), userId);
+    }
+
+    private static Criteria ownerless(String organizationId, VcsProvider provider) {
+        return Criteria.where(ORGANIZATION_ID).is(organizationId).and("provider").is(provider)
+                .and("authorUserId").is(null);
+    }
+
+    private long attribute(Criteria criteria, String userId) {
+        Update update = new Update().set("authorUserId", userId).set("updatedAt", Instant.now());
+        return mongoTemplate.updateMulti(Query.query(criteria), update, VcsCommitDocument.class).getModifiedCount();
     }
 
     /** Grouped in the database: one row per UTC day instead of every commit. */

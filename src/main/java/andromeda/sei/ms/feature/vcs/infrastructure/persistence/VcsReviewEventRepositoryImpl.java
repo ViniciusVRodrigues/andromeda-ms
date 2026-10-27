@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.vcs.infrastructure.persistence;
 
+import andromeda.sei.ms.feature.vcs.domain.VcsAttribution;
+import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEvent;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEventRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +13,10 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /** {@code vcs_review_events}; {@link #save} upserts on {@code (organizationId, pullRequestId, externalEventId)}. */
 @Repository
@@ -42,6 +46,20 @@ public class VcsReviewEventRepositoryImpl implements VcsReviewEventRepository {
                 .and(PULL_REQUEST_ID).in(pullRequestIds)
                 .and("active").is(true));
         return mongoTemplate.find(query, VcsReviewEventDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public VcsAttribution attributeByActorExternalIds(String organizationId, VcsProvider provider,
+                                                      Collection<String> externalIds, String userId) {
+        if (externalIds == null || externalIds.isEmpty()) return VcsAttribution.none();
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and("provider").is(provider)
+                .and("actorUserId").is(null).and("actorExternalId").in(externalIds));
+        Set<String> repositoryIds = new HashSet<>(
+                mongoTemplate.findDistinct(query, "repositoryId", VcsReviewEventDocument.class, String.class));
+        if (repositoryIds.isEmpty()) return VcsAttribution.none();
+        Update update = new Update().set("actorUserId", userId).set("updatedAt", Instant.now());
+        long modified = mongoTemplate.updateMulti(query, update, VcsReviewEventDocument.class).getModifiedCount();
+        return new VcsAttribution(modified, repositoryIds);
     }
 
     @Override

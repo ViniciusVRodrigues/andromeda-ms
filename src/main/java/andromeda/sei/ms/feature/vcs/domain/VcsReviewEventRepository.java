@@ -14,5 +14,12 @@ public interface VcsReviewEventRepository {
     List<VcsReviewEvent> findAllByOrganizationIdAndPullRequestIdIn(String organizationId,
                                                                    Collection<String> pullRequestIds);
 
+    /**
+     * Gives an owner to the ownerless review events of the provider whose {@code actorExternalId} is
+     * one of {@code externalIds}. Never overwrites an existing owner; scoped by organization.
+     */
+    VcsAttribution attributeByActorExternalIds(String organizationId, VcsProvider provider,
+                                               Collection<String> externalIds, String userId);
+
     VcsReviewEvent save(VcsReviewEvent event);
 }
