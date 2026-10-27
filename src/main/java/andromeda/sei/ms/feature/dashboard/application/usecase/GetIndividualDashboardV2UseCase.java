@@ -36,6 +36,8 @@ import andromeda.sei.ms.feature.dashboard.application.v2.DashboardV2Views;
 import andromeda.sei.ms.feature.dashboard.application.v2.ProjectVcsActivity;
 import andromeda.sei.ms.feature.dashboard.application.v2.SprintWindow;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
+import andromeda.sei.ms.feature.project.domain.Project;
+import andromeda.sei.ms.feature.project.domain.exception.ProjectMemberNotFoundException;
 import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundException;
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.vcs.domain.ReviewKind;
@@ -66,7 +68,7 @@ import java.util.stream.Collectors;
 
 /**
  * Individual dashboard v2 (dashboards-customizaveis D1, {@code buildIndividual}) of the caller in
- * one project and sprint. The person is always {@code userId} from the JWT.
+ * one project and sprint. The person is the caller, or another project member when the caller may see the team.
  *
  * <p>Reuse, not re-derivation: the selected sprint's KPIs, items, cost per item, burndown and AI
  * series come from {@link GetDeveloperDashboardUseCase}; the previous sprint and the history use the
@@ -122,11 +124,28 @@ public class GetIndividualDashboardV2UseCase {
         this.clock = clock;
     }
 
+    /** The caller's own dashboard. */
     public IndividualDashboardV2Output execute(String orgId, String userId, String projectId, String sprintId) {
+        return execute(orgId, userId, null, projectId, sprintId);
+    }
+
+    /**
+     * The dashboard of {@code targetUserId} ({@code null} = the caller). Another person must be an
+     * active user of the organization and a member of the project in the URL, else 404
+     * {@code PROJECT_MEMBER_NOT_FOUND}; the permission to look is checked by the controller.
+     */
+    public IndividualDashboardV2Output execute(String orgId, String callerId, String targetUserId, String projectId,
+                                               String sprintId) {
         Objects.requireNonNull(orgId, "orgId");
-        Objects.requireNonNull(userId, "userId");
-        projectRepository.findActiveByIdAndOrganizationId(projectId, orgId)
+        Objects.requireNonNull(callerId, "callerId");
+        String userId = targetUserId == null ? callerId : targetUserId;
+        Project project = projectRepository.findActiveByIdAndOrganizationId(projectId, orgId)
                 .orElseThrow(() -> new ProjectNotFoundException(projectId));
+        if (!userId.equals(callerId)) {
+            boolean member = project.getMemberIds().contains(userId);
+            boolean activeUser = peopleDirectory.isActiveUser(orgId, userId);
+            if (!member || !activeUser) throw new ProjectMemberNotFoundException(projectId, userId);
+        }
         Instant now = clock.instant();
         Person person = person(orgId, userId);
         SprintSelection selection = sprintResolver.resolve(orgId, projectId, sprintId);

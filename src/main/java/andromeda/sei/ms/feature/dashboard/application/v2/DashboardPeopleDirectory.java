@@ -40,6 +40,11 @@ public class DashboardPeopleDirectory {
                 .orElseGet(() -> PersonInfo.unknown(userId));
     }
 
+    /** An active user of this organization. */
+    public boolean isActiveUser(String organizationId, String userId) {
+        return userRepository.findByIdAndOrganizationId(userId, organizationId).filter(User::isActive).isPresent();
+    }
+
     /** Holds an active AI connector token in this organization. */
     public boolean aiConnected(String organizationId, String userId) {
         return !connectorTokenRepository.findActiveByOrganizationIdAndUserId(organizationId, userId).isEmpty();
