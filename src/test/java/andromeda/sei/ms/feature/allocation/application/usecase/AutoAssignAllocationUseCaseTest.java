@@ -390,6 +390,84 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).save(any());
     }
 
+    // ── Bulk day (ALO3): hundreds of items touched is no signal ──────────────
+
+    @Test
+    void should_fallBackToInProgress_when_activityTouchesMoreThanTenItems() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenActivityOn(ids("wi-bulk-", 231));
+        givenInProgress(workItem("wi-a", "A"), workItem("wi-b", "B"));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        AiUsageAllocation created = savedOne();
+        assertThat(created.getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.IN_PROGRESS);
+        assertThat(created.getSplits()).extracting(AllocationSplit::getWorkItemId).containsExactly("wi-a", "wi-b");
+    }
+
+    @Test
+    void should_keepActivity_when_exactlyTenItemsChanged() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenActivityOn(ids("wi-", 10));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        AiUsageAllocation created = savedOne();
+        assertThat(created.getSuggestionSource()).isEqualTo(AiUsageAllocation.SuggestionSource.AZURE_ACTIVITY);
+        assertThat(created.getSplits()).hasSize(10);
+    }
+
+    @Test
+    void should_createNothing_when_bothActivityAndInProgressExceedTenItems() {
+        givenUnallocatedUsageAndNoAllocation();
+        givenActivityOn(ids("wi-bulk-", 231));
+        givenInProgress(java.util.Arrays.stream(ids("wi-ip-", 11)).map(id -> workItem(id, id))
+                .toArray(WorkItem[]::new));
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void should_dropStalePendingBulkSuggestion_when_forcedAndNowNoSuggestion() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        AiUsageAllocation stale = savedAllocation("alloc-bulk", List.of("usage-1"));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(stale));
+        givenActivityOn(ids("wi-bulk-", 231));
+        givenInProgress();
+
+        useCase.execute(ORG, USER, DAY, true);
+
+        verify(allocationRepository).deleteById("alloc-bulk");
+        verify(allocationRepository, never()).save(any());
+    }
+
+    @Test
+    void should_countAnItemInTwoSprintsOfTheDayOnce() {
+        givenUnallocatedUsageAndNoAllocation();
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY))
+                .thenReturn(List.of(sprint("sprint-1"), sprint("sprint-2")));
+        WorkItem shared = workItem("wi-a", "A");
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS)).thenReturn(List.of(shared));
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-2", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(workItem("wi-a", "A"), workItem("wi-b", "B")));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        assertThat(savedOne().getSplits()).extracting(AllocationSplit::getWorkItemId).containsExactly("wi-a", "wi-b");
+    }
+
+    private static String[] ids(String prefix, int n) {
+        return java.util.stream.IntStream.rangeClosed(1, n).mapToObj(i -> prefix + i).toArray(String[]::new);
+    }
+
     private void givenUnallocatedUsageAndNoAllocation() {
         when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
                 .thenReturn(List.of(aiUsage("usage-1")));
