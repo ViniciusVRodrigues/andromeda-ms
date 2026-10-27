@@ -150,9 +150,9 @@ class AcceptAllocationUseCaseTest {
                 id, Instant.now(), "Item " + id,
                 "Task", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedType.TASK,
                 "Active", andromeda.sei.ms.feature.workitem.domain.WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", null, List.of(),
+                "Medium", List.of(),
                 "sprint-1", null, null, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 }
