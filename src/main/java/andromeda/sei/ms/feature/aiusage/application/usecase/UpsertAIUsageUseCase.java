@@ -62,19 +62,14 @@ public class UpsertAIUsageUseCase {
         for (AIUsage usage : usages) {
             aiUsageRepository.upsert(usage);
             BigDecimal cost = calculateAiCostUseCase.execute(usage, prices);
-            if (cost != null) {
-                aiUsageRepository.updateCost(
-                        usage.getOrganizationId(), usage.getUserId(), usage.getDatasetId(),
-                        usage.getDay(), usage.getModel(), usage.getWorkspaceId(), usage.getMachineId(),
-                        cost);
-                log.info("ai-usage upserted: org={} user={} day={} model={} inputTokens={} outputTokens={} cost={}",
-                        usage.getOrganizationId(), usage.getUserId(), usage.getDay(),
-                        usage.getModel(), usage.getInputTokens(), usage.getOutputTokens(), cost);
-            } else {
-                log.info("ai-usage upserted: org={} user={} day={} model={} inputTokens={} outputTokens={} cost=no price match",
-                        usage.getOrganizationId(), usage.getUserId(), usage.getDay(),
-                        usage.getModel(), usage.getInputTokens(), usage.getOutputTokens());
-            }
+            aiUsageRepository.updateCost(
+                    usage.getOrganizationId(), usage.getUserId(), usage.getDatasetId(),
+                    usage.getDay(), usage.getModel(), usage.getWorkspaceId(), usage.getMachineId(),
+                    cost);
+            log.info("ai-usage upserted: org={} user={} day={} model={} inputTokens={} outputTokens={} cost={}",
+                    usage.getOrganizationId(), usage.getUserId(), usage.getDay(),
+                    usage.getModel(), usage.getInputTokens(), usage.getOutputTokens(),
+                    cost != null ? cost : "no price match");
         }
 
         log.info("ai-usage batch complete: org={} user={} entries={}",

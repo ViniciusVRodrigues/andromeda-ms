@@ -54,6 +54,12 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.from(ex));
     }
 
+    @ExceptionHandler(andromeda.sei.ms.feature.aiusage.domain.exception.AiUsagePeriodInvalidException.class)
+    public ResponseEntity<ErrorResponse> handleAiUsagePeriodInvalid(
+            andromeda.sei.ms.feature.aiusage.domain.exception.AiUsagePeriodInvalidException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
+    }
+
     @ExceptionHandler(ProviderInvalidException.class)
     public ResponseEntity<ErrorResponse> handleProviderInvalid(ProviderInvalidException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(ex));
