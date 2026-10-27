@@ -287,8 +287,8 @@ public class SyncAzureWorkItemsUseCase {
         WorkItem workItem = existing.orElseGet(() -> new WorkItem(
                 null, orgId, projectId, WorkItem.Source.AZURE_DEVOPS,
                 externalId, null, null, null, null, null, null,
-                null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, true, null, now,
+                null, null, null, null, null, null,
+                null, null, null, null, null, null, true, null, now,
                 null, null, null, null, null, null, null, null));
 
         boolean reactivated = existing.isPresent() && !existing.get().isActive();
@@ -304,9 +304,6 @@ public class SyncAzureWorkItemsUseCase {
         workItem.setResolvedStatus(resolvedStatus);
         workItem.setPriority(getString(fields, "Microsoft.VSTS.Common.Priority"));
         applyComplexityAndEffort(workItem, fields, config, rawType);
-        // Dual-write: keep legacy storyPoints in sync with effort for this release
-        // (see design Migration Plan step 2) -- dashboards still read storyPoints until cutover.
-        workItem.setStoryPoints(workItem.getEffort());
         workItem.setLabels(labels);
         workItem.setSprintId(sprint != null ? sprint.getId() : null);
         workItem.setSprintName(sprint != null ? sprint.getName() : null);

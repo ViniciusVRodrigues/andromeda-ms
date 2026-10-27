@@ -54,13 +54,13 @@ public record TeamDashboardV2Output(
     public record TeamInfo(String name, int memberCount) {}
 
     /**
-     * Delivery of one sprint for the team. Velocity ({@code spDelivered}) and planned effort follow
-     * the single definition ({@code EffortBearingLevelResolver.summarize}); {@code aiCostPerSp} =
-     * allocated cost / delivered effort.
+     * Delivery of one sprint for the team. Velocity ({@code complexityDelivered}) and planned complexity follow
+     * the single definition ({@code EffortBearingLevelResolver.summarize}); {@code aiCostPerPoint} =
+     * allocated cost / delivered complexity.
      */
-    public record SprintStats(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
+    public record SprintStats(int itemsDone, int itemsTotal,
                               int itemsWithPoints, int unassigned, DurationStat cycleTimeHours,
-                              DurationStat leadTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
+                              DurationStat leadTimeHours, BigDecimal aiCostUsd,
                               DurationStat timeToFirstReviewHours, int prsMerged,
                               Double complexityPlanned, Double complexityDelivered, Double effortLogged,
                               int itemsWithComplexity, BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
@@ -69,9 +69,9 @@ public record TeamDashboardV2Output(
      * {@link SprintStats} of the selected sprint; {@code openPrs}/{@code stalePrs} are the current
      * state, so only for the current sprint ({@code null} for a past one).
      */
-    public record Kpis(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal, int itemsWithPoints,
+    public record Kpis(int itemsDone, int itemsTotal, int itemsWithPoints,
                        int unassigned, DurationStat cycleTimeHours, DurationStat leadTimeHours,
-                       BigDecimal aiCostUsd, BigDecimal aiCostPerSp, DurationStat timeToFirstReviewHours,
+                       BigDecimal aiCostUsd, DurationStat timeToFirstReviewHours,
                        int prsMerged, Integer openPrs, Integer stalePrs, BigDecimal unallocatedAiCostUsd,
                        Double complexityPlanned, Double complexityDelivered, Double effortLogged,
                        int itemsWithComplexity, BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour) {}
@@ -84,9 +84,9 @@ public record TeamDashboardV2Output(
      * {@code null} when the person has no connector token.
      */
     public record Member(String userId, String name, @JsonProperty("isMe") boolean isMe, boolean githubLinked,
-                         boolean vcsLinked, int itemsDone, int itemsTotal, Double spPlanned, Double spDelivered,
+                         boolean vcsLinked, int itemsDone, int itemsTotal,
                          int wip, DurationStat cycleTimeHours, Integer prsOpened, Integer prsMerged,
-                         Integer reviewsGiven, BigDecimal aiCostUsd, Double avgTokensPerSp,
+                         Integer reviewsGiven, BigDecimal aiCostUsd,
                          Double complexityPlanned, Double complexityDelivered, Double effortLogged,
                          Double avgTokensPerPoint, Double avgTokensPerHour) {}
 
@@ -107,8 +107,8 @@ public record TeamDashboardV2Output(
     public record HistoryPoint(String sprintId, String label, String name,
                                @JsonProperty("isSelected") boolean isSelected,
                                @JsonProperty("isCurrent") boolean isCurrent,
-                               Double spPlanned, Double spDelivered, Double predictabilityPct,
-                               DurationStat cycleTimeHours, BigDecimal aiCostUsd, BigDecimal aiCostPerSp,
+                               Double predictabilityPct,
+                               DurationStat cycleTimeHours, BigDecimal aiCostUsd,
                                Long aiTokens, Double complexityPlanned, Double complexityDelivered,
                                BigDecimal aiCostPerPoint, BigDecimal aiCostPerHour,
                                Double effortLogged, Double hoursPerPoint) {}

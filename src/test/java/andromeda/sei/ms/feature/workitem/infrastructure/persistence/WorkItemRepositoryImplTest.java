@@ -107,7 +107,7 @@ class WorkItemRepositoryImplTest {
         return new WorkItem(null, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "2", null, List.of(), null, null, null, null, parentExternalId,
-                NOW, null, null, null, null, null, true, null, NOW, null, null, null, null, null, null, null, null);
+                "2", List.of(), null, null, null, null, parentExternalId,
+                NOW, null, null, null, null, true, null, NOW, null, null, null, null, null, null, null, null);
     }
 }

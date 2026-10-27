@@ -28,23 +28,23 @@ public final class BurndownCalculator {
         if (ChronoUnit.DAYS.between(sprintStart, sprintEnd) <= 0) return List.of();
 
         Double resolvedTotal = scope.totalComplexity(units);
-        double totalSp = resolvedTotal == null ? 0d : resolvedTotal;
+        double totalPoints = resolvedTotal == null ? 0d : resolvedTotal;
         LocalDate seriesEnd = sprintEnd.isBefore(today) ? sprintEnd : today;
 
         List<BurndownPoint> series = new ArrayList<>();
         for (LocalDate day = sprintStart; !day.isAfter(seriesEnd); day = day.plusDays(1)) {
             Double completed = scope.totalComplexity(completedBy(units, day));
-            double remaining = totalSp - (completed == null ? 0d : completed);
-            series.add(new BurndownPoint(day, remaining, ideal(totalSp, sprintStart, sprintEnd, day)));
+            double remaining = totalPoints - (completed == null ? 0d : completed);
+            series.add(new BurndownPoint(day, remaining, ideal(totalPoints, sprintStart, sprintEnd, day)));
         }
         return series;
     }
 
-    /** Ideal remaining effort on {@code day}; {@code sprintEnd} must be after {@code sprintStart}. */
-    public static double ideal(double totalSp, LocalDate sprintStart, LocalDate sprintEnd, LocalDate day) {
-        long totalSprintDays = ChronoUnit.DAYS.between(sprintStart, sprintEnd);
+    /** Ideal remaining points on {@code day}; {@code sprintEnd} must be after {@code sprintStart}. */
+    public static double ideal(double totalPoints, LocalDate sprintStart, LocalDate sprintEnd, LocalDate day) {
+        long totalPointsrintDays = ChronoUnit.DAYS.between(sprintStart, sprintEnd);
         long daysElapsed = ChronoUnit.DAYS.between(sprintStart, day);
-        return totalSp * (1.0 - (double) daysElapsed / totalSprintDays);
+        return totalPoints * (1.0 - (double) daysElapsed / totalPointsrintDays);
     }
 
     private static List<WorkItem> completedBy(List<WorkItem> units, LocalDate day) {

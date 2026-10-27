@@ -143,7 +143,7 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.previous().throughput()).isEqualTo(2);
         assertThat(out.kpis().bugSharePct()).isEqualTo(33.33);
         // story + bug; the task's effort rolls into no story (STORY_AND_TASK) and the feature is not a unit
-        assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(3.0);
         assertThat(out.quality().get(0).bugSharePct()).isEqualTo(50.0);
         assertThat(out.quality().get(1).bugSharePct()).isNull();
     }
@@ -167,18 +167,18 @@ class GetProjectOverviewV2UseCaseTest {
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
         assertThat(out.sprints()).extracting(ProjectOverviewV2Output.SprintRow::label).containsExactly("S1", "S2");
-        assertThat(out.sprints().get(0).spPlanned()).isEqualTo(8.0);
-        assertThat(out.sprints().get(0).spDelivered()).isEqualTo(5.0);
+        assertThat(out.sprints().get(0).complexityPlanned()).isEqualTo(8.0);
+        assertThat(out.sprints().get(0).complexityDelivered()).isEqualTo(5.0);
         assertThat(out.sprints().get(0).predictabilityPct()).isEqualTo(62.5);
         assertThat(out.sprints().get(0).aiCostUsd()).isEqualByComparingTo("10");
-        assertThat(out.sprints().get(0).aiCostPerSp()).isEqualByComparingTo("2");
-        assertThat(out.sprints().get(1).aiCostPerSp()).isEqualByComparingTo("0");
+        assertThat(out.sprints().get(0).aiCostPerPoint()).isEqualByComparingTo("2");
+        assertThat(out.sprints().get(1).aiCostPerPoint()).isEqualByComparingTo("0");
         assertThat(out.sprints().get(0).aiTokens()).isEqualTo(150L);
         assertThat(out.sprints().get(1).aiTokens()).isNull();
         assertThat(out.kpis().predictabilityPct()).isEqualTo(81.25);
         assertThat(out.previous().predictabilityPct()).isEqualTo(100.0);
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("10");
-        assertThat(out.kpis().aiCostPerSp()).isEqualByComparingTo("1.111111");
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("1.111111");
         assertThat(out.ai().models()).containsExactly("claude");
         assertThat(out.ai().costByBucket().get(2).byModel()).containsEntry("claude", new BigDecimal("10.00"));
         assertThat(out.ai().costByBucket().get(0).byModel().get("claude")).isEqualByComparingTo("0");
@@ -389,11 +389,11 @@ class GetProjectOverviewV2UseCaseTest {
 
         assertThat(out.period().granularity()).isEqualTo("mês");
         assertThat(out.kpis().throughput()).isZero();
-        assertThat(out.kpis().spDelivered()).isNull();
+        assertThat(out.kpis().complexityDelivered()).isNull();
         assertThat(out.kpis().predictabilityPct()).isNull();
         assertThat(out.kpis().leadTimeHours()).isEqualTo(DurationStat.empty());
         assertThat(out.kpis().bugSharePct()).isNull();
-        assertThat(out.kpis().aiCostPerSp()).isNull();
+        assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.kpis().deployFreqPerWeek()).isNull();
         assertThat(out.dora().method()).isEqualTo("UNAVAILABLE");
         assertThat(out.dora().leadTime().grade()).isNull();
@@ -405,7 +405,7 @@ class GetProjectOverviewV2UseCaseTest {
         assertThat(out.repos()).isEmpty();
         assertThat(out.ai().models()).isEmpty();
         assertThat(out.ai().costByBucket()).hasSize(6).allSatisfy(b -> assertThat(b.byModel()).isEmpty());
-        assertThat(out.ai().tokensPerSp()).isNull();
+        assertThat(out.ai().tokensPerPoint()).isNull();
         assertThat(out.dataQuality()).isEqualTo(new ProjectOverviewV2Output.DataQuality(null, null, null, 0, 0));
         assertThat(out.project().team()).isNull();
         assertThat(out.asOf()).isEqualTo(NOW);

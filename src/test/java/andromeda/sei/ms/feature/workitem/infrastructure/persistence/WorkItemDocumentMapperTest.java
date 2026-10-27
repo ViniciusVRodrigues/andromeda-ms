@@ -90,10 +90,10 @@ class WorkItemDocumentMapperTest {
                 "id-1", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "ext-1", NOW, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "2", 8.0, List.of("label"),
+                "2", List.of("label"),
                 "sprint-1", "assignee-ext", "assignee-user", "assignee@example.com",
                 null, NOW, null, null,
-                null, null, null,
+                null, null,
                 true, 1L, NOW,
                 complexity, complexitySource, complexityOverriddenBy, complexityOverriddenAt,
                 effort, effortSource, effortOverriddenBy, effortOverriddenAt);

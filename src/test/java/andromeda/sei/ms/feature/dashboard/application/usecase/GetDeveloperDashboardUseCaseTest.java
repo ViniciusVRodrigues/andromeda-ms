@@ -233,13 +233,13 @@ class GetDeveloperDashboardUseCaseTest {
 
         assertThat(output.avgCycleTimeHours()).isNull();
         assertThat(output.avgLeadTimeHours()).isNull();
-        assertThat(output.storyPointsDelivered()).isNull();
+        assertThat(output.figures().complexityDelivered()).isNull();
     }
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ Task 3.6a: burndown series Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
 
     @Test
-    void should_compute_burndownSeries_with_correct_remainingSp_and_idealSp() {
+    void should_compute_burndownSeries_with_correct_remainingSp_and_idealPoints() {
         // Sprint: June 1 Ã¢â‚¬â€œ June 10, total 30 SP
         // Item 1 (10 SP): completed June 3
         // Item 2 (5 SP): completed June 6
@@ -276,25 +276,25 @@ class GetDeveloperDashboardUseCaseTest {
         BurndownPoint june1 = series.stream()
                 .filter(p -> p.date().equals(LocalDate.of(2026, 6, 1)))
                 .findFirst().orElseThrow();
-        assertThat(june1.remainingSp()).isEqualTo(15.0);
+        assertThat(june1.remainingPoints()).isEqualTo(15.0);
         // idealSp on day 0: totalSp * (1 - 0/9) = 15.0
-        assertThat(june1.idealSp()).isEqualTo(15.0);
+        assertThat(june1.idealPoints()).isEqualTo(15.0);
 
         // June 3 entry (item1 completed)
         BurndownPoint june3 = series.stream()
                 .filter(p -> p.date().equals(LocalDate.of(2026, 6, 3)))
                 .findFirst().orElseThrow();
-        assertThat(june3.remainingSp()).isEqualTo(5.0);
+        assertThat(june3.remainingPoints()).isEqualTo(5.0);
 
         // June 6 entry (item2 completed)
         BurndownPoint june6 = series.stream()
                 .filter(p -> p.date().equals(LocalDate.of(2026, 6, 6)))
                 .findFirst().orElseThrow();
-        assertThat(june6.remainingSp()).isEqualTo(0.0);
+        assertThat(june6.remainingPoints()).isEqualTo(0.0);
 
         // Both stories count toward the sprint SP denominator (delivered == total here)
-        assertThat(output.totalSpInSprint()).isEqualTo(15.0);
-        assertThat(output.storyPointsDelivered()).isEqualTo(15.0);
+        assertThat(output.figures().complexityPlanned()).isEqualTo(15.0);
+        assertThat(output.figures().complexityDelivered()).isEqualTo(15.0);
     }
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ totalSpInSprint: all stories vs. delivered Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -317,8 +317,8 @@ class GetDeveloperDashboardUseCaseTest {
         DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, SPRINT_ID, null, null, null);
 
         // delivered = DONE only (5), total = all stories (5 + 8 = 13)
-        assertThat(output.storyPointsDelivered()).isEqualTo(5.0);
-        assertThat(output.totalSpInSprint()).isEqualTo(13.0);
+        assertThat(output.figures().complexityDelivered()).isEqualTo(5.0);
+        assertThat(output.figures().complexityPlanned()).isEqualTo(13.0);
     }
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ Sprint token series: zero-filled across the full span Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -470,7 +470,7 @@ class GetDeveloperDashboardUseCaseTest {
     }
 
     @Test
-    void should_include_featureTypedWorkItem_in_storyPointsDelivered_not_drop_it() {
+    void should_include_featureTypedWorkItem_in_deliveredEffort_not_drop_it() {
         Sprint sprint = sprint(SPRINT_START, SPRINT_END);
         when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(List.of(sprint));
 
@@ -478,10 +478,10 @@ class GetDeveloperDashboardUseCaseTest {
                 "wi-feat", Instant.now(), "Feature Title",
                 "Feature", WorkItem.ResolvedType.FEATURE,
                 "Active", WorkItem.ResolvedStatus.DONE,
-                "Medium", 8.0, List.of(),
+                "Medium", List.of(),
                 SPRINT_ID, "ext-user", USER, null, null,
                 Instant.now(), null, Instant.now(),
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, 8.0, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, 8.0, null, null, null);
 
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, SPRINT_ID))
                 .thenReturn(List.of(feature));
@@ -494,7 +494,7 @@ class GetDeveloperDashboardUseCaseTest {
 
         // A FEATURE-typed item must be counted like a STORY here, not silently dropped (0 items).
         assertThat(output.totalSprintItems()).isEqualTo(1);
-        assertThat(output.storyPointsDelivered()).isEqualTo(8.0);
+        assertThat(output.effortScope().totalEffort(output.currentSprintItems())).isEqualTo(8.0);
     }
 
     // Ã¢â€â‚¬Ã¢â€â‚¬ Helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
@@ -533,10 +533,10 @@ class GetDeveloperDashboardUseCaseTest {
         assertThat(output.sprintHistory()).extracting("sprintId")
                 .containsExactly("sprint-may1", "sprint-may20", SPRINT_ID);
         // Sprint 21 entregou 10 SP; Sprint 22 sem itens aparece zerada (barra honesta), nao some.
-        assertThat(output.sprintHistory().get(0).spDelivered()).isEqualTo(10.0);
+        assertThat(output.sprintHistory().get(0).effortDelivered()).isEqualTo(10.0);
         assertThat(output.sprintHistory().get(0).avgCycleTimeHours()).isEqualTo(4.0);
-        assertThat(output.sprintHistory().get(1).spPlanned()).isEqualTo(0.0);
-        assertThat(output.sprintHistory().get(1).spDelivered()).isEqualTo(0.0);
+        assertThat(output.sprintHistory().get(1).effortPlanned()).isEqualTo(0.0);
+        assertThat(output.sprintHistory().get(1).effortDelivered()).isEqualTo(0.0);
         // sem uso de IA -> tokens/custo null (ausencia), nao zero inventado
         assertThat(output.sprintHistory().get(0).totalTokens()).isNull();
     }
@@ -560,9 +560,9 @@ class GetDeveloperDashboardUseCaseTest {
 
         DeveloperDashboardOutput output = useCase.execute(ORG, USER, null, "sprint-team-b", null, null, null);
 
-        assertThat(output.storyPointsDelivered()).isEqualTo(5.0);
+        assertThat(output.figures().complexityDelivered()).isEqualTo(5.0);
         assertThat(output.sprintHistory()).extracting("sprintId").containsExactly(SPRINT_ID);
-        assertThat(output.sprintHistory().get(0).spDelivered()).isEqualTo(5.0);
+        assertThat(output.sprintHistory().get(0).effortDelivered()).isEqualTo(5.0);
     }
 
     @Test
@@ -615,10 +615,10 @@ class GetDeveloperDashboardUseCaseTest {
                 id, Instant.now(), "Title " + id,
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", status,
-                "Medium", storyPoints, List.of(),
+                "Medium", List.of(),
                 SPRINT_ID, "ext-user", USER, null, null,
                 Instant.now(), null, completedAt,
-                cycleTimeHours, null, null, true, 1L, Instant.now(), storyPoints, null, null, null, storyPoints, null, null, null);
+                cycleTimeHours, null, true, 1L, Instant.now(), storyPoints, null, null, null, storyPoints, null, null, null);
     }
 
     private AIUsage aiUsage(String id, LocalDate day, String allocationId,
@@ -675,6 +675,6 @@ class GetDeveloperDashboardUseCaseTest {
 
         assertThat(output.inProgressItems()).extracting(WorkItem::getId).containsExactly("wi-active");
         assertThat(output.totalSprintItems()).isEqualTo(1);
-        assertThat(output.totalSpInSprint()).isEqualTo(3.0);
+        assertThat(output.figures().complexityPlanned()).isEqualTo(3.0);
     }
 }

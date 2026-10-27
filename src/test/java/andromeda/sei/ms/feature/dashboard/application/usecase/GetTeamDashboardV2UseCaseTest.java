@@ -139,12 +139,12 @@ class GetTeamDashboardV2UseCaseTest {
 
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
-        assertThat(out.kpis().spPlanned()).isEqualTo(10.0);
-        assertThat(out.kpis().spDelivered()).isEqualTo(8.0);
+        assertThat(out.kpis().complexityPlanned()).isEqualTo(10.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(8.0);
         assertThat(out.kpis().itemsDone()).isEqualTo(2);
         assertThat(out.kpis().itemsTotal()).isEqualTo(3);
         assertThat(out.kpis().cycleTimeHours()).isEqualTo(new DurationStat(8.0, 16.0, 2));
-        assertThat(out.previous().spDelivered()).isEqualTo(5.0);
+        assertThat(out.previous().complexityDelivered()).isEqualTo(5.0);
         assertThat(out.history()).extracting(h -> h.predictabilityPct()).containsExactly(50.0, 80.0);
         assertThat(out.history().get(1).isSelected()).isTrue();
         assertThat(out.history().get(1).label()).isEqualTo("S2*");
@@ -188,8 +188,6 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(out.history().get(0).hoursPerPoint()).as("a sprint without delivered complexity").isNull();
         assertThat(member(out, ME).complexityDelivered()).isEqualTo(3.0);
         assertThat(member(out, OTHER).complexityDelivered()).isNull();
-        // old fields keep their values (D6)
-        assertThat(out.kpis().spDelivered()).isNotNull();
     }
 
     @Test
@@ -211,13 +209,13 @@ class GetTeamDashboardV2UseCaseTest {
     void should_returnNulls_notZeros_when_sprintHasNoItems() {
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
-        assertThat(out.kpis().spPlanned()).isNull();
-        assertThat(out.kpis().spDelivered()).isNull();
+        assertThat(out.kpis().complexityPlanned()).isNull();
+        assertThat(out.kpis().complexityDelivered()).isNull();
         assertThat(out.kpis().itemsTotal()).isZero();
-        assertThat(out.kpis().aiCostPerSp()).isNull();
+        assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.kpis().cycleTimeHours()).isEqualTo(DurationStat.empty());
         assertThat(out.history()).allSatisfy(h -> assertThat(h.predictabilityPct()).isNull());
-        assertThat(out.burndown()).isNotEmpty().allSatisfy(d -> assertThat(d.remaining()).isNull());
+        assertThat(out.burndown()).isNotEmpty().allSatisfy(d -> assertThat(d.remainingPoints()).isNull());
         assertThat(out.agingItems()).isEmpty();
         assertThat(out.p85CycleHours()).isNull();
         assertThat(out.statusByType()).allSatisfy(s -> assertThat(s.todo() + s.inProgress() + s.done()).isZero());
@@ -297,7 +295,7 @@ class GetTeamDashboardV2UseCaseTest {
 
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("5.00");
         assertThat(out.kpis().unallocatedAiCostUsd()).isEqualByComparingTo("7.00");
-        assertThat(out.kpis().aiCostPerSp()).isEqualByComparingTo("1.00");
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("1.00");
         assertThat(out.ai().unallocatedCostUsd()).isEqualByComparingTo("7.00");
         assertThat(out.ai().byModel()).extracting(AiModel::model).containsExactly("claude");
         assertThat(out.ai().byModel().stream().map(AiModel::costUsd).reduce(BigDecimal.ZERO, BigDecimal::add))
@@ -322,13 +320,13 @@ class GetTeamDashboardV2UseCaseTest {
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
         assertThat(out.kpis().aiCostUsd()).isNull();
-        assertThat(out.kpis().aiCostPerSp()).isNull();
+        assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.kpis().unallocatedAiCostUsd()).isNull();
         assertThat(out.previous().aiCostUsd()).isNull();
-        assertThat(out.previous().aiCostPerSp()).isNull();
+        assertThat(out.previous().aiCostPerPoint()).isNull();
         assertThat(out.history()).allSatisfy(h -> {
             assertThat(h.aiCostUsd()).isNull();
-            assertThat(h.aiCostPerSp()).isNull();
+            assertThat(h.aiCostPerPoint()).isNull();
             assertThat(h.aiTokens()).isNull();
         });
         assertThat(out.ai().unallocatedCostUsd()).isNull();
@@ -344,7 +342,7 @@ class GetTeamDashboardV2UseCaseTest {
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
-        assertThat(out.kpis().aiCostPerSp()).isEqualByComparingTo("0");
+        assertThat(out.kpis().aiCostPerPoint()).isEqualByComparingTo("0");
         assertThat(out.kpis().unallocatedAiCostUsd()).isEqualByComparingTo("7.00");
         assertThat(out.history().get(1).aiCostUsd()).isEqualByComparingTo("0");
         assertThat(out.history().get(0).aiCostUsd()).isNull();
@@ -406,12 +404,12 @@ class GetTeamDashboardV2UseCaseTest {
         assertThat(me.isMe()).isTrue();
         assertThat(me.itemsDone()).isEqualTo(1);
         assertThat(me.itemsTotal()).isEqualTo(2);
-        assertThat(me.spDelivered()).isEqualTo(3.0);
+        assertThat(me.complexityDelivered()).isEqualTo(3.0);
         assertThat(me.wip()).isEqualTo(1);
         assertThat(me.reviewsGiven()).isEqualTo(1);
         Member other = member(out, OTHER);
         assertThat(other.itemsTotal()).isZero();
-        assertThat(other.spPlanned()).isNull();
+        assertThat(other.complexityPlanned()).isNull();
         assertThat(other.reviewsGiven()).isNull();
         assertThat(out.members().get(0).userId()).isEqualTo(ME);
     }

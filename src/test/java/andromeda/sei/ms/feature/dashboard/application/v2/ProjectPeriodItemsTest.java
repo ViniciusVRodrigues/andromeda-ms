@@ -23,9 +23,9 @@ class ProjectPeriodItemsTest {
                 "1", Instant.now(), "Title",
                 "Raw", type,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint", "ext-user", "user", null, null,
                 Instant.now(), null, null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, 3.0, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, 3.0, null, null, null);
     }
 }

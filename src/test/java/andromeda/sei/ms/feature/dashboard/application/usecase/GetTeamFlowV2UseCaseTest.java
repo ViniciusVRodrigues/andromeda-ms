@@ -300,17 +300,8 @@ class GetTeamFlowV2UseCaseTest {
         assertThat(out.reviewQueue().drafts()).isNull();
         assertThat(out.reviewQueue().byBaseBranch()).isEmpty();
         assertThat(out.reviewQueue().labels()).containsExactly(new LabelCount("infra", 1));
-        assertThat(out.scope().atRiskSp()).isNull();
+        assertThat(out.scope().points()).isNull();
         assertThat(out.cfd()).hasSize(10);     // every working day of the past sprint
-    }
-
-    @Test
-    void should_sumTheEffortNotDoneYet_inTheCurrentSprint() {
-        sprintItems("s2", doneItem("d", "2026-10-01T00:00:00Z", "2026-10-01T10:00:00Z", "2026-10-02T10:00:00Z", 24.0),
-                item("t", ResolvedStatus.TODO, 2.0, "2026-10-01T00:00:00Z"),
-                item("i", ResolvedStatus.IN_PROGRESS, 5.0, "2026-10-01T00:00:00Z"));
-
-        assertThat(useCase.execute(ORG, PROJECT, "s2").scope().atRiskSp()).isEqualTo(7.0);
     }
 
     @Test
@@ -326,7 +317,6 @@ class GetTeamFlowV2UseCaseTest {
         var scope = useCase.execute(ORG, PROJECT, "s2").scope();
 
         assertThat(scope.points()).isEqualTo(8.0);
-        assertThat(scope.atRiskSp()).isEqualTo(7.0);
     }
 
     @Test
@@ -342,7 +332,7 @@ class GetTeamFlowV2UseCaseTest {
         assertThat(out.rework().reopened()).isEmpty();
         assertThat(out.rework().doneInWindow()).isZero();
         assertThat(out.rework().ratePct()).isNull();
-        assertThat(out.scope().atRiskSp()).isNull();
+        assertThat(out.scope().points()).isNull();
         assertThat(out.reviewQueue().open()).isZero();
         assertThat(out.reviewQueue().drafts()).isZero();
         assertThat(out.reviewQueue().byBaseBranch()).isEmpty();

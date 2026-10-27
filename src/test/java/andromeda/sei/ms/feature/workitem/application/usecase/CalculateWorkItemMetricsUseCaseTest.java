@@ -126,8 +126,8 @@ class CalculateWorkItemMetricsUseCaseTest {
         return new WorkItem(id, ORG_ID, PROJECT_ID, WorkItem.Source.AZURE_DEVOPS,
                 id, null, "Title", "Bug", WorkItem.ResolvedType.BUG,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, null,
-                createdAt, startedAt, completedAt, null, null, null, true, null, Instant.now(), null, null, null, null, null, null, null, null);
+                null, List.of(), null, null, null, null, null,
+                createdAt, startedAt, completedAt, null, null, true, null, Instant.now(), null, null, null, null, null, null, null, null);
     }
 
     @Test

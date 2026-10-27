@@ -20,7 +20,6 @@ public class WorkItemDocumentMapper {
                 doc.getRawStatus(),
                 doc.getResolvedStatus(),
                 doc.getPriority(),
-                doc.getStoryPoints(),
                 doc.getLabels(),
                 doc.getSprintId(),
                 doc.getAssigneeExternalId(),
@@ -32,7 +31,6 @@ public class WorkItemDocumentMapper {
                 doc.getCompletedAt(),
                 doc.getCycleTimeHours(),
                 doc.getLeadTimeHours(),
-                doc.getTokensPerSp(),
                 doc.isActive(),
                 doc.getVersion(),
                 doc.getUpdatedAt(),
@@ -69,7 +67,6 @@ public class WorkItemDocumentMapper {
                 .rawStatus(item.getRawStatus())
                 .resolvedStatus(item.getResolvedStatus())
                 .priority(item.getPriority())
-                .storyPoints(item.getStoryPoints())
                 .labels(item.getLabels())
                 .sprintId(item.getSprintId())
                 .sprintName(item.getSprintName())
@@ -82,7 +79,6 @@ public class WorkItemDocumentMapper {
                 .completedAt(item.getCompletedAt())
                 .cycleTimeHours(item.getCycleTimeHours())
                 .leadTimeHours(item.getLeadTimeHours())
-                .tokensPerSp(item.getTokensPerSp())
                 .tokensPerPoint(item.getTokensPerPoint())
                 .tokensPerHour(item.getTokensPerHour())
                 .active(item.isActive())

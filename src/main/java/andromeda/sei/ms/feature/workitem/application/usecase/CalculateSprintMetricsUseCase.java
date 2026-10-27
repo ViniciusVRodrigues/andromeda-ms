@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
  *
  * <p>Velocity follows the single definition of {@link EffortBearingLevelResolver#summarize}: the
  * effective effort of the sprint's deliverable units in {@code DONE} — the same number the
- * developer, team and strategic dashboards report. It no longer reads the legacy
+ * developer, team and strategic dashboards report. It does not read the removed
  * {@code storyPoints} field. Durations are p50/p90 over completed units; the {@code avg*}
  * fields are kept, deprecated, for one release.
  *

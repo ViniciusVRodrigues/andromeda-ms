@@ -191,8 +191,8 @@ class ProjectBacklogControllerTest {
         return new WorkItem(externalId, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, "Title", "Task", WorkItem.ResolvedType.TASK,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 

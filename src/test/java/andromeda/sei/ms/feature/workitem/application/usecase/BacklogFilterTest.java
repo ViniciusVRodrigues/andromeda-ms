@@ -129,8 +129,8 @@ class BacklogFilterTest {
     private WorkItem typedItem(WorkItem.ResolvedType type, WorkItem.ResolvedStatus status) {
         return new WorkItem("id-1", "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "1", NOW, "Título", "Task", type, "Active", status,
-                null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 
@@ -138,8 +138,8 @@ class BacklogFilterTest {
         return new WorkItem("id-" + externalId, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 externalId, NOW, title, "Task", WorkItem.ResolvedType.TASK,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), sprintId, null, assigneeUserId, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), sprintId, null, assigneeUserId, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 }

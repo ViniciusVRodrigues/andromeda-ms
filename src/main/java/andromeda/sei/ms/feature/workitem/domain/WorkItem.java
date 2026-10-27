@@ -26,7 +26,6 @@ public class WorkItem {
     private String rawStatus;
     private ResolvedStatus resolvedStatus;
     private String priority;
-    private Double storyPoints;
     private List<String> labels;
     private String sprintId;
     /**
@@ -46,8 +45,6 @@ public class WorkItem {
     private Instant completedAt;
     private Double cycleTimeHours;
     private Double leadTimeHours;
-    /** Legacy ratio, frozen: no longer recalculated (complexity-effort D3). */
-    private Double tokensPerSp;
     /** AI tokens allocated per point of effective complexity; null when there is no divisor. */
     private Double tokensPerPoint;
     /** AI tokens allocated per hour of Task effort; null when there is no divisor. */
@@ -69,10 +66,10 @@ public class WorkItem {
     public WorkItem(String id, String organizationId, String projectId, Source source,
                     String externalId, Instant externalUpdatedAt, String title,
                     String rawType, ResolvedType resolvedType, String rawStatus, ResolvedStatus resolvedStatus,
-                    String priority, Double storyPoints, List<String> labels,
+                    String priority, List<String> labels,
                     String sprintId, String assigneeExternalId, String assigneeUserId, String assigneeEmail,
                     String parentExternalId, Instant createdAt, Instant startedAt, Instant completedAt,
-                    Double cycleTimeHours, Double leadTimeHours, Double tokensPerSp,
+                    Double cycleTimeHours, Double leadTimeHours,
                     boolean active, Long version, Instant updatedAt,
                     Double complexity, FieldValueSource complexitySource,
                     String complexityOverriddenBy, Instant complexityOverriddenAt,
@@ -90,7 +87,6 @@ public class WorkItem {
         this.rawStatus = rawStatus;
         this.resolvedStatus = resolvedStatus;
         this.priority = priority;
-        this.storyPoints = storyPoints;
         this.labels = labels;
         this.sprintId = sprintId;
         this.assigneeExternalId = assigneeExternalId;
@@ -102,7 +98,6 @@ public class WorkItem {
         this.completedAt = completedAt;
         this.cycleTimeHours = cycleTimeHours;
         this.leadTimeHours = leadTimeHours;
-        this.tokensPerSp = tokensPerSp;
         this.active = active;
         this.version = version;
         this.updatedAt = updatedAt;
@@ -157,8 +152,6 @@ public class WorkItem {
     public String getPriority() { return priority; }
     public void setPriority(String priority) { this.priority = priority; }
 
-    public Double getStoryPoints() { return storyPoints; }
-    public void setStoryPoints(Double storyPoints) { this.storyPoints = storyPoints; }
 
     public List<String> getLabels() { return labels; }
     public void setLabels(List<String> labels) { this.labels = labels; }
@@ -200,8 +193,6 @@ public class WorkItem {
     public void setTokensPerPoint(Double tokensPerPoint) { this.tokensPerPoint = tokensPerPoint; }
     public Double getTokensPerHour() { return tokensPerHour; }
     public void setTokensPerHour(Double tokensPerHour) { this.tokensPerHour = tokensPerHour; }
-    public Double getTokensPerSp() { return tokensPerSp; }
-    public void setTokensPerSp(Double tokensPerSp) { this.tokensPerSp = tokensPerSp; }
 
     public Instant getDeactivatedAt() { return deactivatedAt; }
     public void setDeactivatedAt(Instant deactivatedAt) { this.deactivatedAt = deactivatedAt; }

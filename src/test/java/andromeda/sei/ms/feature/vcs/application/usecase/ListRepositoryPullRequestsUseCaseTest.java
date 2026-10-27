@@ -164,8 +164,8 @@ class ListRepositoryPullRequestsUseCaseTest {
     private WorkItem workItem(String id, String externalId, String title) {
         WorkItem item = new WorkItem(id, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 externalId, null, title, null, null, null, null,
-                null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, true, null, Instant.now(),
+                null, null, null, null, null, null,
+                null, null, null, null, null, null, true, null, Instant.now(),
                 null, null, null, null, null, null, null, null);
         return item;
     }

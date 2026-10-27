@@ -98,6 +98,12 @@ class OrganizationDashboardsV2ControllerTest {
                 .andExpect(jsonPath("$.portfolio[0].projectId").value("p-a"))
                 .andExpect(jsonPath("$.portfolio[0].health.level").value("attention"))
                 .andExpect(jsonPath("$.portfolio[0].currentSprint").doesNotExist())
+                .andExpect(jsonPath("$.portfolio[0].spDelivered").doesNotExist())
+                .andExpect(jsonPath("$.portfolio[0].aiCostPerSp").doesNotExist())
+                .andExpect(jsonPath("$.kpis.spDelivered").doesNotExist())
+                .andExpect(jsonPath("$.kpis.aiCostPerSp").doesNotExist())
+                .andExpect(jsonPath("$.portfolio[0].currentSprint.spDone").doesNotExist())
+                .andExpect(jsonPath("$.portfolio[0].currentSprint.spPlanned").doesNotExist())
                 .andExpect(jsonPath("$.delivery.throughputByProject[0].byProject.p-a").value(2))
                 .andExpect(jsonPath("$.asOf").value("2026-10-11T12:00:00Z"))
                 .andExpect(jsonPath("$.dataFreshness.refreshRunning").value(true));
@@ -128,9 +134,9 @@ class OrganizationDashboardsV2ControllerTest {
     }
 
     private static OrganizationDashboardV2Output organization() {
-        OrgStats kpis = new OrgStats(1, 3, 4, 8.0, EMPTY, EMPTY, null, 0, 0, EMPTY, BigDecimal.ZERO, 0, null, 0, 4.0, BigDecimal.ONE, BigDecimal.TEN);
-        PortfolioRow row = new PortfolioRow("p-a", "Andromeda", "Core", 3, null, null, 60.0, null, 4, 8.0, EMPTY,
-                null, EMPTY, 0, BigDecimal.ZERO, null, List.of(2), new Health("attention", List.of("x")), 4.0, 5.0, BigDecimal.ONE, BigDecimal.TEN);
+        OrgStats kpis = new OrgStats(1, 3, 4, EMPTY, EMPTY, null, 0, 0, EMPTY, BigDecimal.ZERO, 0, 0, 4.0, BigDecimal.ONE, BigDecimal.TEN);
+        PortfolioRow row = new PortfolioRow("p-a", "Andromeda", "Core", 3, null, null, 60.0, null, 4, EMPTY,
+                null, EMPTY, 0, BigDecimal.ZERO, List.of(2), new Health("attention", List.of("x")), 4.0, 5.0, BigDecimal.ONE, BigDecimal.TEN);
         return new OrganizationDashboardV2Output(
                 new Period(90, "2026-07-14", "2026-10-11", "2026-04-15", "2026-07-13", "semana"), kpis, kpis,
                 List.of(row), new OrganizationDashboardV2Output.Delivery(

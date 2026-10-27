@@ -49,10 +49,10 @@ class GetAllocationCandidatesUseCaseTest {
                 "wi-feat", Instant.now(), "Feature Title",
                 "Feature", WorkItem.ResolvedType.FEATURE,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
 
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
                 .thenReturn(List.of(feature));
@@ -88,13 +88,12 @@ class GetAllocationCandidatesUseCaseTest {
                 Sprint.TimeFrame.CURRENT, true, 1L, Instant.now(), Instant.now());
     }
 
-    private WorkItem item(String id, WorkItem.ResolvedType type, String parent, Double complexity, Double effort, Double sp) {
+    private WorkItem item(String id, WorkItem.ResolvedType type, String parent, Double complexity, Double effort) {
         WorkItem wi = story(id, true);
         wi.setResolvedType(type);
         wi.setParentExternalId(parent);
         wi.setComplexity(complexity);
         wi.setEffort(effort);
-        wi.setStoryPoints(sp);
         return wi;
     }
 
@@ -102,9 +101,9 @@ class GetAllocationCandidatesUseCaseTest {
     void should_returnComplexityAndTaskEffort_forStoryWithTasks() {
         when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint()));
         // own effort keeps the level at STORY (candidate selection is unchanged by this change)
-        WorkItem story = item("s1", WorkItem.ResolvedType.STORY, null, 3.0, 3.0, 3.0);
-        WorkItem t1 = item("t1", WorkItem.ResolvedType.TASK, "s1", null, 4.0, null);
-        WorkItem t2 = item("t2", WorkItem.ResolvedType.TASK, "s1", null, 8.0, null);
+        WorkItem story = item("s1", WorkItem.ResolvedType.STORY, null, 3.0, 3.0);
+        WorkItem t1 = item("t1", WorkItem.ResolvedType.TASK, "s1", null, 4.0);
+        WorkItem t2 = item("t2", WorkItem.ResolvedType.TASK, "s1", null, 8.0);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
                 .thenReturn(List.of(story, t1, t2));
 
@@ -113,13 +112,12 @@ class GetAllocationCandidatesUseCaseTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).complexity()).isEqualTo(3.0);
         assertThat(result.get(0).effort()).isEqualTo(12.0);
-        assertThat(result.get(0).storyPoints()).isEqualTo(3.0);
     }
 
     @Test
     void should_returnOnlyEffort_forTaskAlone() {
         when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint()));
-        WorkItem task = item("t1", WorkItem.ResolvedType.TASK, null, null, 4.0, null);
+        WorkItem task = item("t1", WorkItem.ResolvedType.TASK, null, null, 4.0);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
                 .thenReturn(List.of(task));
 
@@ -132,7 +130,7 @@ class GetAllocationCandidatesUseCaseTest {
     @Test
     void should_returnNulls_forItemWithNothing() {
         when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint()));
-        WorkItem bare = item("s1", WorkItem.ResolvedType.STORY, null, null, null, null);
+        WorkItem bare = item("s1", WorkItem.ResolvedType.STORY, null, null, null);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
                 .thenReturn(List.of(bare));
 
@@ -147,10 +145,10 @@ class GetAllocationCandidatesUseCaseTest {
                 id, Instant.now(), "Title " + id,
                 "Story", WorkItem.ResolvedType.STORY,
                 "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                "Medium", 3.0, List.of(),
+                "Medium", List.of(),
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
-                null, null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+                null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
 
     private void markTypes(String... aiTypes) {

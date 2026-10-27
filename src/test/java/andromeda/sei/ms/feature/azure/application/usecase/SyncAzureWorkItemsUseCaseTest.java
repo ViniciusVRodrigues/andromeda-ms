@@ -457,8 +457,8 @@ class SyncAzureWorkItemsUseCaseTest {
         WorkItem savedItem = new WorkItem("wi-100", "org-1", "proj-1",
                 WorkItem.Source.AZURE_DEVOPS, "100", NOW, "My Feature",
                 "Feature", WorkItem.ResolvedType.FEATURE, "Active", WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
         when(workItemRepository.findByOrganizationIdAndExternalIdAndSource(anyString(), anyString(), any()))
                 .thenReturn(Optional.empty())
@@ -716,8 +716,8 @@ class SyncAzureWorkItemsUseCaseTest {
         return new WorkItem("wi-" + externalId, "org-1", "proj-1",
                 WorkItem.Source.AZURE_DEVOPS, externalId, NOW, "Title",
                 "Bug", WorkItem.ResolvedType.BUG, rawStatus, WorkItem.ResolvedStatus.IN_PROGRESS,
-                null, null, List.of(), null, null, null, null, null,
-                NOW, null, null, null, null, null, true, null, NOW,
+                null, List.of(), null, null, null, null, null,
+                NOW, null, null, null, null, true, null, NOW,
                 null, null, null, null, null, null, null, null);
     }
 

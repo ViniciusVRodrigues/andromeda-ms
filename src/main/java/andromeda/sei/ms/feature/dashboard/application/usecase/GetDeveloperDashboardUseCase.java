@@ -102,8 +102,6 @@ public class GetDeveloperDashboardUseCase {
         // effectiveEffort: the unit's own value when set, otherwise the sum of its children. Summing
         // both would double count a Story whose Tasks restate the same work at finer granularity.
         EffortBearingLevelResolver.EffortScope effortScope = effortBearingLevelResolver.scope(currentSprintItems);
-        Double storyPointsDelivered = effortScope.totalEffort(doneItems);
-        Double totalSpInSprint = effortScope.totalEffort(storyItems);
 
         LocalDate sprintStart = sprintOpt.map(s -> toLocalDate(s.getStartDate())).orElse(null);
         LocalDate sprintEnd = sprintOpt.map(s -> toLocalDate(s.getEndDate())).orElse(null);
@@ -128,12 +126,6 @@ public class GetDeveloperDashboardUseCase {
                     .filter(v -> v != null)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
-
-        Double avgTokensPerSp = average(storyItems.stream()
-                .map(WorkItem::getTokensPerSp)
-                .filter(v -> v != null)
-                .mapToDouble(Double::doubleValue)
-                .toArray());
 
         // Burndown series
         List<BurndownPoint> burndownSeries = computeBurndown(
@@ -177,11 +169,8 @@ public class GetDeveloperDashboardUseCase {
                 storyItems,
                 avgCycleTimeHours,
                 avgLeadTimeHours,
-                storyPointsDelivered,
-                totalSpInSprint,
                 tokensByDay,
                 sprintCostUsd,
-                avgTokensPerSp,
                 prCounts[0],
                 prCounts[1],
                 inProgressItems,

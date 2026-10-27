@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 
 import java.util.List;
 
@@ -75,12 +76,19 @@ class ComplexityFromStoryPointsMigrationTest {
 
     private WorkItemDocument item(String id, String projectId, String rawType, WorkItem.ResolvedType type,
                                   Double effort, Double complexity) {
-        return mongo.save(WorkItemDocument.builder().id(id).organizationId(ORG).projectId(projectId)
+        WorkItemDocument saved = mongo.save(WorkItemDocument.builder().id(id).organizationId(ORG).projectId(projectId)
                 .externalId("ext-" + id).rawType(rawType).resolvedType(type).active(true)
                 .effort(effort).effortSource(effort == null ? null : FieldValueSource.AZURE_SYNC)
-                .storyPoints(effort)
                 .complexity(complexity).complexitySource(complexity == null ? null : FieldValueSource.AZURE_SYNC)
                 .build());
+        // the removed storyPoints field only exists in old documents: write it raw
+        mongo.updateFirst(Query.query(Criteria.where("_id").is(id)), new Update().set("storyPoints", effort),
+                "work_items");
+        return saved;
+    }
+
+    private org.bson.Document rawItem(String id) {
+        return mongo.findById(id, org.bson.Document.class, "work_items");
     }
 
     private WorkItemDocument reload(String id) {
@@ -104,7 +112,7 @@ class ComplexityFromStoryPointsMigrationTest {
         assertThat(reload("s1").getComplexity()).isEqualTo(5.0);
         assertThat(reload("s1").getComplexitySource()).isEqualTo(FieldValueSource.AZURE_SYNC);
         assertThat(reload("s1").getEffort()).isNull();
-        assertThat(reload("s1").getStoryPoints()).isNull();
+        assertThat(rawItem("s1")).doesNotContainKey("storyPoints");
         assertThat(reload("b1").getComplexity()).isEqualTo(2.0);
         assertThat(reload("b1").getEffort()).isNull();
     }

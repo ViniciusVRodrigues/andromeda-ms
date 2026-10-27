@@ -161,7 +161,7 @@ public class AiUsageController {
                 .execute(orgId, user.getUserId())
                 .stream()
                 .map(i -> new SprintItemResponse(
-                        i.workItemId(), i.title(), i.sprintName(), i.type(), i.externalId(), i.storyPoints(),
+                        i.workItemId(), i.title(), i.sprintName(), i.type(), i.externalId(),
                         i.complexity(), i.effort()))
                 .toList();
         return ResponseEntity.ok(response);

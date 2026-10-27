@@ -48,7 +48,6 @@ public class WorkItemDocument {
     private String rawStatus;
     private WorkItem.ResolvedStatus resolvedStatus;
     private String priority;
-    private Double storyPoints;
     private List<String> labels;
     private String sprintId;
     private String sprintName;
@@ -61,7 +60,6 @@ public class WorkItemDocument {
     private Instant completedAt;
     private Double cycleTimeHours;
     private Double leadTimeHours;
-    private Double tokensPerSp;
     private Double tokensPerPoint;
     private Double tokensPerHour;
     private boolean active = true;

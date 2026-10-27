@@ -25,7 +25,8 @@ public class GetWorkItemDetailUseCase {
                 item.getRawStatus(), item.getProjectId(), item.getSprintName(), item.getAssigneeEmail(),
                 item.getPriority(), item.getLabels(), item.getParentExternalId(), item.getCreatedAt(),
                 item.getStartedAt(), item.getCompletedAt(), item.getCycleTimeHours(), item.getLeadTimeHours(),
-                item.getTokensPerSp(), item.getResolvedType() != WorkItem.ResolvedType.EPIC
+                item.getTokensPerPoint(), item.getTokensPerHour(),
+                item.getResolvedType() != WorkItem.ResolvedType.EPIC
                         && item.getResolvedType() != WorkItem.ResolvedType.FEATURE,
                 field(config, item, FieldMapping.InternalFieldTarget.COMPLEXITY, item.getComplexity(), item.getComplexitySource()),
                 field(config, item, FieldMapping.InternalFieldTarget.EFFORT, item.getEffort(), item.getEffortSource()));

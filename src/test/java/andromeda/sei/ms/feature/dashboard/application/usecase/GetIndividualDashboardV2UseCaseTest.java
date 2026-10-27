@@ -206,9 +206,9 @@ class GetIndividualDashboardV2UseCaseTest {
     }
 
     @Test
-    void should_mapItems_withAiCostPerItem_tokensPerSp_andNullWhenUnestimated() {
+    void should_mapItems_withAiCostPerItem_tokensPerPoint_andNullWhenUnestimated() {
         WorkItem done = WorkItemFixture.item("wi-1", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, 5.0, null);
-        done.setTokensPerSp(1200.0);
+        done.setTokensPerPoint(1200.0);
         done.setAssigneeUserId(ME);
         WorkItem unestimated = WorkItemFixture.item("wi-2", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.IN_PROGRESS);
         unestimated.setStartedAt(Instant.parse("2026-10-06T12:00:00Z"));
@@ -226,12 +226,12 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(out.items()).extracting(ItemView::id).containsExactly("wi-2", "wi-1");
         ItemView inProgress = out.items().get(0);
         assertThat(inProgress.effort()).isNull();
-        assertThat(inProgress.tokensPerSp()).isNull();
+        assertThat(inProgress.tokensPerPoint()).isNull();
         assertThat(inProgress.aiCostUsd()).isNull();
         assertThat(inProgress.daysInProgress()).isEqualTo(2.0);
         ItemView delivered = out.items().get(1);
         assertThat(delivered.aiCostUsd()).isEqualByComparingTo("3.50");
-        assertThat(delivered.tokensPerSp()).isEqualTo(1200.0);
+        assertThat(delivered.tokensPerPoint()).isEqualTo(1200.0);
         assertThat(delivered.daysInProgress()).isNull();
         assertThat(delivered.assignee().name()).isEqualTo("Ana Ribeiro");
         assertThat(delivered.pr().number()).isEqualTo(1);
@@ -253,9 +253,8 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(out.kpis().avgTokensPerPoint()).isEqualTo(2000.0);
         assertThat(out.kpis().avgTokensPerHour()).isEqualTo(500.0);
         assertThat(out.kpis().unitsWithoutComplexity()).isZero();
-        assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
-        assertThat(out.burndown().get(0).remainingPoints()).isEqualTo(out.burndown().get(0).remaining());
-        assertThat(out.burndown().get(0).idealPoints()).isEqualTo(out.burndown().get(0).ideal());
+        assertThat(out.burndown().get(0).remainingPoints()).isEqualTo(10.0);
+        assertThat(out.burndown().get(0).idealPoints()).isEqualTo(10.0);
     }
 
     /** complexity-effort D1: the list shows the Story (points + summed Task hours), not its Tasks; orphan Tasks stay. */
@@ -315,10 +314,12 @@ class GetIndividualDashboardV2UseCaseTest {
         VcsPullRequest othersOpen = pr("pr-3", OTHER, PullRequestStatus.OPEN, "2026-10-02T10:00:00Z");
         when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(oldOpen, mergedInSprint, othersOpen));
 
+        figures = new ComplexityEffortFigures(10.0, 5.0, 12.0, 2000.0, 500.0, 0, 1);
+
         IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
 
-        assertThat(out.kpis().spPlanned()).isEqualTo(10.0);
-        assertThat(out.kpis().spDelivered()).isEqualTo(5.0);
+        assertThat(out.kpis().complexityPlanned()).isEqualTo(10.0);
+        assertThat(out.kpis().complexityDelivered()).isEqualTo(5.0);
         assertThat(out.kpis().cycleTimeHours()).isEqualTo(new DurationStat(12.0, 30.0, 3));
         assertThat(out.kpis().prsOpen()).isEqualTo(1);
         assertThat(out.kpis().prsMerged()).isEqualTo(1);
@@ -347,9 +348,9 @@ class GetIndividualDashboardV2UseCaseTest {
     @Test
     void should_breakDownAiCostByModel_sortedByCost_andSumTheSprintUsage() {
         when(developerDashboard.execute(ORG, ME, PROJECT, "s2", null, null, null)).thenAnswer(inv -> new DeveloperDashboardOutput(
-                List.of(), null, null, null, null,
+                List.of(), null, null,
                 List.of(new DailyAiUsage(LocalDate.parse("2026-10-01"), 100, 50, 3, new BigDecimal("1.50"))),
-                new BigDecimal("1.50"), null, 0, 0, List.of(), 0, List.of(), new AiSprintSummary(150, new BigDecimal("1.50"), 0),
+                new BigDecimal("1.50"), 0, 0, List.of(), 0, List.of(), new AiSprintSummary(150, new BigDecimal("1.50"), 0),
                 Map.of(), null, List.of(), null, DurationStat.empty(), DurationStat.empty()));
         when(aiUsageRepository.findSummaryGroupedByModel(ORG, ME, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-14"), null))
                 .thenReturn(List.of(new AiUsageSummaryByModel("gpt-5", 100, 20, 4, new BigDecimal("0.40")),
@@ -483,13 +484,13 @@ class GetIndividualDashboardV2UseCaseTest {
         IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
 
         assertThat(out.burndown()).hasSize(14);
-        assertThat(out.burndown().get(0).remaining()).isEqualTo(10.0);
+        assertThat(out.burndown().get(0).remainingPoints()).isEqualTo(10.0);
         assertThat(out.burndown().get(7).date()).isEqualTo("2026-10-08");
-        assertThat(out.burndown().get(7).remaining()).isEqualTo(5.0);
+        assertThat(out.burndown().get(7).remainingPoints()).isEqualTo(5.0);
         assertThat(out.burndown().get(13).date()).isEqualTo("2026-10-14");
         assertThat(out.burndown().get(13).label()).isEqualTo("14/10");
-        assertThat(out.burndown().get(13).remaining()).isNull();
-        assertThat(out.burndown().get(13).ideal()).isEqualTo(0.0);
+        assertThat(out.burndown().get(13).remainingPoints()).isNull();
+        assertThat(out.burndown().get(13).idealPoints()).isEqualTo(0.0);
     }
 
     @Test
@@ -499,15 +500,17 @@ class GetIndividualDashboardV2UseCaseTest {
 
         IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
 
-        assertThat(out.burndown()).isNotEmpty().allSatisfy(day -> assertThat(day.remaining()).isNull());
-        assertThat(out.kpis().spPlanned()).isNull();
+        assertThat(out.burndown()).isNotEmpty().allSatisfy(day -> assertThat(day.remainingPoints()).isNull());
+        assertThat(out.kpis().complexityPlanned()).isNull();
     }
 
     @Test
     void should_computePreviousAndHistory_withTheSingleVelocityDefinition() {
         WorkItem s1Done = WorkItemFixture.item("wi-10", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, 3.0, null);
         s1Done.setCycleTimeHours(20.0);
+        s1Done.setComplexity(3.0);
         WorkItem s1Todo = WorkItemFixture.item("wi-11", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO, 2.0, null);
+        s1Todo.setComplexity(2.0);
         WorkItem s1Unestimated = WorkItemFixture.item("wi-12", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.TODO);
         when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintIdAndProjectId(ORG, ME, "s1", PROJECT))
                 .thenReturn(List.of(s1Done, s1Todo, s1Unestimated));
@@ -516,8 +519,8 @@ class GetIndividualDashboardV2UseCaseTest {
 
         IndividualDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, null);
 
-        assertThat(out.previous().spPlanned()).isEqualTo(5.0);
-        assertThat(out.previous().spDelivered()).isEqualTo(3.0);
+        assertThat(out.previous().complexityPlanned()).isEqualTo(5.0);
+        assertThat(out.previous().complexityDelivered()).isEqualTo(3.0);
         assertThat(out.previous().itemsDone()).isEqualTo(1);
         assertThat(out.previous().itemsTotal()).isEqualTo(3);
         assertThat(out.previous().cycleTimeHours()).isEqualTo(new DurationStat(20.0, 20.0, 1));
@@ -525,7 +528,7 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(out.history().get(1).isSelected()).isTrue();
         assertThat(out.history().get(1).isCurrent()).isTrue();
         assertThat(out.history().get(1).label()).isEqualTo("S2*");
-        assertThat(out.history().get(1).spPlanned()).isNull();
+        assertThat(out.history().get(1).complexityPlanned()).isNull();
         assertThat(out.history().get(0).label()).isEqualTo("S1");
     }
 
@@ -546,8 +549,8 @@ class GetIndividualDashboardV2UseCaseTest {
             burndown.add(new BurndownPoint(LocalDate.parse("2026-10-01").plusDays(day),
                     day == 7 && delivered != null ? total - delivered : total, total * (1 - day / 13.0)));
         }
-        return new DeveloperDashboardOutput(List.copyOf(devItems), 15.0, 20.0, delivered, planned, List.of(),
-                BigDecimal.ZERO, null, 0, 0, List.of(), devItems.size(), burndown, null,
+        return new DeveloperDashboardOutput(List.copyOf(devItems), 15.0, 20.0, List.of(),
+                BigDecimal.ZERO, 0, 0, List.of(), devItems.size(), burndown, null,
                 aiCostByItem == null ? Map.of() : aiCostByItem, null, List.of(), null,
                 new DurationStat(12.0, 30.0, 3), new DurationStat(20.0, 40.0, 3), figures, null);
     }

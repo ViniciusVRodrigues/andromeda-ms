@@ -14,11 +14,8 @@ public record DeveloperDashboardOutput(
         List<WorkItem> currentSprintItems,
         Double avgCycleTimeHours,
         Double avgLeadTimeHours,
-        Double storyPointsDelivered,
-        Double totalSpInSprint,
         List<DailyAiUsage> tokensByDay,
         BigDecimal sprintCostUsd,
-        Double avgTokensPerSp,
         Integer openPrs,
         Integer mergedPrs,
         List<WorkItem> inProgressItems,
@@ -36,29 +33,29 @@ public record DeveloperDashboardOutput(
 ) {
     /** The v1 shape plus context and percentiles; the complexity/effort figures stay empty. */
     public DeveloperDashboardOutput(List<WorkItem> currentSprintItems, Double avgCycleTimeHours,
-            Double avgLeadTimeHours, Double storyPointsDelivered, Double totalSpInSprint,
-            List<DailyAiUsage> tokensByDay, BigDecimal sprintCostUsd, Double avgTokensPerSp,
+            Double avgLeadTimeHours,
+            List<DailyAiUsage> tokensByDay, BigDecimal sprintCostUsd,
             Integer openPrs, Integer mergedPrs, List<WorkItem> inProgressItems, int totalSprintItems,
             List<BurndownPoint> burndownSeries, AiSprintSummary aiSprintSummary,
             Map<String, BigDecimal> aiCostByWorkItemId, BigDecimal subscriptionCostPerUserUsd,
             List<SprintHistoryPoint> sprintHistory, IndividualSprintContext sprintContext,
             DurationStat cycleTime, DurationStat leadTime) {
-        this(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours, storyPointsDelivered, totalSpInSprint,
-                tokensByDay, sprintCostUsd, avgTokensPerSp, openPrs, mergedPrs, inProgressItems,
+        this(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours,
+                tokensByDay, sprintCostUsd, openPrs, mergedPrs, inProgressItems,
                 totalSprintItems, burndownSeries, aiSprintSummary, aiCostByWorkItemId,
                 subscriptionCostPerUserUsd, sprintHistory, sprintContext, cycleTime, leadTime,
                 ComplexityEffortFigures.EMPTY, null);
     }
 
     public DeveloperDashboardOutput(List<WorkItem> currentSprintItems, Double avgCycleTimeHours,
-            Double avgLeadTimeHours, Double storyPointsDelivered, Double totalSpInSprint,
-            List<DailyAiUsage> tokensByDay, BigDecimal sprintCostUsd, Double avgTokensPerSp,
+            Double avgLeadTimeHours,
+            List<DailyAiUsage> tokensByDay, BigDecimal sprintCostUsd,
             Integer openPrs, Integer mergedPrs, List<WorkItem> inProgressItems, int totalSprintItems,
             List<BurndownPoint> burndownSeries, AiSprintSummary aiSprintSummary,
             Map<String, BigDecimal> aiCostByWorkItemId, BigDecimal subscriptionCostPerUserUsd,
             List<SprintHistoryPoint> sprintHistory) {
-        this(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours, storyPointsDelivered, totalSpInSprint,
-                tokensByDay, sprintCostUsd, avgTokensPerSp, openPrs, mergedPrs, inProgressItems,
+        this(currentSprintItems, avgCycleTimeHours, avgLeadTimeHours,
+                tokensByDay, sprintCostUsd, openPrs, mergedPrs, inProgressItems,
                 totalSprintItems, burndownSeries, aiSprintSummary, aiCostByWorkItemId,
                 subscriptionCostPerUserUsd, sprintHistory, null, DurationStat.empty(), DurationStat.empty());
     }

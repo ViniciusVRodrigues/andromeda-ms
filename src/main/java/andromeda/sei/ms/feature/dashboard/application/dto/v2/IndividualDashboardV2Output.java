@@ -50,10 +50,10 @@ public record IndividualDashboardV2Output(
     public record Person(String id, String name, boolean githubLinked, boolean vcsLinked, boolean aiConnected) {}
 
     /** Delivery of one sprint for the person (the {@code previous} sprint and each history point). */
-    public record SprintStats(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
+    public record SprintStats(int itemsDone, int itemsTotal,
                               DurationStat cycleTimeHours, DurationStat leadTimeHours, int prsMerged,
                               DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
-                              Double avgTokensPerSp, Double complexityPlanned, Double complexityDelivered,
+                              Double complexityPlanned, Double complexityDelivered,
                               Double effortLogged, Double avgTokensPerPoint, Double avgTokensPerHour,
                               int unitsWithoutComplexity) {}
 
@@ -61,10 +61,10 @@ public record IndividualDashboardV2Output(
      * {@link SprintStats} of the selected sprint plus the person's open pull requests (any age) — a
      * current state, so {@code null} for a past sprint (like the team view's {@code openPrs}).
      */
-    public record Kpis(Double spPlanned, Double spDelivered, int itemsDone, int itemsTotal,
+    public record Kpis(int itemsDone, int itemsTotal,
                        DurationStat cycleTimeHours, DurationStat leadTimeHours, int prsMerged,
                        DurationStat timeToFirstReviewHours, BigDecimal aiCostUsd, Long aiTokens,
-                       Double avgTokensPerSp, Integer prsOpen, Double complexityPlanned, Double complexityDelivered,
+                       Integer prsOpen, Double complexityPlanned, Double complexityDelivered,
                        Double effortLogged, Double avgTokensPerPoint, Double avgTokensPerHour,
                        int unitsWithoutComplexity) {}
 
@@ -95,7 +95,7 @@ public record IndividualDashboardV2Output(
     public record HistoryPoint(String sprintId, String label, String name,
                                @JsonProperty("isSelected") boolean isSelected,
                                @JsonProperty("isCurrent") boolean isCurrent,
-                               Double spPlanned, Double spDelivered, DurationStat cycleTimeHours,
+                               DurationStat cycleTimeHours,
                                BigDecimal aiCostUsd, Long aiTokens, Double complexityPlanned,
                                Double complexityDelivered, Double effortLogged) {}
 }

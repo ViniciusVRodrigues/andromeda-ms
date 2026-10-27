@@ -87,13 +87,13 @@ class AiUsageAllocationControllerTest {
     }
 
     @Test
-    void getCandidates_returns_complexity_effort_and_storyPoints() throws Exception {
+    void getCandidates_returns_complexity_and_effort_without_storyPoints() throws Exception {
         when(getAllocationCandidates.execute(anyString(), anyString(), any(LocalDate.class))).thenReturn(List.of(
-                new WorkItemCandidateOutput("wi-1", "T", "Sprint 1", "STORY", "10", 3.0, 3.0, 12.0)));
+                new WorkItemCandidateOutput("wi-1", "T", "Sprint 1", "STORY", "10", 3.0, 12.0)));
 
         mockMvc.perform(get("/api/v1/ai/allocations/2026-06-03/candidates"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].storyPoints").value(3.0))
+                .andExpect(jsonPath("$[0].storyPoints").doesNotExist())
                 .andExpect(jsonPath("$[0].complexity").value(3.0))
                 .andExpect(jsonPath("$[0].effort").value(12.0));
     }

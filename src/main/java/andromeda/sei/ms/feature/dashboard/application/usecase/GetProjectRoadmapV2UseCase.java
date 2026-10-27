@@ -294,7 +294,6 @@ public class GetProjectRoadmapV2UseCase {
         return new Progress(total, doneEffort, total == null || total <= 0 ? null : doneEffort / total * 100.0,
                 children.size(), done.size(),
                 (int) children.stream().filter(c -> ctx.scope().effectiveEffort(c) == null).count(),
-                total == null ? null : orZero(ctx.scope().totalEffort(filter(done, c -> ctx.range().contains(c.getCompletedAt())))),
                 pace, forecast(total, doneEffort, pace), lastActivity(children), complexityTotal, complexityDone,
                 recentPoints > 0 ? recentPoints / PACE_WEEKS : null,
                 complexityTotal == null ? null : orZero(ctx.scope().totalComplexity(
@@ -327,7 +326,7 @@ public class GetProjectRoadmapV2UseCase {
                 && i.getResolvedStatus() != WorkItem.ResolvedStatus.DONE
                 && (i.getSprintId() == null || futureSprintIds.contains(i.getSprintId())));
         List<WorkItem> dated = filter(backlog, i -> changedAt(i) != null);
-        return new Backlog(backlog.size(), ctx.scope().totalEffort(backlog),
+        return new Backlog(backlog.size(),
                 Ratios.percent(backlog.stream().filter(i -> ctx.scope().effectiveEffort(i) == null).count(), backlog.size()),
                 Ratios.percent(backlog.stream().filter(i -> i.getParentExternalId() == null).count(), backlog.size()),
                 STALE_BANDS.stream().map(b -> new StaleBand(b.label(), b.minDays(), b.maxDays(),
@@ -356,23 +355,20 @@ public class GetProjectRoadmapV2UseCase {
     }
 
 
-    /** Count, effective effort and effective complexity per tag, by points, effort, then count, top {@value #TOP_LIMIT}. */
+    /** Count and effective complexity per tag, by points then count, top {@value #TOP_LIMIT}. */
     private static List<TagShare> tagShares(Context ctx, Collection<WorkItem> items) {
         Map<String, double[]> byTag = new LinkedHashMap<>();
         for (WorkItem item : items) {
-            double effort = orZero(ctx.scope().effectiveEffort(item));
             double points = orZero(ctx.scope().effectiveComplexity(item));
             for (String tag : tags(item)) {
-                double[] acc = byTag.computeIfAbsent(tag, t -> new double[3]);
+                double[] acc = byTag.computeIfAbsent(tag, t -> new double[2]);
                 acc[0] += 1;
-                acc[1] += effort;
-                acc[2] += points;
+                acc[1] += points;
             }
         }
         return byTag.entrySet().stream()
-                .map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1], e.getValue()[2]))
+                .map(e -> new TagShare(e.getKey(), (int) e.getValue()[0], e.getValue()[1]))
                 .sorted(Comparator.comparingDouble(TagShare::points).reversed()
-                        .thenComparing(Comparator.comparingDouble(TagShare::sp).reversed())
                         .thenComparing(TagShare::count, Comparator.reverseOrder()))
                 .limit(TOP_LIMIT).toList();
     }

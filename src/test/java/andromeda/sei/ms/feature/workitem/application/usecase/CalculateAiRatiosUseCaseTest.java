@@ -50,8 +50,8 @@ class CalculateAiRatiosUseCaseTest {
                               Double complexity, Double effort) {
         return new WorkItem(id, "org-1", "proj-1", WorkItem.Source.AZURE_DEVOPS,
                 "ext-" + id, null, "Title", null, type, null, WorkItem.ResolvedStatus.DONE,
-                null, null, null, "sprint-1", null, "user-1", null, parentExternalId,
-                Instant.now(), null, null, null, null, null, true, null, Instant.now(),
+                null, null, "sprint-1", null, "user-1", null, parentExternalId,
+                Instant.now(), null, null, null, null, true, null, Instant.now(),
                 complexity, null, null, null, effort, null, null, null);
     }
 

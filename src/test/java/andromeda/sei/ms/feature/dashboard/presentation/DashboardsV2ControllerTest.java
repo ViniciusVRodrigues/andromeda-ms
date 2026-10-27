@@ -180,10 +180,10 @@ class DashboardsV2ControllerTest {
     @Test
     void should_serializeBooleanFlags_withThePreviewNames_andDurationsAsP50P90N() throws Exception {
         var stat = new andromeda.sei.ms.shared.domain.metrics.DurationStat(8.0, 16.0, 2);
-        var history = new TeamDashboardV2Output.HistoryPoint("s1", "S1*", "Sprint 1", true, true, 10.0, 8.0, 80.0,
-                stat, java.math.BigDecimal.ONE, null, 15000L, 5.0, 4.0, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 24.0, 6.0);
-        var member = new TeamDashboardV2Output.Member(CALLER, "Ana", true, true, true, 1, 2, 5.0, 3.0, 1, stat,
-                1, 0, null, null, null, 5.0, 4.0, 12.0, 100.0, 8.0);
+        var history = new TeamDashboardV2Output.HistoryPoint("s1", "S1*", "Sprint 1", true, true, 80.0,
+                stat, java.math.BigDecimal.ONE, 15000L, 5.0, 4.0, java.math.BigDecimal.ONE, java.math.BigDecimal.ONE, 24.0, 6.0);
+        var member = new TeamDashboardV2Output.Member(CALLER, "Ana", true, true, true, 1, 2, 1, stat,
+                1, 0, null, null, 5.0, 4.0, 12.0, 100.0, 8.0);
         var empty = TeamDashboardV2Output.withoutSprint(new TeamDashboardV2Output.TeamInfo("Core", 1), AS_OF);
         when(teamUseCase.execute(ORG, CALLER, "p1", null)).thenReturn(new TeamDashboardV2Output(null, empty.team(),
                 null, null, java.util.List.of(), java.util.List.of(), java.util.List.of(), null,
@@ -203,7 +203,12 @@ class DashboardsV2ControllerTest {
                 .andExpect(jsonPath("$.history[0].aiCostPerHour").value(1))
                 .andExpect(jsonPath("$.members[0].effortLogged").value(12.0))
                 .andExpect(jsonPath("$.members[0].avgTokensPerPoint").value(100.0))
-                .andExpect(jsonPath("$.members[0].avgTokensPerSp").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.members[0].avgTokensPerSp").doesNotExist())
+                .andExpect(jsonPath("$.members[0].spPlanned").doesNotExist())
+                .andExpect(jsonPath("$.members[0].spDelivered").doesNotExist())
+                .andExpect(jsonPath("$.history[0].spPlanned").doesNotExist())
+                .andExpect(jsonPath("$.history[0].spDelivered").doesNotExist())
+                .andExpect(jsonPath("$.history[0].aiCostPerSp").doesNotExist())
                 .andExpect(jsonPath("$.members[0].isMe").value(true))
                 .andExpect(jsonPath("$.members[0].me").doesNotExist())
                 .andExpect(jsonPath("$.history[0].selected").doesNotExist())

@@ -18,17 +18,10 @@ public final class DashboardV2Parts {
                              String timeFrame, int dayIndex, int dayCount) {}
 
     /**
-     * {@code remaining} is {@code null} for days still to come and when no unit carries complexity.
-     * {@code remainingPoints}/{@code idealPoints} repeat {@code remaining}/{@code ideal} under the names of the
-     * complexity contract (complexity-effort D6); the burndown is in points of complexity.
+     * {@code remainingPoints} is {@code null} for days still to come and when no unit carries complexity;
+     * the burndown is in points of complexity.
      */
-    public record BurndownDay(String date, String label, Double remaining, Double ideal,
-                              Double remainingPoints, Double idealPoints) {
-
-        public BurndownDay(String date, String label, Double remaining, Double ideal) {
-            this(date, label, remaining, ideal, remaining, ideal);
-        }
-    }
+    public record BurndownDay(String date, String label, Double remainingPoints, Double idealPoints) {}
 
     public record Assignee(String id, String name) {}
 
@@ -43,7 +36,7 @@ public final class DashboardV2Parts {
     public record ItemView(String id, String externalId, String title, String type, String status,
                            String rawStatus, String priority, Double effort, Assignee assignee,
                            Instant startedAt, Instant completedAt, Double cycleTimeHours, Double leadTimeHours,
-                           Double daysInProgress, BigDecimal aiCostUsd, Double tokensPerSp, ItemPullRequest pr,
+                           Double daysInProgress, BigDecimal aiCostUsd, ItemPullRequest pr,
                            Double complexity, Double effortRolledUp, Double tokensPerPoint, Double tokensPerHour) {}
 
     public record WorkItemRef(String externalId, String title) {}
