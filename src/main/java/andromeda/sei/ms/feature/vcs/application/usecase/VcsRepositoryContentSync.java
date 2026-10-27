@@ -77,7 +77,8 @@ public class VcsRepositoryContentSync {
         commit.setAuthorLogin(remote.authorLogin());
         commit.setAuthorExternalId(remote.authorExternalId());
         commit.setAuthorEmail(remote.authorEmail());
-        commit.setAuthorUserId(resolveUser(context, remote.authorExternalId(), remote.authorEmail()));
+        String commitOwner = resolveUser(context, remote.authorExternalId(), remote.authorEmail());
+        if (commitOwner != null) commit.setAuthorUserId(commitOwner); // unlinking keeps the history (atribuir-historico-vcs)
         commit.setAuthoredAt(remote.authoredAt());
         commitRepository.save(commit);
     }
@@ -119,7 +120,8 @@ public class VcsRepositoryContentSync {
         pr.setAuthorLogin(remote.authorLogin());
         pr.setAuthorExternalId(remote.authorExternalId());
         observe(context, remote.authorExternalId(), remote.authorLogin(), remote.authorEmail());
-        pr.setAuthorUserId(resolveUser(context, remote.authorExternalId(), remote.authorEmail()));
+        String prOwner = resolveUser(context, remote.authorExternalId(), remote.authorEmail());
+        if (prOwner != null) pr.setAuthorUserId(prOwner);
         if (pr.getCreatedAt() == null) pr.setCreatedAt(remote.createdAt());
         pr.setMergedAt(remote.mergedAt());
         pr.setClosedAt(remote.closedAt());
@@ -220,7 +222,8 @@ public class VcsRepositoryContentSync {
         event.setActorExternalId(signal.actorExternalId());
         event.setActorLogin(signal.actorLogin());
         observe(context, signal.actorExternalId(), signal.actorLogin(), signal.actorEmail());
-        event.setActorUserId(resolveUser(context, signal.actorExternalId(), signal.actorEmail()));
+        String actorOwner = resolveUser(context, signal.actorExternalId(), signal.actorEmail());
+        if (actorOwner != null) event.setActorUserId(actorOwner);
         event.setBot(signal.bot());
         event.setDeleted(false);
         reviewEventRepository.save(event);
