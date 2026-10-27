@@ -50,6 +50,7 @@ public class AutoAssignAllocationUseCase {
     private final WorkItemRepository workItemRepository;
     private final WorkItemActivityRepository workItemActivityRepository;
     private final EffortBearingLevelResolver effortBearingLevelResolver;
+    private final andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
 
     public void execute(String organizationId, String userId, LocalDate day) {
         execute(organizationId, userId, day, false);
@@ -146,7 +147,7 @@ public class AutoAssignAllocationUseCase {
         for (String id : ids) {
             workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).ifPresent(items::add);
         }
-        return units(items);
+        return units(organizationId, items);
     }
 
     private List<WorkItem> inProgressItems(String organizationId, String userId, LocalDate day) {
@@ -160,7 +161,7 @@ public class AutoAssignAllocationUseCase {
             return List.of();
         }
         return sprints.stream()
-                .flatMap(sprint -> units(workItemRepository
+                .flatMap(sprint -> units(organizationId, workItemRepository
                         .findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
                                 organizationId, sprint.getId(), userId, WorkItem.ResolvedStatus.IN_PROGRESS)
                         .stream().filter(WorkItem::isActive).toList()).stream())
@@ -173,10 +174,11 @@ public class AutoAssignAllocationUseCase {
      * Allocation has to target the same level the team books work at, or teams that track effort on
      * Tasks would never get an automatic suggestion.
      */
-    private List<WorkItem> units(List<WorkItem> items) {
+    private List<WorkItem> units(String organizationId, List<WorkItem> items) {
         if (items.isEmpty()) return List.of();
         var level = effortBearingLevelResolver.resolve(null, items);
-        return effortBearingLevelResolver.deliverableUnits(level, items);
+        return typeEligibility.eligibleUnits(organizationId, items,
+                units -> effortBearingLevelResolver.deliverableUnits(level, units));
     }
 
     private static java.util.function.Predicate<WorkItem> distinctIds() {

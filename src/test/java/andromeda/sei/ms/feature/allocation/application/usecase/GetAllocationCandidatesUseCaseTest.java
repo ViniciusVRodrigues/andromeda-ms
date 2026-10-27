@@ -23,6 +23,7 @@ class GetAllocationCandidatesUseCaseTest {
 
     @Mock private SprintRepository sprintRepository;
     @Mock private WorkItemRepository workItemRepository;
+    @Mock private andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository bindingRepository;
 
     private GetAllocationCandidatesUseCase useCase;
 
@@ -32,7 +33,8 @@ class GetAllocationCandidatesUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new GetAllocationCandidatesUseCase(sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver());
+        useCase = new GetAllocationCandidatesUseCase(sprintRepository, workItemRepository, new andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver(),
+                new andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility(bindingRepository));
     }
 
     @Test
@@ -149,5 +151,62 @@ class GetAllocationCandidatesUseCaseTest {
                 "sprint-1", "ext-user", USER, null, null,
                 Instant.now(), Instant.now(), null,
                 null, null, null, active, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
+
+    private void markTypes(String... aiTypes) {
+        var mappings = new java.util.ArrayList<andromeda.sei.ms.feature.azure.domain.TypeMapping>();
+        for (String t : List.of("User Story", "Bug", "Feature", "Task")) {
+            mappings.add(new andromeda.sei.ms.feature.azure.domain.TypeMapping(t, WorkItem.ResolvedType.STORY,
+                    List.of(aiTypes).contains(t)));
+        }
+        var config = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.WorkflowConfig.class);
+        when(config.getTypeMappings()).thenReturn(mappings);
+        var binding = org.mockito.Mockito.mock(andromeda.sei.ms.feature.azure.domain.AzureProjectBinding.class);
+        when(binding.getWorkflowConfig()).thenReturn(config);
+        when(bindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue(ORG, "proj-1"))
+                .thenReturn(java.util.Optional.of(binding));
+    }
+
+    private WorkItem typed(String id, String rawType, WorkItem.ResolvedType type) {
+        WorkItem wi = story(id, true);
+        wi.setRawType(rawType);
+        wi.setResolvedType(type);
+        wi.setEffort(3.0);
+        wi.setStoryPoints(3.0);
+        return wi;
+    }
+
+    private List<WorkItem> mixedSprint() {
+        return List.of(typed("us", "User Story", WorkItem.ResolvedType.STORY),
+                typed("bug", "Bug", WorkItem.ResolvedType.BUG),
+                typed("feat", "Feature", WorkItem.ResolvedType.FEATURE),
+                typed("t1", "Task", WorkItem.ResolvedType.TASK),
+                typed("t2", "Task", WorkItem.ResolvedType.TASK),
+                typed("t3", "Task", WorkItem.ResolvedType.TASK));
+    }
+
+    @Test
+    void should_returnOnlyMarkedTypes_when_bindingMarksUserStoryAndBug() {
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint()));
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
+                .thenReturn(mixedSprint());
+        markTypes("User Story", "Bug");
+
+        List<WorkItemCandidateOutput> result = useCase.execute(ORG, USER, DAY);
+
+        assertThat(result).extracting(WorkItemCandidateOutput::workItemId).containsExactly("us", "bug");
+    }
+
+    @Test
+    void should_keepCurrentRule_when_noTypeIsMarked() {
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint()));
+        when(workItemRepository.findByOrganizationIdAndAssigneeUserIdAndSprintId(ORG, USER, "sprint-1"))
+                .thenReturn(mixedSprint());
+        markTypes();
+
+        List<WorkItemCandidateOutput> result = useCase.execute(ORG, USER, DAY);
+
+        // story-tier level has effort, so Story, Bug and Feature are the units
+        assertThat(result).extracting(WorkItemCandidateOutput::workItemId).containsExactly("us", "bug", "feat");
     }
 }

@@ -41,11 +41,14 @@ class SaveAllocationUseCaseTest {
     @Mock private AIUsageRepository aiUsageRepository;
     @Mock private andromeda.sei.ms.feature.workitem.domain.WorkItemRepository workItemRepository;
 
+    @Mock private andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
+
     @InjectMocks
     private SaveAllocationUseCase useCase;
 
     @org.junit.jupiter.api.BeforeEach
     void knownWorkItems() {
+        org.mockito.Mockito.lenient().when(typeEligibility.isEligible(any(), any())).thenReturn(true);
         for (String id : List.of("wi-1", "wi-2")) {
             org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, ORG))
                     .thenReturn(java.util.Optional.of(org.mockito.Mockito.mock(
@@ -129,5 +132,22 @@ class SaveAllocationUseCaseTest {
     private AIUsage usage(String id) {
         return new AIUsage(id, ORG, USER, "gh", "ds", DAY, "gpt", "w", "w", "m", "m",
                 10, 10, 1, "vscode", null, new BigDecimal("1.00"), NOW, true, 0L, NOW, NOW);
+    }
+
+    @Test
+    void should_rejectNotEligibleType_andWriteNothing() {
+        var feature = org.mockito.Mockito.mock(andromeda.sei.ms.feature.workitem.domain.WorkItem.class);
+        org.mockito.Mockito.lenient().when(feature.getRawType()).thenReturn("Feature");
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-feature", ORG))
+                .thenReturn(java.util.Optional.of(feature));
+        when(typeEligibility.isEligible(ORG, feature)).thenReturn(false);
+
+        assertThatThrownBy(() -> useCase.execute(ORG, USER, DAY, List.of(entry("wi-1", "0.5"), entry("wi-feature", "0.5"))))
+                .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException.class)
+                .hasMessageContaining("Feature")
+                .extracting("code").isEqualTo("ALLOCATION_WORK_ITEM_TYPE_NOT_ELIGIBLE");
+
+        verify(allocationRepository, never()).deleteByOrganizationIdAndUserIdAndDay(any(), any(), any());
+        verify(allocationRepository, never()).save(any());
     }
 }

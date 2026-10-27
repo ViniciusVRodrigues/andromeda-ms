@@ -47,6 +47,8 @@ class ManualAllocateUseCaseTest {
     @Mock
     private CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
+    @Mock private andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
+
     @InjectMocks
     private ManualAllocateUseCase useCase;
 
@@ -64,6 +66,7 @@ class ManualAllocateUseCaseTest {
                 new AllocationSplit("wi-1", "Feature A", new BigDecimal("0.6000")),
                 new AllocationSplit("wi-2", "Feature B", new BigDecimal("0.4000")));
 
+        org.mockito.Mockito.lenient().when(typeEligibility.isEligible(any(), any())).thenReturn(true);
         org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-1", ORG_ID))
                 .thenReturn(Optional.of(workItem("wi-1", "proj-1")));
         org.mockito.Mockito.lenient().when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-2", ORG_ID))
@@ -237,5 +240,45 @@ class ManualAllocateUseCaseTest {
                 "sprint-1", null, null, null, null,
                 Instant.now(), Instant.now(), null,
                 null, null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
+    }
+
+    @Test
+    void shouldThrowTypeNotEligible_andSaveNothing_byAllocationId() {
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        var feature = workItem("wi-feature", "proj-1");
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-feature", ORG_ID))
+                .thenReturn(Optional.of(feature));
+        when(typeEligibility.isEligible(ORG_ID, feature)).thenReturn(false);
+        List<AllocationSplit> splits = List.of(
+                new AllocationSplit("wi-1", "A", new BigDecimal("0.5000")),
+                new AllocationSplit("wi-feature", "B", new BigDecimal("0.5000")));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID, null, splits))
+                .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException.class)
+                .extracting("code").isEqualTo("ALLOCATION_WORK_ITEM_TYPE_NOT_ELIGIBLE");
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(any(), any());
+        verify(calculateAiRatiosUseCase, never()).execute(any(), any());
+    }
+
+    @Test
+    void shouldThrowTypeNotEligible_andDeleteNothing_byDay() {
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(pendingAllocation));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("usage-2")));
+        var feature = workItem("wi-feature", "proj-1");
+        when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-feature", ORG_ID))
+                .thenReturn(Optional.of(feature));
+        when(typeEligibility.isEligible(ORG_ID, feature)).thenReturn(false);
+        List<AllocationSplit> splits = List.of(
+                new AllocationSplit("wi-1", "A", new BigDecimal("0.5000")),
+                new AllocationSplit("wi-feature", "B", new BigDecimal("0.5000")));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, null, DAY, splits))
+                .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException.class);
+
+        verify(allocationRepository, never()).deleteById(any());
+        verify(allocationRepository, never()).save(any());
     }
 }

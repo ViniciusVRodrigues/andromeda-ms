@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
@@ -9,6 +10,7 @@ import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyVal
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
+import andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -34,6 +36,7 @@ public class ManualAllocateUseCase {
     private final AiUsageAllocationRepository allocationRepository;
     private final AIUsageRepository aiUsageRepository;
     private final WorkItemRepository workItemRepository;
+    private final AllocationTypeEligibility typeEligibility;
     private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
 
     public void execute(String organizationId, String userId, String allocationId,
@@ -129,6 +132,9 @@ public class ManualAllocateUseCase {
             if (id == null || id.isBlank()) continue;
             WorkItem item = workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId)
                     .orElseThrow(() -> new WorkItemNotFoundException(id));
+            if (!typeEligibility.isEligible(organizationId, item)) {
+                throw new AllocationWorkItemTypeNotEligibleException(item.getRawType());
+            }
             if (item.getProjectId() != null) projectIds.add(item.getProjectId());
         }
         return projectIds;

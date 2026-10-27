@@ -20,6 +20,7 @@ public class GetAllocationCandidatesUseCase {
     private final WorkItemRepository workItemRepository;
     private final andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver
             effortBearingLevelResolver;
+    private final andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
 
     public List<WorkItemCandidateOutput> execute(String organizationId, String userId, LocalDate day) {
         List<Sprint> currentSprints = new ArrayList<>(
@@ -41,7 +42,8 @@ public class GetAllocationCandidatesUseCase {
                     // attribute their AI usage to.
                     var level = effortBearingLevelResolver.resolve(null, sprintItems);
                     var scope = effortBearingLevelResolver.scope(sprintItems);
-                    return effortBearingLevelResolver.deliverableUnits(level, sprintItems).stream()
+                    return typeEligibility.eligibleUnits(organizationId, sprintItems,
+                            items -> effortBearingLevelResolver.deliverableUnits(level, items)).stream()
                             .map(wi -> new WorkItemCandidateOutput(
                                     wi.getId(),
                                     wi.getTitle(),

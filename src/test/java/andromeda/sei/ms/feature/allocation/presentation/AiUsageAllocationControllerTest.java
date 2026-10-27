@@ -185,4 +185,20 @@ class AiUsageAllocationControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("WORK_ITEM_NOT_FOUND"));
     }
+
+    @Test
+    void save_returns_422_when_work_item_type_is_not_eligible() throws Exception {
+        doThrow(new andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException("Feature"))
+                .when(saveAllocation).execute(anyString(), anyString(), any(), any());
+
+        String body = """
+                [{"workItemId":"wi-1","workItemTitle":"Fix login","percentage":1.0}]
+                """;
+
+        mockMvc.perform(put("/api/v1/ai/allocations/2026-06-03")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("ALLOCATION_WORK_ITEM_TYPE_NOT_ELIGIBLE"));
+    }
 }
