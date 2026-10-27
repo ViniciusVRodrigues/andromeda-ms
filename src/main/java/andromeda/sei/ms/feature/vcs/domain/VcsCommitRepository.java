@@ -44,4 +44,24 @@ public interface VcsCommitRepository {
     }
 
     VcsCommit save(VcsCommit commit);
+
+    /**
+     * Gives an owner to the ownerless commits of the provider whose {@code authorExternalId} is one
+     * of {@code externalIds}. Never overwrites an existing owner; scoped by organization.
+     *
+     * @return how many commits were attributed
+     */
+    long attributeByAuthorExternalIds(String organizationId, VcsProvider provider, Collection<String> externalIds,
+                                      String userId);
+
+    /**
+     * Same for old commits stored before {@code authorExternalId} existed (key absent): matches
+     * {@code authorLogin} ignoring case, the login taken literally (no regex metacharacters).
+     */
+    long attributeByLegacyAuthorLogin(String organizationId, VcsProvider provider, String authorLogin,
+                                      String userId);
+
+    /** Same, matching {@code authorEmail} against {@code emails} ignoring case. */
+    long attributeByAuthorEmails(String organizationId, VcsProvider provider, Collection<String> emails,
+                                 String userId);
 }

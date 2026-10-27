@@ -285,6 +285,12 @@ class SyncRepositoryUseCaseAzureReposTest {
         }
 
         @Override
+        public andromeda.sei.ms.feature.vcs.domain.VcsAttribution attributeByAuthorExternalIds(
+                String organizationId, VcsProvider provider, java.util.Collection<String> externalIds, String userId) {
+            return delegate.attributeByAuthorExternalIds(organizationId, provider, externalIds, userId);
+        }
+
+        @Override
         public void updateMetrics(String organizationId, String id, Double cycleTimeHours,
                                   Double timeToFirstReviewHours, Double timeToFirstApprovalHours) {
             delegate.updateMetrics(organizationId, id, cycleTimeHours, timeToFirstReviewHours, timeToFirstApprovalHours);

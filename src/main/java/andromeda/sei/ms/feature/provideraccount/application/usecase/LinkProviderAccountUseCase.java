@@ -4,8 +4,11 @@ import andromeda.sei.ms.feature.provideraccount.application.dto.LinkProviderAcco
 import andromeda.sei.ms.feature.provideraccount.domain.UserProviderAccount;
 import andromeda.sei.ms.feature.provideraccount.domain.UserProviderAccountRepository;
 import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderAccountAlreadyLinkedException;
+import andromeda.sei.ms.feature.provideraccount.domain.Provider;
+import andromeda.sei.ms.shared.application.security.VcsIdentityLinked;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -30,6 +33,7 @@ public class LinkProviderAccountUseCase {
 
     private final UserProviderAccountRepository repository;
     private final EncryptionService encryptionService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserProviderAccount execute(LinkProviderAccountInput input) {
         Optional<UserProviderAccount> byExternalAccount = repository
@@ -68,7 +72,11 @@ public class LinkProviderAccountUseCase {
         target.setLinkedAt(now);
         target.setActive(true);
 
-        return repository.save(target);
+        UserProviderAccount saved = repository.save(target);
+        if (input.provider() == Provider.GITHUB) {
+            eventPublisher.publishEvent(new VcsIdentityLinked(input.organizationId(), input.userId()));
+        }
+        return saved;
     }
 
     private UserProviderAccount newAccount() {

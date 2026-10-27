@@ -6,12 +6,14 @@ import andromeda.sei.ms.feature.provideraccount.domain.UserProviderAccount;
 import andromeda.sei.ms.feature.provideraccount.domain.UserProviderAccountRepository;
 import andromeda.sei.ms.feature.provideraccount.domain.exception.ProviderAccountAlreadyLinkedException;
 import andromeda.sei.ms.shared.infrastructure.security.EncryptionService;
+import andromeda.sei.ms.shared.application.security.VcsIdentityLinked;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.List;
@@ -22,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,6 +32,7 @@ class LinkProviderAccountUseCaseTest {
 
     @Mock private UserProviderAccountRepository repository;
     @Mock private EncryptionService encryptionService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private LinkProviderAccountUseCase useCase;
@@ -52,6 +56,7 @@ class LinkProviderAccountUseCaseTest {
         assertThat(captor.getValue().getRefreshTokenEncrypted()).isEqualTo("refresh-enc");
         assertThat(captor.getValue().isActive()).isTrue();
         assertThat(captor.getValue().getUserId()).isEqualTo("user-1");
+        verify(eventPublisher).publishEvent(new VcsIdentityLinked("org-1", "user-1"));
     }
 
     @Test
@@ -101,6 +106,23 @@ class LinkProviderAccountUseCaseTest {
                 .isInstanceOf(ProviderAccountAlreadyLinkedException.class)
                 .extracting(ex -> ((ProviderAccountAlreadyLinkedException) ex).getCode())
                 .isEqualTo("PROVIDER_ACCOUNT_ALREADY_LINKED");
+        verifyNoInteractions(eventPublisher);
+    }
+
+    @Test
+    void shouldNotPublishVcsIdentityLinked_whenProviderIsNotGithub() {
+        LinkProviderAccountInput jira = new LinkProviderAccountInput("org-1", "user-1", Provider.JIRA, "j-1", "ana",
+                null, "access", null, null, List.of());
+        when(repository.findByOrganizationIdAndProviderAndExternalUserId("org-1", Provider.JIRA, "j-1"))
+                .thenReturn(Optional.empty());
+        when(repository.findByOrganizationIdAndUserIdAndProvider("org-1", "user-1", Provider.JIRA))
+                .thenReturn(Optional.empty());
+        when(encryptionService.encrypt("access")).thenReturn("enc");
+        when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        useCase.execute(jira);
+
+        verifyNoInteractions(eventPublisher);
     }
 
     private LinkProviderAccountInput input(String orgId, String userId, String externalUserId,

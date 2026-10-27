@@ -90,6 +90,35 @@ class VcsRepositoryContentSyncTest {
         assertThat(saved.getAuthorLogin()).isEqualTo("octocat");
         assertThat(saved.getRepositoryId()).isEqualTo("repo-1");
         assertThat(saved.getProvider()).isEqualTo(VcsProvider.GITHUB);
+        assertThat(saved.getAuthorExternalId()).isEqualTo("58421");
+        assertThat(saved.getAuthorEmail()).isNull();
+    }
+
+    @Test
+    void should_storeAuthorExternalIdAndEmail_forLaterAttribution() {
+        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+                new VcsRemoteCommit("sha-3", "msg", "Ana", null, T0, "ana@x.com")));
+
+        contentSync.syncCommits(context, null);
+
+        VcsCommit saved = capture(VcsCommit.class, commitRepository);
+        assertThat(saved.getAuthorEmail()).isEqualTo("ana@x.com");
+        assertThat(saved.getAuthorExternalId()).isNull();
+        assertThat(saved.getAuthorUserId()).isNull();
+    }
+
+    @Test
+    void should_keepExistingCommitOwner_when_resyncedAfterUnlink() {
+        VcsCommit existing = new VcsCommit("c-1", ORG, "repo-1", VcsProvider.GITHUB, "sha-4");
+        existing.setAuthorUserId("user-42");
+        when(commitRepository.findByOrganizationIdAndRepositoryIdAndSha(ORG, "repo-1", "sha-4"))
+                .thenReturn(Optional.of(existing));
+        when(client.commitsSince(CREDENTIALS, repository, null)).thenReturn(List.of(
+                new VcsRemoteCommit("sha-4", "msg", "octocat", "58421", T0)));
+
+        contentSync.syncCommits(context, null);
+
+        assertThat(capture(VcsCommit.class, commitRepository).getAuthorUserId()).isEqualTo("user-42");
     }
 
     @Test

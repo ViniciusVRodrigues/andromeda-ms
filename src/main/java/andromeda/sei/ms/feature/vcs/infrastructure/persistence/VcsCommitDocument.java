@@ -37,6 +37,8 @@ public class VcsCommitDocument {
     private String sha;
     private String message;
     private String authorLogin;
+    private String authorExternalId;
+    private String authorEmail;
     private String authorUserId;
     private Instant authoredAt;
     @Builder.Default
