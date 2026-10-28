@@ -23,6 +23,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -125,7 +128,7 @@ public class AutoAssignAllocationUseCase {
             source = SuggestionSource.IN_PROGRESS;
         }
         if (!usable(items, source, userId, day)) return null;
-        return new Suggestion(evenSplits(items), source);
+        return new Suggestion(weightedSplits(items, hoursByItem(organizationId, items)), source);
     }
 
     private static boolean usable(List<WorkItem> items, SuggestionSource source, String userId, LocalDate day) {
@@ -186,16 +189,67 @@ public class AutoAssignAllocationUseCase {
         return wi -> seen.add(wi.getId());
     }
 
-    /** Even split, scale 4 HALF_UP; the last split closes the sum at exactly 1.0000. */
-    private static List<AllocationSplit> evenSplits(List<WorkItem> items) {
-        BigDecimal even = BigDecimal.ONE.divide(BigDecimal.valueOf(items.size()), 4, RoundingMode.HALF_UP);
+    private static final int MAX_DESCENDANT_DEPTH = 4;
+
+    /**
+     * Hours of each item (dashboards-numeros D4): a Task's own effort, or for a story-tier item the sum of the
+     * effort of its Task descendants (children loaded by parent, always inside the organization). Items without
+     * a value are absent from the map.
+     */
+    private Map<String, Double> hoursByItem(String organizationId, List<WorkItem> items) {
+        Map<String, Double> hours = new HashMap<>();
+        Map<String, List<WorkItem>> storiesByProject = new HashMap<>();
+        for (WorkItem item : items) {
+            if (effortBearingLevelResolver.isTaskTier(item.getResolvedType())) {
+                if (item.getEffort() != null) hours.put(item.getId(), item.getEffort());
+            } else if (item.getExternalId() != null && item.getProjectId() != null) {
+                storiesByProject.computeIfAbsent(item.getProjectId(), k -> new ArrayList<>()).add(item);
+            }
+        }
+        storiesByProject.forEach((projectId, stories) -> {
+            Map<String, String> rootOf = new HashMap<>();
+            for (WorkItem story : stories) rootOf.put(story.getExternalId(), story.getId());
+            Set<String> seen = new HashSet<>(rootOf.keySet());
+            List<String> frontier = new ArrayList<>(rootOf.keySet());
+            for (int depth = 0; depth < MAX_DESCENDANT_DEPTH && !frontier.isEmpty(); depth++) {
+                List<String> next = new ArrayList<>();
+                for (WorkItem child : workItemRepository
+                        .findByOrganizationIdAndProjectIdAndParentExternalIdIn(organizationId, projectId, frontier)) {
+                    if (!child.isActive() || child.getExternalId() == null || !seen.add(child.getExternalId())) continue;
+                    String root = rootOf.get(child.getParentExternalId());
+                    if (root == null) continue;
+                    rootOf.put(child.getExternalId(), root);
+                    next.add(child.getExternalId());
+                    if (effortBearingLevelResolver.isTaskTier(child.getResolvedType()) && child.getEffort() != null) {
+                        hours.merge(root, child.getEffort(), Double::sum);
+                    }
+                }
+                frontier = next;
+            }
+        });
+        return hours;
+    }
+
+    /**
+     * Split weighted by hours (dashboards-numeros D4): weight = max(hours, 1), 1 without hours; the share is
+     * weight / sum of weights, scale 4 HALF_UP, and the last split closes the sum at exactly 1.0000. Equal
+     * weights give the plain 1/N.
+     */
+    static List<AllocationSplit> weightedSplits(List<WorkItem> items, Map<String, Double> hours) {
+        double[] weights = new double[items.size()];
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = 0; i < items.size(); i++) {
+            Double h = hours.get(items.get(i).getId());
+            weights[i] = h == null ? 1d : Math.max(h, 1d);
+            total = total.add(BigDecimal.valueOf(weights[i]));
+        }
         List<AllocationSplit> splits = new ArrayList<>();
         BigDecimal sum = BigDecimal.ZERO;
         for (int i = 0; i < items.size(); i++) {
             WorkItem item = items.get(i);
             BigDecimal pct = i == items.size() - 1
                     ? BigDecimal.ONE.setScale(4, RoundingMode.HALF_UP).subtract(sum)
-                    : even;
+                    : BigDecimal.valueOf(weights[i]).divide(total, 4, RoundingMode.HALF_UP);
             sum = sum.add(pct);
             splits.add(new AllocationSplit(item.getId(), item.getTitle(), pct));
         }

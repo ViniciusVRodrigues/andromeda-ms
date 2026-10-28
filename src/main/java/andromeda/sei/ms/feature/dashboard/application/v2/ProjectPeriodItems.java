@@ -118,17 +118,60 @@ public final class ProjectPeriodItems {
                 .toList();
     }
 
-    /** Complexity delivered in a range; {@code null} when no unit of the project carries complexity. */
-    public Double complexityDeliveredIn(DayRange range) {
-        if (effort.plannedComplexity() == null) return null;
-        Double sum = effort.scope().totalComplexity(doneComplexityUnitsIn(range));
-        return sum == null ? Double.valueOf(0d) : sum;
+    private java.util.function.Predicate<WorkItem> deliveredIn(DayRange range) {
+        return u -> WorkItem.ResolvedStatus.DONE.equals(u.getResolvedStatus()) && range.contains(u.getCompletedAt());
     }
 
-    /** Hours logged on the Tasks of the units delivered in a range (complexity-effort D2). */
+    /**
+     * Complexity delivered in a range (dashboards-numeros D1), incremental across periods so a Story closed later
+     * does not re-count what its Tasks delivered earlier: a story-tier unit done in the range delivers its
+     * complexity minus what its Tasks delivered before the range; an open one (or done after the range) delivers
+     * what its Tasks did in the range, capped by what was still missing; one done before the range delivers
+     * nothing. {@code null} when no unit of the project carries complexity.
+     */
+    public Double complexityDeliveredIn(DayRange range) {
+        if (effort.plannedComplexity() == null) return null;
+        double sum = 0;
+        for (WorkItem unit : effort.complexityUnits()) {
+            if (isContainer(unit)) continue;
+            sum += deliveredIn(unit, range);
+        }
+        return sum;
+    }
+
+    private static boolean isTaskType(WorkItem item) {
+        return item.getResolvedType() == WorkItem.ResolvedType.TASK
+                || item.getResolvedType() == WorkItem.ResolvedType.SUB_TASK;
+    }
+
+    private double deliveredIn(WorkItem unit, DayRange range) {
+        var scope = effort.scope();
+        boolean done = WorkItem.ResolvedStatus.DONE.equals(unit.getResolvedStatus());
+        if (isTaskType(unit)) {
+            return done && range.contains(unit.getCompletedAt()) && unit.getComplexity() != null
+                    ? unit.getComplexity() : 0d;
+        }
+        Double effective = scope.effectiveComplexity(unit);
+        if (effective == null) return 0d;
+        java.time.Instant completedAt = unit.getCompletedAt();
+        if (done && completedAt != null && completedAt.isBefore(range.from())) return 0d;
+        double before = 0;
+        double within = 0;
+        for (WorkItem task : scope.descendantsOf(unit)) {
+            if (!isTaskType(task) || task.getComplexity() == null || task.getCompletedAt() == null
+                    || !WorkItem.ResolvedStatus.DONE.equals(task.getResolvedStatus())) continue;
+            if (task.getCompletedAt().isBefore(range.from())) before += task.getComplexity();
+            else if (range.contains(task.getCompletedAt())) within += task.getComplexity();
+        }
+        double missing = effective - Math.min(before, effective);
+        if (done && range.contains(completedAt)) return missing;
+        return Math.min(within, missing);
+    }
+
+    /** Hours logged on the Tasks done in a range, whatever their parent's state (dashboards-numeros D2). */
     public Double effortLoggedIn(DayRange range) {
-        List<WorkItem> units = effort.complexityUnits().isEmpty() ? doneUnitsIn(range) : doneComplexityUnitsIn(range);
-        return effort.scope().totalTaskEffort(units);
+        List<WorkItem> items = all.stream().filter(i -> !isContainer(i)).toList();
+        return effort.scope().effortLogged(items, deliveredIn(range));
     }
 
     /** Past sprints whose last day falls in {@code range}, oldest first. */

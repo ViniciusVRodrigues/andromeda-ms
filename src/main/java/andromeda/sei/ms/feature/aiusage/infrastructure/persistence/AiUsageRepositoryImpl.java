@@ -55,6 +55,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         Update update = new Update()
                 .set("gitHubLogin", usage.getGitHubLogin())
                 .set("workspaceName", usage.getWorkspaceName())
+                .set("editor", usage.getEditor())
                 .set("machineName", usage.getMachineName())
                 .set("inputTokens", usage.getInputTokens())
                 .set("outputTokens", usage.getOutputTokens())

@@ -455,6 +455,7 @@ class VcsRepositoryContentSyncTest {
                 new VcsReviewSignal("r-3", "1002", "bob", false, ReviewKind.COMMENTED, false, T0)));
 
         assertThat(contentSync.syncReviewEvents(context, List.of(broken, healthy), null)).isEqualTo(1);
+        assertThat(context.reviewFailures().get()).isEqualTo(1); // dashboards-numeros D6
     }
 
     private void givenRemotePullRequests(VcsRemotePullRequest... prs) {

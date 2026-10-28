@@ -107,6 +107,23 @@ class SyncRepositoryUseCaseTest {
         assertThat(repository.getDefaultBranch()).isEqualTo("main");
     }
 
+    /** dashboards-numeros D6: PRs whose reviews could not be read show up in the sync result. */
+    @Test
+    void should_reportPullRequestsWithoutReviews_inTheSyncLog_whileStillSuccess() {
+        VcsRepoBinding binding = binding(Instant.parse("2026-09-01T00:00:00Z"));
+        when(contentSync.syncReviewEvents(any(), any(), any())).thenAnswer(inv -> {
+            VcsRepositoryContentSync.Context ctx = inv.getArgument(0);
+            ctx.reviewFailures().addAndGet(3);
+            return 0;
+        });
+
+        useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, BACKFILL);
+
+        assertThat(savedLogs.getLast().getStatus()).isEqualTo(SyncStatus.SUCCESS);
+        assertThat(savedLogs.getLast().getItemsFailed()).isEqualTo(3);
+        assertThat(savedLogs.getLast().getErrorMessage()).isEqualTo("3 PRs sem revisões lidas");
+    }
+
     @Test
     void should_readCommitsFromBackfillWindow_when_firstSync() {
         VcsRepoBinding binding = binding(null);

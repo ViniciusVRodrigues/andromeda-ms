@@ -33,7 +33,9 @@ public final class BurndownCalculator {
 
         List<BurndownPoint> series = new ArrayList<>();
         for (LocalDate day = sprintStart; !day.isAfter(seriesEnd); day = day.plusDays(1)) {
-            Double completed = scope.totalComplexity(completedBy(units, day));
+            // dashboards-numeros D1: an open Story burns down as its Tasks close (capped by the Story).
+            final LocalDate asOf = day;
+            Double completed = scope.totalDeliveredComplexity(units, wi -> completedBy(wi, asOf));
             double remaining = totalPoints - (completed == null ? 0d : completed);
             series.add(new BurndownPoint(day, remaining, ideal(totalPoints, sprintStart, sprintEnd, day)));
         }
@@ -47,12 +49,10 @@ public final class BurndownCalculator {
         return totalPoints * (1.0 - (double) daysElapsed / totalPointsrintDays);
     }
 
-    private static List<WorkItem> completedBy(List<WorkItem> units, LocalDate day) {
-        return units.stream()
-                .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                .filter(wi -> wi.getCompletedAt() != null)
-                .filter(wi -> !toLocalDate(wi.getCompletedAt()).isAfter(day))
-                .toList();
+    private static boolean completedBy(WorkItem wi, LocalDate day) {
+        return WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus())
+                && wi.getCompletedAt() != null
+                && !toLocalDate(wi.getCompletedAt()).isAfter(day);
     }
 
     private static LocalDate toLocalDate(Instant instant) {

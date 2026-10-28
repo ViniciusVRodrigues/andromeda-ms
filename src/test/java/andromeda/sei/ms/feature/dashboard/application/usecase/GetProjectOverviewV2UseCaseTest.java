@@ -195,6 +195,9 @@ class GetProjectOverviewV2UseCaseTest {
         WorkItem t1 = inSprint(WorkItemFixture.item("t1", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 4.0, "ext-a1"), "s1");
         WorkItem t2 = inSprint(WorkItemFixture.item("t2", WorkItem.ResolvedType.TASK, WorkItem.ResolvedStatus.DONE, 8.0, "ext-a1"), "s1");
         WorkItem bug = inSprint(WorkItemFixture.item("bg", WorkItem.ResolvedType.BUG, WorkItem.ResolvedStatus.TODO), "s1");
+        // dashboards-numeros D2: hours count by the Task's own completion, not the parent's
+        t1.setCompletedAt(Instant.parse("2026-08-10T10:00:00Z"));
+        t2.setCompletedAt(Instant.parse("2026-08-10T11:00:00Z"));
         items.addAll(List.of(story, t1, t2, bug));
         AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "6.00", "claude");
         when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),

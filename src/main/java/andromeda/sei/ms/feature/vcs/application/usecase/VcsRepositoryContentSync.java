@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The content steps of {@link SyncRepositoryUseCase}: commits, pull requests (with work item link
@@ -48,17 +49,17 @@ public class VcsRepositoryContentSync {
     /** What every step needs about the repository being synced. */
     public record Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
                           VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding,
-                          List<String> missingBranches) {
+                          List<String> missingBranches, AtomicInteger reviewFailures) {
 
         /** Legacy context: no binding, so the default branch only and no pull request filter. */
         public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
                        VcsRepository repository, WorkItemLinkConfig linkConfig) {
-            this(credentials, client, authors, repository, linkConfig, null, new ArrayList<>());
+            this(credentials, client, authors, repository, linkConfig, null, new ArrayList<>(), new AtomicInteger());
         }
 
         public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
                        VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding) {
-            this(credentials, client, authors, repository, linkConfig, binding, new ArrayList<>());
+            this(credentials, client, authors, repository, linkConfig, binding, new ArrayList<>(), new AtomicInteger());
         }
 
         /** The branches read; a legacy binding (or none) reads the default branch only. */
@@ -261,6 +262,7 @@ public class VcsRepositoryContentSync {
                     if (upsertEvent(context, pr, signal)) processed++;
                 }
             } catch (RuntimeException e) {
+                context.reviewFailures().incrementAndGet(); // surfaces in the sync result (dashboards-numeros D6)
                 log.warn("Failed to sync review events of PR #{} repo={}: {}", pr.getNumber(),
                         context.repository().getDisplayName(), e.getMessage());
             }

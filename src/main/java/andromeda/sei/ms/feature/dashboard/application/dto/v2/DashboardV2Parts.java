@@ -31,13 +31,15 @@ public final class DashboardV2Parts {
      * A work item of the sprint. {@code effort} is the item's own field; {@code daysInProgress} only
      * for items in progress with a start date; {@code aiCostUsd} is the validated allocation cost.
      * {@code complexity} is the item's own field; {@code effortRolledUp} the hours of its Task children (null
-     * without Tasks); {@code tokensPerPoint}/{@code tokensPerHour} the AI ratios (complexity-effort D2/D3).
+     * without Tasks); {@code tokensPerPoint}/{@code tokensPerHour} the AI ratios (complexity-effort D2/D3); {@code aiCostPerPoint} the allocated cost ÷ the effective
+     * complexity (dashboards-numeros D5), null without cost or complexity.
      */
     public record ItemView(String id, String externalId, String title, String type, String status,
                            String rawStatus, String priority, Double effort, Assignee assignee,
                            Instant startedAt, Instant completedAt, Double cycleTimeHours, Double leadTimeHours,
                            Double daysInProgress, BigDecimal aiCostUsd, ItemPullRequest pr,
-                           Double complexity, Double effortRolledUp, Double tokensPerPoint, Double tokensPerHour) {}
+                           Double complexity, Double effortRolledUp, Double tokensPerPoint, Double tokensPerHour,
+                           Double aiCostPerPoint) {}
 
     public record WorkItemRef(String externalId, String title) {}
 

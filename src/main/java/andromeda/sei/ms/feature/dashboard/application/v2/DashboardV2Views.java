@@ -93,7 +93,15 @@ public final class DashboardV2Views {
                         repositoryNames.get(linkedPr.getRepositoryId()), enumName(linkedPr.getStatus()),
                         StalePullRequestPolicy.isStale(linkedPr, now)),
                 item.getComplexity(), scope == null ? null : scope.taskEffortRolledUp(item),
-                item.getTokensPerPoint(), item.getTokensPerHour());
+                item.getTokensPerPoint(), item.getTokensPerHour(),
+                aiCostPerPoint(item, aiCostUsd, scope));
+    }
+
+    private static Double aiCostPerPoint(WorkItem item, BigDecimal aiCostUsd,
+                                         EffortBearingLevelResolver.EffortScope scope) {
+        Double points = scope == null ? item.getComplexity() : scope.effectiveComplexity(item);
+        BigDecimal ratio = AiRatios.per(aiCostUsd, points);
+        return ratio == null ? null : ratio.doubleValue();
     }
 
     /** Days since the item started, only while it is in progress. */

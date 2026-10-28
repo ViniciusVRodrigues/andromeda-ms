@@ -209,6 +209,7 @@ class GetIndividualDashboardV2UseCaseTest {
     void should_mapItems_withAiCostPerItem_tokensPerPoint_andNullWhenUnestimated() {
         WorkItem done = WorkItemFixture.item("wi-1", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.DONE, 5.0, null);
         done.setTokensPerPoint(1200.0);
+        done.setComplexity(2.0);
         done.setAssigneeUserId(ME);
         WorkItem unestimated = WorkItemFixture.item("wi-2", WorkItem.ResolvedType.STORY, WorkItem.ResolvedStatus.IN_PROGRESS);
         unestimated.setStartedAt(Instant.parse("2026-10-06T12:00:00Z"));
@@ -228,9 +229,11 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(inProgress.effort()).isNull();
         assertThat(inProgress.tokensPerPoint()).isNull();
         assertThat(inProgress.aiCostUsd()).isNull();
+        assertThat(inProgress.aiCostPerPoint()).isNull();
         assertThat(inProgress.daysInProgress()).isEqualTo(2.0);
         ItemView delivered = out.items().get(1);
         assertThat(delivered.aiCostUsd()).isEqualByComparingTo("3.50");
+        assertThat(delivered.aiCostPerPoint()).isEqualTo(1.75);
         assertThat(delivered.tokensPerPoint()).isEqualTo(1200.0);
         assertThat(delivered.daysInProgress()).isNull();
         assertThat(delivered.assignee().name()).isEqualTo("Ana Ribeiro");
