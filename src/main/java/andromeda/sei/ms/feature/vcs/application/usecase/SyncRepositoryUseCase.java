@@ -70,9 +70,14 @@ public class SyncRepositoryUseCase {
                 null, null, 0, 0, null, null));
         markState(binding, VcsSyncState.RUNNING, startedAt);
         try {
-            int processed = sync(credentials, binding, startedAt, backfillFrom);
-            finish(syncLog, startedAt, SyncStatus.SUCCESS, processed, 0);
-            return processed;
+            SyncOutcome outcome = sync(credentials, binding, startedAt, backfillFrom);
+            if (outcome.reviewFailures() > 0) {
+                // The sync stays SUCCESS but says how many pull requests came without their reviews.
+                syncLog.setErrorMessage(outcome.reviewFailures() + (outcome.reviewFailures() == 1
+                        ? " PR sem revisões lidas" : " PRs sem revisões lidas"));
+            }
+            finish(syncLog, startedAt, SyncStatus.SUCCESS, outcome.processed(), outcome.reviewFailures());
+            return outcome.processed();
         } catch (RuntimeException e) {
             fail(syncLog, startedAt, e);
             markFailed(binding);
@@ -80,7 +85,9 @@ public class SyncRepositoryUseCase {
         }
     }
 
-    private int sync(VcsCredentials credentials, VcsRepoBinding binding, Instant startedAt, Instant backfillFrom) {
+    private record SyncOutcome(int processed, int reviewFailures) {}
+
+    private SyncOutcome sync(VcsCredentials credentials, VcsRepoBinding binding, Instant startedAt, Instant backfillFrom) {
         String orgId = binding.getOrganizationId();
         VcsProviderClient client = providerRegistry.client(binding.getProvider());
         VcsAuthorResolver authors = providerRegistry.authorResolver(binding.getProvider());
@@ -113,7 +120,7 @@ public class SyncRepositoryUseCase {
         int processed = 1 + commits + pullRequests.size() + events;
         log.info("VCS sync completed: org={} project={} provider={} repo={} processed={}", orgId,
                 binding.getProjectId(), binding.getProvider(), repository.getDisplayName(), processed);
-        return processed;
+        return new SyncOutcome(processed, context.reviewFailures().get());
     }
 
     /** Early save of the sync state ({@code RUNNING}). */

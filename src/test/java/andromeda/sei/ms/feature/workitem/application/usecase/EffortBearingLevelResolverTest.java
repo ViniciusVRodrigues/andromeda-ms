@@ -295,6 +295,46 @@ class EffortBearingLevelResolverTest {
         assertThat(resolver.scope(List.of(a, b)).taskEffort(a)).isEqualTo(4.0);
     }
 
+    // ---- dashboards-numeros D1/D2: Tasks DONE under an open Story ----
+
+    private WorkItem taskC(String id, String parent, Double effort, Double complexity) {
+        return workItem(id, parent, "Task", WorkItem.ResolvedType.TASK, effort, complexity);
+    }
+
+    @Test
+    void should_deliverTasksDoneComplexityUnderOpenStory_andLogTheirHours() {
+        WorkItem open = story("1", null, null, 5.0);
+        WorkItem t1 = done(taskC("2", "1", 3.0, 1.5));
+        WorkItem t2 = done(taskC("3", "1", 5.0, 1.2));
+        WorkItem t3 = taskC("4", "1", 2.0, 1.0); // not done: neither points nor hours
+        WorkItem doneStory = done(story("5", null, null, 3.0));
+        WorkItem doneTask = done(taskC("6", "5", 4.0, 1.0)); // inside the done Story: no double count
+        WorkItem orphan = done(taskC("7", null, 2.0, 0.5));
+
+        var summary = resolver.summarize(List.of(open, t1, t2, t3, doneStory, doneTask, orphan));
+
+        assertThat(summary.deliveredComplexity()).isEqualTo(2.7 + 3.0 + 0.5);
+        assertThat(summary.plannedComplexity()).isEqualTo(5.0 + 3.0 + 0.5);
+        assertThat(summary.effortLogged()).isEqualTo(3.0 + 5.0 + 4.0 + 2.0);
+    }
+
+    @Test
+    void should_capDeliveredComplexityOfOpenStoryAtItsOwn() {
+        WorkItem open = story("1", null, null, 3.0);
+        WorkItem t1 = done(taskC("2", "1", null, 2.0));
+        WorkItem t2 = done(taskC("3", "1", null, 2.0));
+
+        assertThat(resolver.summarize(List.of(open, t1, t2)).deliveredComplexity()).isEqualTo(3.0);
+    }
+
+    @Test
+    void should_logDoneStoryOwnHours_when_itHasNoTaskWithEffort() {
+        WorkItem doneStory = done(story("1", null, 6.0, 3.0));
+        WorkItem task = done(taskC("2", "1", null, null));
+
+        assertThat(resolver.summarize(List.of(doneStory, task)).effortLogged()).isEqualTo(6.0);
+    }
+
     private WorkItem story(String externalId, String parentExternalId, Double effort, Double complexity) {
         return workItem(externalId, parentExternalId, "User Story", WorkItem.ResolvedType.STORY, effort, complexity);
     }

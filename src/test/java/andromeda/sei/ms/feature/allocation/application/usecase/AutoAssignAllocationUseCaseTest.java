@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -464,6 +465,65 @@ class AutoAssignAllocationUseCaseTest {
         useCase.execute(ORG, USER, DAY);
 
         assertThat(savedOne().getSplits()).extracting(AllocationSplit::getWorkItemId).containsExactly("wi-a", "wi-b");
+    }
+
+    // ── Peso por horas (dashboards-numeros D4) ──────────────────────────────
+
+    private WorkItem childTask(String id, String parentExternalId, Double effort) {
+        WorkItem t = taskWorkItem(id, effort);
+        t.setParentExternalId(parentExternalId);
+        return t;
+    }
+
+    private List<BigDecimal> weightedPercentages(Double h1, Double h2, Double h3) {
+        givenUnallocatedUsageAndNoAllocation();
+        givenInProgress(workItem("wi-1", "A"), workItem("wi-2", "B"), workItem("wi-3", "C"));
+        List<WorkItem> children = new java.util.ArrayList<>();
+        if (h1 != null) children.add(childTask("t1", "wi-1", h1));
+        if (h3 != null) children.add(childTask("t3", "wi-3", h3));
+        if (h2 != null) children.add(childTask("t2", "wi-2", h2));
+        when(workItemRepository.findByOrganizationIdAndProjectIdAndParentExternalIdIn(eq(ORG), eq("proj-1"), anyList()))
+                .thenAnswer(i -> {
+                    List<String> parents = i.getArgument(2);
+                    return children.stream().filter(c -> parents.contains(c.getParentExternalId())).toList();
+                });
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG, USER, DAY);
+
+        return savedOne().getSplits().stream().map(AllocationSplit::getPercentage).toList();
+    }
+
+    @Test
+    void should_weightSplitsByHoursOfChildTasks() {
+        assertThat(weightedPercentages(5.0, null, 1.0).stream().map(BigDecimal::toPlainString).toList())
+                .isEqualTo(List.of("0.7143", "0.1429", "0.1428"));
+    }
+
+    @Test
+    void should_giveEightOneOne_whenHoursAre8_none_1() {
+        // 8 h / no value (weight 1) / 1 h  =>  8:1:1
+        assertThat(weightedPercentages(8.0, null, 1.0).stream().map(BigDecimal::toPlainString).toList())
+                .isEqualTo(List.of("0.8000", "0.1000", "0.1000"));
+    }
+
+    @Test
+    void should_splitEvenly_when_noItemHasHours() {
+        assertThat(weightedPercentages(null, null, null).stream().map(BigDecimal::toPlainString).toList())
+                .isEqualTo(List.of("0.3333", "0.3333", "0.3334"));
+    }
+
+    @Test
+    void should_closeAtOne_when_threeItemsHaveOneHourEach() {
+        List<BigDecimal> p = weightedPercentages(1.0, 1.0, 1.0);
+        assertThat(p.stream().map(BigDecimal::toPlainString).toList()).isEqualTo(List.of("0.3333", "0.3333", "0.3334"));
+        assertThat(p.stream().reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("1.0000");
+    }
+
+    @Test
+    void should_weightHalfHourAsOne() {
+        assertThat(weightedPercentages(0.5, 4.0, null).stream().map(BigDecimal::toPlainString).toList())
+                .isEqualTo(List.of("0.1667", "0.6667", "0.1666"));
     }
 
     private static String[] ids(String prefix, int n) {

@@ -39,13 +39,14 @@ public record ComplexityEffortFigures(Double complexityPlanned, Double complexit
     public static ComplexityEffortFigures ofAssignee(EffortSummary summary, String userId) {
         List<WorkItem> pool = (summary.complexityUnits().isEmpty() ? summary.units() : summary.complexityUnits())
                 .stream().filter(u -> userId.equals(u.getAssigneeUserId())).toList();
-        List<WorkItem> done = pool.stream()
-                .filter(u -> WorkItem.ResolvedStatus.DONE.equals(u.getResolvedStatus())).toList();
+        java.util.function.Predicate<WorkItem> isDone = u -> WorkItem.ResolvedStatus.DONE.equals(u.getResolvedStatus());
         var scope = summary.scope();
+        List<WorkItem> withTasks = new java.util.ArrayList<>(pool);
+        for (WorkItem unit : pool) withTasks.addAll(scope.descendantsOf(unit));
         Double planned = scope.totalComplexity(pool);
         int without = (int) pool.stream().filter(u -> scope.effectiveComplexity(u) == null).count();
-        return new ComplexityEffortFigures(planned, DashboardV2Views.deliveredOf(planned, scope.totalComplexity(done)),
-                scope.totalTaskEffort(done),
+        return new ComplexityEffortFigures(planned, DashboardV2Views.deliveredOf(planned, scope.totalDeliveredComplexity(pool, isDone)),
+                scope.effortLogged(withTasks, isDone),
                 DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerPoint).toList()),
                 DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerHour).toList()),
                 without, pool.size() - without);

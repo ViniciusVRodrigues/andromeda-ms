@@ -87,8 +87,11 @@ public class EffortBearingLevelResolver {
      * Task-tier items that sit under no story-tier item of the scope (orphans: their work must not vanish).
      */
     public List<WorkItem> listedUnits(List<WorkItem> items) {
+        return listedUnits(items, scope(items));
+    }
+
+    private List<WorkItem> listedUnits(List<WorkItem> items, EffortScope scope) {
         List<WorkItem> stories = storyTier(items);
-        EffortScope scope = scope(items);
         java.util.Set<WorkItem> covered = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         for (WorkItem story : stories) covered.addAll(scope.descendantsOf(story));
         List<WorkItem> out = new ArrayList<>(stories);
@@ -114,21 +117,19 @@ public class EffortBearingLevelResolver {
                 .toList();
         EffortScope scope = scope(scopeItems);
 
-        // complexity-effort D1: complexity is measured on the story-tier units whatever the effort level.
-        List<WorkItem> complexityUnits = storyTier(scopeItems);
-        List<WorkItem> complexityDone = complexityUnits.stream()
-                .filter(wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus()))
-                .toList();
+        // dashboards-numeros D1: complexity is measured on the listed units (story tier + orphan Tasks); an open
+        // story-tier unit delivers what its DONE Tasks delivered (capped by the unit), a DONE one delivers it all.
+        List<WorkItem> complexityUnits = listedUnits(scopeItems, scope);
+        java.util.function.Predicate<WorkItem> isDone = wi -> WorkItem.ResolvedStatus.DONE.equals(wi.getResolvedStatus());
         int withoutComplexity = (int) complexityUnits.stream()
                 .filter(wi -> scope.effectiveComplexity(wi) == null).count();
 
-        // complexity-effort D2: logged effort = Task hours of the delivered units. With no story tier
-        // (Tasks are the units themselves) the delivered Tasks are the ones to add up.
-        List<WorkItem> effortUnits = complexityUnits.isEmpty() ? done : complexityDone;
-
+        // Known limit: a sprint scope has no dates, so Tasks of a Story that sit in another sprint are not in the
+        // scope and the leftover between sprints is not apportioned (the period views do it by completion date).
+        // dashboards-numeros D2: logged effort = own hours of every DONE Task of the scope, whatever its parent's state.
         return new EffortSummary(units, done, scope.totalEffort(done), scope.totalEffort(units), scope,
-                scope.totalComplexity(complexityDone), scope.totalComplexity(complexityUnits),
-                withoutComplexity, scope.totalTaskEffort(effortUnits), complexityUnits);
+                scope.totalDeliveredComplexity(complexityUnits, isDone), scope.totalComplexity(complexityUnits),
+                withoutComplexity, scope.effortLogged(scopeItems, isDone), complexityUnits);
     }
 
     /** Children index built once for {@code allItems}; reuse it for every unit of the scope. */
@@ -299,6 +300,69 @@ public class EffortBearingLevelResolver {
             return count == 0 ? null : sum;
         }
 
+        /**
+         * Complexity a unit delivered (dashboards-numeros D1): a Task, its own complexity when {@code delivered};
+         * a story-tier unit, its whole effective complexity when {@code delivered}, otherwise the own complexity of
+         * its delivered Task descendants capped by the unit's effective complexity. {@code null} when the unit
+         * carries no complexity.
+         */
+        public Double deliveredComplexityOf(WorkItem unit, java.util.function.Predicate<WorkItem> delivered) {
+            if (isTaskType(unit.getResolvedType())) return delivered.test(unit) ? unit.getComplexity() : null;
+            Double effective = effectiveComplexity(unit);
+            if (effective == null) return null;
+            if (delivered.test(unit)) return effective;
+            double sum = 0;
+            for (WorkItem descendant : descendantsOf(unit)) {
+                if (isTaskType(descendant.getResolvedType()) && descendant.getComplexity() != null
+                        && delivered.test(descendant)) {
+                    sum += descendant.getComplexity();
+                }
+            }
+            return Math.min(sum, effective);
+        }
+
+        /** Sum of {@link #deliveredComplexityOf}; {@code null} when no unit carries complexity. */
+        public Double totalDeliveredComplexity(List<WorkItem> units, java.util.function.Predicate<WorkItem> delivered) {
+            double sum = 0;
+            int count = 0;
+            for (WorkItem unit : units) {
+                Double value = deliveredComplexityOf(unit, delivered);
+                if (value != null) {
+                    sum += value;
+                    count++;
+                }
+            }
+            return count == 0 ? null : sum;
+        }
+
+        /**
+         * Logged hours (dashboards-numeros D2): own effort of every delivered Task among {@code items}, plus the own
+         * effort of delivered story-tier items that have no Task descendant carrying effort. {@code null} when
+         * nothing has a value.
+         */
+        public Double effortLogged(List<WorkItem> items, java.util.function.Predicate<WorkItem> delivered) {
+            double sum = 0;
+            int count = 0;
+            for (WorkItem item : items) {
+                if (item.getEffort() == null || !delivered.test(item)) continue;
+                boolean counts = isTaskType(item.getResolvedType());
+                if (!counts && isStoryType(item.getResolvedType())) {
+                    counts = descendantsOf(item).stream()
+                            .noneMatch(d -> isTaskType(d.getResolvedType()) && d.getEffort() != null);
+                }
+                if (counts) {
+                    sum += item.getEffort();
+                    count++;
+                }
+            }
+            return count == 0 ? null : sum;
+        }
+
+        private static boolean isStoryType(WorkItem.ResolvedType type) {
+            return type == WorkItem.ResolvedType.STORY || type == WorkItem.ResolvedType.FEATURE
+                    || type == WorkItem.ResolvedType.BUG;
+        }
+
         public Double totalTaskEffort(List<WorkItem> units) {
             double sum = 0;
             int count = 0;
@@ -329,7 +393,7 @@ public class EffortBearingLevelResolver {
             return count == 0 ? null : sum;
         }
 
-        List<WorkItem> descendantsOf(WorkItem item) {
+        public List<WorkItem> descendantsOf(WorkItem item) {
             List<WorkItem> out = new ArrayList<>();
             if (item.getExternalId() == null) return out;
             Set<String> visited = new HashSet<>();
