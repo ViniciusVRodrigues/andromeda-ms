@@ -369,6 +369,27 @@ class GetTeamDashboardV2UseCaseTest {
     }
 
     @Test
+    void should_notCountPromotionPrAsStale_when_sourceAndBaseAreChosenOnTheBinding() {
+        var binding = new andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding("b-1", ORG, PROJECT, REPO,
+                VcsProvider.GITHUB, true);
+        binding.setBranches(List.of("main", "staging"));
+        when(vcsReadPort.bindingsOfProject(ORG, PROJECT)).thenReturn(List.of(binding));
+        VcsPullRequest promotion = pr("pr-7", ME, "2026-10-02T10:00:00Z");
+        promotion.setSourceBranch("staging");
+        promotion.setBaseBranch("main");
+        VcsPullRequest feature = pr("pr-8", ME, "2026-10-02T10:00:00Z");
+        feature.setSourceBranch("feature/x");
+        feature.setBaseBranch("main");
+        when(vcsReadPort.pullRequestsOfRepository(ORG, REPO)).thenReturn(List.of(promotion, feature));
+
+        TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
+
+        assertThat(out.kpis().openPrs()).isEqualTo(2);
+        assertThat(out.kpis().stalePrs()).isEqualTo(1);
+        assertThat(out.stalePrs()).hasSize(1);
+    }
+
+    @Test
     void should_notCountMergedOrClosedPrsWithoutReview_asStaleOrOpen() {
         VcsPullRequest merged = pr("pr-5", ME, "2026-10-02T10:00:00Z");
         merged.setStatus(PullRequestStatus.MERGED);

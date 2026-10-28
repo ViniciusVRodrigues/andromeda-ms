@@ -138,6 +138,29 @@ class ListProjectRepositoriesUseCaseTest {
         assertThat(summary.latestCfrPeriodEnd()).isNull();
     }
 
+    @Test
+    void should_notCountPromotionPullRequestAsStale_when_bothBranchesAreChosenOnTheBinding() {
+        var binding = new andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding("b-1", ORG, "proj-1", "repo-1",
+                andromeda.sei.ms.feature.vcs.domain.VcsProvider.GITHUB, true);
+        binding.setBranches(List.of("main", "staging"));
+        VcsPullRequest promotion = pr("pr-6", PullRequestStatus.OPEN, Instant.now().minus(Duration.ofDays(3)));
+        promotion.setSourceBranch("staging");
+        promotion.setBaseBranch("main");
+        VcsPullRequest feature = pr("pr-7", PullRequestStatus.OPEN, Instant.now().minus(Duration.ofDays(3)));
+        feature.setSourceBranch("feature/x");
+        feature.setBaseBranch("main");
+        when(vcsReadPort.repositoriesOfProject(ORG, "proj-1")).thenReturn(List.of(repo));
+        when(vcsReadPort.bindingsOfProject(ORG, "proj-1")).thenReturn(List.of(binding));
+        when(vcsReadPort.pullRequestsOfRepository(ORG, "repo-1")).thenReturn(List.of(promotion, feature));
+        when(deliveryMetricsService.calculate(any(), any(), any(), any(), any()))
+                .thenReturn(DeliveryMetrics.unavailable());
+
+        ProjectRepositoryOutput summary = useCase.execute("proj-1", null, null).get(0);
+
+        assertThat(summary.openPrCount()).isEqualTo(2);
+        assertThat(summary.stalePrCount()).isEqualTo(1);
+    }
+
     private VcsPullRequest merged(String id, double cycle, double ttfr) {
         VcsPullRequest pr = pr(id, PullRequestStatus.MERGED, WINDOW_FROM.plus(Duration.ofDays(2)));
         pr.setMergedAt(WINDOW_FROM.plus(Duration.ofDays(3)));

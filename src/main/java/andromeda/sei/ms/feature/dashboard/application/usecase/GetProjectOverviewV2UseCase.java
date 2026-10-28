@@ -311,7 +311,7 @@ public class GetProjectOverviewV2UseCase {
 
     private static int staleCount(Context ctx) {
         return (int) ctx.vcs().pullRequests().stream()
-                .filter(pr -> pr.getStatus() == PullRequestStatus.OPEN && StalePullRequestPolicy.isStale(pr, ctx.now()))
+                .filter(pr -> pr.getStatus() == PullRequestStatus.OPEN && StalePullRequestPolicy.isStale(pr, ctx.now(), ctx.vcs().chosenBranches()))
                 .count();
     }
 
@@ -407,7 +407,7 @@ public class GetProjectOverviewV2UseCase {
                 merged.size(), Percentiles.of(merged.stream().map(VcsPullRequest::getCycleTimeHours).toList()),
                 ReviewMetricsPolicy.aggregate(filter(prs, pr -> range.contains(pr.getCreatedAt())), ctx.now())
                         .timeToFirstReview(),
-                open.size(), (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now())).count(),
+                open.size(), (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now(), ctx.vcs().chosenBranches())).count(),
                 delivery.changeFailRatePercent(), binding != null ? binding.isSyncEnabled() : null,
                 binding != null ? binding.getLastSyncAt() : null);
     }

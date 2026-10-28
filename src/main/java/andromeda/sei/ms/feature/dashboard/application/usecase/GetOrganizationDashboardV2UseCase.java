@@ -284,8 +284,9 @@ public class GetOrganizationDashboardV2UseCase {
     }
 
     private static int staleCount(Context ctx, List<VcsPullRequest> prs) {
+        Map<String, Set<String>> chosen = ctx.snapshot().vcs().chosenBranches();
         return (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN
-                && StalePullRequestPolicy.isStale(pr, ctx.now())).count();
+                && StalePullRequestPolicy.isStale(pr, ctx.now(), chosen)).count();
     }
 
     /** Items completed per bucket, in one pass over the items (buckets are contiguous and ordered). */

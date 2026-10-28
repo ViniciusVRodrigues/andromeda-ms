@@ -260,7 +260,8 @@ public class GetIndividualDashboardV2UseCase {
                 .sorted(Comparator.comparing((WorkItem wi) -> ITEM_ORDER.getOrDefault(wi.getResolvedStatus(), ITEM_ORDER.size()))
                         .thenComparing(WorkItem::getEffort, Comparator.nullsLast(Comparator.reverseOrder())))
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), dev.aiCostByWorkItemId().get(wi.getId()),
-                        prByItem.get(wi.getExternalId()), repoNames, ctx.now(), dev.effortScope()))
+                        prByItem.get(wi.getExternalId()), repoNames, ctx.now(), dev.effortScope(),
+                        ctx.vcs().chosenBranches()))
                 .toList();
     }
 
@@ -278,7 +279,7 @@ public class GetIndividualDashboardV2UseCase {
                         || (current && pr.getStatus() == PullRequestStatus.OPEN))
                 .sorted(Comparator.comparing((VcsPullRequest pr) -> pr.getStatus() == PullRequestStatus.OPEN ? 0 : 1)
                         .thenComparing(VcsPullRequest::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
-                .map(pr -> DashboardV2Views.pullRequestView(pr, ctx.people(), repoNames, titles, ctx.now()))
+                .map(pr -> DashboardV2Views.pullRequestView(pr, ctx.people(), repoNames, titles, ctx.now(), ctx.vcs().chosenBranches()))
                 .toList();
     }
 
