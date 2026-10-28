@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.workitem.presentation.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import andromeda.sei.ms.feature.sync.application.dto.DataFreshness;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemPageResult;
 
@@ -12,10 +13,24 @@ public record WorkItemPageResponse(
         long totalElements,
         List<WorkItemSummaryResponse> content,
         /** Frescura dos dados do projeto (on-demand-refresh); {@code null} fora do backlog de projeto. */
-        DataFreshness dataFreshness
+        DataFreshness dataFreshness,
+        /** Níveis do resultado inteiro (todas as páginas); só nas raízes, omitido nos órfãos. */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        List<LevelResponse> levels
 ) {
+    public record LevelResponse(Integer rank, List<String> rawTypes, long count) {
+    }
+
     public WorkItemPageResponse withDataFreshness(DataFreshness freshness) {
-        return new WorkItemPageResponse(page, size, totalElements, content, freshness);
+        return new WorkItemPageResponse(page, size, totalElements, content, freshness, levels);
+    }
+
+    /** Versão para as raízes: acrescenta os níveis do resultado inteiro. */
+    public WorkItemPageResponse withLevels(WorkItemPageResult result) {
+        return new WorkItemPageResponse(page, size, totalElements, content, dataFreshness,
+                result.getLevels().stream()
+                        .map(l -> new LevelResponse(l.rank(), l.rawTypes(), l.count()))
+                        .toList());
     }
 
     public static WorkItemPageResponse from(WorkItemPageResult result) {
@@ -40,8 +55,10 @@ public record WorkItemPageResponse(
                                 result.metricsFor(item.getId()),
                                 item.getAssigneeUserId() == null
                                         ? null
-                                        : assigneeNamesByUserId.get(item.getAssigneeUserId())))
+                                        : assigneeNamesByUserId.get(item.getAssigneeUserId()),
+                                result.infoFor(item.getId())))
                         .toList(),
+                null,
                 null);
     }
 }

@@ -4,7 +4,11 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.HierarchyLevel;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundException;
+import andromeda.sei.ms.feature.workitem.application.classifier.BacklogOrdering;
 import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier;
+import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier.HierarchyPlacement;
+import andromeda.sei.ms.feature.workitem.domain.BacklogItemInfo;
+import andromeda.sei.ms.feature.workitem.domain.BacklogLevel;
 import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier.Classification;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
@@ -14,8 +18,14 @@ import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -82,32 +92,70 @@ public class ProjectBacklogClassificationService {
                 .filter(WorkItem::isActive)
                 .toList();
 
-        Map<String, WorkItem> byExternalId = allItems.stream()
-                .collect(java.util.stream.Collectors.toMap(WorkItem::getExternalId, Function.identity(), (a, b) -> a));
-        Function<String, WorkItem> resolver = byExternalId::get;
+        Map<String, WorkItem> byExternalId = new HashMap<>();
+        for (WorkItem item : allItems) {
+            if (item.getExternalId() != null) byExternalId.putIfAbsent(item.getExternalId(), item);
+        }
+        Map<String, HierarchyPlacement> placements = classifier.classifyAll(allItems, hierarchyLevels);
+        Function<String, Integer> rankLookup = classifier.rankLookup(hierarchyLevels);
+        Function<WorkItem, Integer> rankOf = item -> rankLookup.apply(item.getRawType());
 
-        List<WorkItem> matching = filter.isEmpty()
+        List<WorkItem> matching = (filter.isEmpty()
                 ? allItems.stream()
-                        .filter(item -> classifier.classify(item, hierarchyLevels, resolver) == classification)
-                        .toList()
+                        .filter(item -> placements.get(item.getId()).classification() == classification)
                 : allItems.stream()
-                        .filter(filter::matches)
-                        .toList();
+                        .filter(filter::matches))
+                .sorted(BacklogOrdering.comparator(rankOf))
+                .toList();
 
         long totalElements = matching.size();
-        int fromIndex = Math.min(page * size, matching.size());
+        int fromIndex = (int) Math.min((long) page * size, matching.size());
         int toIndex = Math.min(fromIndex + size, matching.size());
         List<WorkItem> pageContent = matching.subList(fromIndex, toIndex);
 
         // Computed over the full project set (already in memory here) so rollups see every
         // descendant, not just the ones on this page; then narrowed to the page being returned.
         Map<String, WorkItemHierarchyMetrics> allMetrics =
-                metricsCalculator.calculate(allItems, hierarchyLevels);
-        Map<String, WorkItemHierarchyMetrics> pageMetrics = pageContent.stream()
-                .filter(item -> allMetrics.containsKey(item.getId()))
-                .collect(java.util.stream.Collectors.toMap(WorkItem::getId, item -> allMetrics.get(item.getId())));
+                metricsCalculator.calculate(allItems, placements);
+        Map<String, WorkItemHierarchyMetrics> pageMetrics = new HashMap<>();
+        Map<String, BacklogItemInfo> pageInfo = new HashMap<>();
+        for (WorkItem item : pageContent) {
+            WorkItemHierarchyMetrics metrics = allMetrics.get(item.getId());
+            if (metrics != null) pageMetrics.put(item.getId(), metrics);
+            pageInfo.put(item.getId(), infoOf(item, placements, byExternalId, rankOf));
+        }
 
-        return new WorkItemPageResult(pageContent, page, size, totalElements, pageMetrics);
+        return new WorkItemPageResult(pageContent, page, size, totalElements, pageMetrics, pageInfo,
+                levelsOf(matching, rankOf));
+    }
+
+    /** Rank, parentMissing and parentRawType of one item (backlog-arvore-nivel D3). */
+    static BacklogItemInfo infoOf(WorkItem item, Map<String, HierarchyPlacement> placements,
+                                  Map<String, WorkItem> byExternalId, Function<WorkItem, Integer> rankOf) {
+        HierarchyPlacement placement = placements.get(item.getId());
+        WorkItem parent = item.getParentExternalId() == null
+                || item.getParentExternalId().equals(item.getExternalId())
+                ? null
+                : byExternalId.get(item.getParentExternalId());
+        return new BacklogItemInfo(rankOf.apply(item),
+                placement != null && placement.parentMissing(),
+                parent == null ? null : parent.getRawType());
+    }
+
+    /** One entry per rank in the whole (sorted) list, in the same order, null rank last. */
+    private static List<BacklogLevel> levelsOf(List<WorkItem> sorted, Function<WorkItem, Integer> rankOf) {
+        Map<Optional<Integer>, List<WorkItem>> byRank = new LinkedHashMap<>();
+        for (WorkItem item : sorted) {
+            byRank.computeIfAbsent(Optional.ofNullable(rankOf.apply(item)), k -> new ArrayList<>()).add(item);
+        }
+        List<BacklogLevel> levels = new ArrayList<>(byRank.size());
+        byRank.forEach((rank, items) -> levels.add(new BacklogLevel(
+                rank.orElse(null),
+                items.stream().map(WorkItem::getRawType).filter(Objects::nonNull).distinct()
+                        .sorted(String.CASE_INSENSITIVE_ORDER.thenComparing(Comparator.naturalOrder()))
+                        .toList(),
+                items.size())));
+        return levels;
     }
 
     private List<HierarchyLevel> resolveHierarchyLevels(String orgId, String projectId) {

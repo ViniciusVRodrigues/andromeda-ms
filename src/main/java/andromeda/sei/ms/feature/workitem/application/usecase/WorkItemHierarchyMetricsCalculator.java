@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.workitem.application.usecase;
 
 import andromeda.sei.ms.feature.azure.domain.HierarchyLevel;
 import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier;
+import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier.HierarchyPlacement;
 import andromeda.sei.ms.feature.workitem.application.classifier.WorkItemHierarchyClassifier.Classification;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
@@ -42,18 +43,22 @@ public class WorkItemHierarchyMetricsCalculator {
      */
     public Map<String, WorkItemHierarchyMetrics> calculate(List<WorkItem> items,
                                                             List<HierarchyLevel> hierarchyLevels) {
-        Map<String, WorkItem> byExternalId = new HashMap<>();
-        for (WorkItem item : items) {
-            if (item.getExternalId() != null) byExternalId.putIfAbsent(item.getExternalId(), item);
-        }
-        Function<String, WorkItem> resolver = byExternalId::get;
+        return calculate(items, classifier.classifyAll(items, hierarchyLevels));
+    }
 
-        // parentExternalId -> valid children, using the tree's own notion of a valid child.
+    /**
+     * Same as above, reusing the placements the caller already computed so the backlog, the
+     * children list and the rollups agree on who is a valid child.
+     */
+    public Map<String, WorkItemHierarchyMetrics> calculate(List<WorkItem> items,
+                                                            Map<String, HierarchyPlacement> placements) {
+        // parentExternalId -> valid children, using the tree own notion of a valid child.
         Map<String, List<WorkItem>> childrenByParent = new HashMap<>();
         for (WorkItem item : items) {
             String parentExternalId = item.getParentExternalId();
             if (parentExternalId == null) continue;
-            if (classifier.classify(item, hierarchyLevels, resolver) != Classification.CHILD) continue;
+            HierarchyPlacement placement = placements.get(item.getId());
+            if (placement == null || placement.classification() != Classification.CHILD) continue;
             childrenByParent.computeIfAbsent(parentExternalId, k -> new ArrayList<>()).add(item);
         }
 

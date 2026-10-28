@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.workitem.application.dto;
 
+import andromeda.sei.ms.feature.workitem.domain.BacklogItemInfo;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemHierarchyMetrics;
 
@@ -14,10 +15,20 @@ import java.util.Map;
 public record WorkItemChildrenOutput(
         List<WorkItem> children,
         boolean truncated,
-        Map<String, WorkItemHierarchyMetrics> metricsByWorkItemId
+        Map<String, WorkItemHierarchyMetrics> metricsByWorkItemId,
+        Map<String, BacklogItemInfo> infoByWorkItemId
 ) {
     public WorkItemChildrenOutput(List<WorkItem> children, boolean truncated) {
-        this(children, truncated, Map.of());
+        this(children, truncated, Map.of(), Map.of());
+    }
+
+    public WorkItemChildrenOutput(List<WorkItem> children, boolean truncated,
+                                  Map<String, WorkItemHierarchyMetrics> metricsByWorkItemId) {
+        this(children, truncated, metricsByWorkItemId, Map.of());
+    }
+
+    public BacklogItemInfo infoFor(String workItemId) {
+        return infoByWorkItemId.getOrDefault(workItemId, BacklogItemInfo.NONE);
     }
 
     public WorkItemHierarchyMetrics metricsFor(String workItemId) {

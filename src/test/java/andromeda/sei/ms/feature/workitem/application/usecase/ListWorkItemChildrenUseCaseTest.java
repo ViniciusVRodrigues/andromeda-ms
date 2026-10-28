@@ -58,9 +58,8 @@ class ListWorkItemChildrenUseCaseTest {
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
         when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
                 .thenReturn(Optional.empty());
-        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
-                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
-                .thenReturn(List.of(child));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of(child)));
 
         var result = useCase.execute("parent-1");
 
@@ -77,9 +76,8 @@ class ListWorkItemChildrenUseCaseTest {
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
         when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
                 .thenReturn(Optional.empty());
-        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
-                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
-                .thenReturn(List.of(child, removed));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of(child, removed)));
 
         var result = useCase.execute("parent-1");
 
@@ -92,9 +90,8 @@ class ListWorkItemChildrenUseCaseTest {
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
         when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
                 .thenReturn(Optional.empty());
-        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
-                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
-                .thenReturn(List.of());
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of()));
 
         var result = useCase.execute("parent-1");
 
@@ -112,9 +109,8 @@ class ListWorkItemChildrenUseCaseTest {
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
         when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
                 .thenReturn(Optional.empty());
-        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
-                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
-                .thenReturn(manyChildren);
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, manyChildren));
 
         var result = useCase.execute("parent-1");
 
@@ -134,13 +130,56 @@ class ListWorkItemChildrenUseCaseTest {
         when(workItemRepository.findById("parent-1")).thenReturn(Optional.of(parent));
         when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
                 .thenReturn(Optional.of(binding));
-        when(workItemRepository.findChildCandidatesByOrganizationIdAndParentExternalId(
-                "org-1", "proj-1", "parent-1", ListWorkItemChildrenUseCase.CHILDREN_SOFT_CAP + 1))
-                .thenReturn(List.of(invalidChild));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of(invalidChild)));
 
         var result = useCase.execute("parent-1");
 
         assertThat(result.children()).isEmpty();
+    }
+
+    @Test
+    void shouldOrderChildrenByRankThenNumericIdAndIncludeSameRankChild() {
+        WorkItem parent = workItem("1", "Story", null);
+        WorkItem task100 = workItem("100", "Task", "1");
+        WorkItem task20 = workItem("20", "Task", "1");
+        WorkItem bug300 = workItem("300", "Bug", "1"); // same rank as parent's Story level -> child
+        AzureProjectBinding binding = new AzureProjectBinding(
+                "bind-1", "org-1", "proj-1", "azure-1", "Azure Proj", true, null,
+                new WorkflowConfig(List.of(), List.of(), List.of(), null, WorkflowConfig.ConfigSource.CUSTOM,
+                        List.of(new HierarchyLevel("Story", 3), new HierarchyLevel("Bug", 3),
+                                new HierarchyLevel("Task", 4))),
+                true, NOW, NOW, null);
+        when(workItemRepository.findById("1")).thenReturn(Optional.of(parent));
+        when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
+                .thenReturn(Optional.of(binding));
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of(task100, task20, bug300)));
+
+        var result = useCase.execute("1");
+
+        assertThat(result.children()).containsExactly(bug300, task20, task100);
+        assertThat(result.infoFor("300").rank()).isEqualTo(3);
+        assertThat(result.infoFor("20").parentRawType()).isEqualTo("Story");
+        assertThat(result.infoFor("20").parentMissing()).isFalse();
+    }
+
+    @Test
+    void shouldNotQueryTheParentOfEachCandidateOnePerOne() {
+        WorkItem parent = workItem("1", "Epic", null);
+        WorkItem child = workItem("2", "Task", "1");
+        when(workItemRepository.findById("1")).thenReturn(Optional.of(parent));
+        when(azureProjectBindingRepository.findByOrganizationIdAndProjectIdAndActiveTrue("org-1", "proj-1"))
+                .thenReturn(Optional.empty());
+        when(workItemRepository.findAllByOrganizationIdAndProjectId("org-1", "proj-1"))
+                .thenReturn(withParent(parent, List.of(child)));
+
+        useCase.execute("1");
+
+        org.mockito.Mockito.verify(workItemRepository, org.mockito.Mockito.never())
+                .findByOrganizationIdAndExternalIdAndSource(
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -159,6 +198,13 @@ class ListWorkItemChildrenUseCaseTest {
 
         assertThatThrownBy(() -> useCase.execute("wi-1"))
                 .isInstanceOf(WorkItemNotFoundException.class);
+    }
+
+    private static List<WorkItem> withParent(WorkItem parent, List<WorkItem> children) {
+        List<WorkItem> all = new ArrayList<>();
+        all.add(parent);
+        all.addAll(children);
+        return all;
     }
 
     private WorkItem workItem(String externalId, String rawType, String parentExternalId) {
