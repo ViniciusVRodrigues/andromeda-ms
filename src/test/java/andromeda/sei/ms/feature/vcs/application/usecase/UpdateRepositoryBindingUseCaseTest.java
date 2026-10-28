@@ -35,6 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -94,9 +95,10 @@ class UpdateRepositoryBindingUseCaseTest {
         RepoBindingOutput out = useCase.execute("b-1", change(List.of("develop", "main"), "main", false));
 
         var order = inOrder(bindingRepository, dataWiper, cooldownService, syncOrchestrator);
-        order.verify(bindingRepository).save(binding);
         order.verify(dataWiper).wipeRepository(ORG, "repo-1");
+        order.verify(bindingRepository).save(binding);
         order.verify(cooldownService).release("b-1");
+        verify(bindingRepository, times(1)).save(any());
         order.verify(syncOrchestrator).submit(any(SyncRequest.class));
         assertThat(out.resynced()).isTrue();
         assertThat(out.syncState()).isEqualTo(VcsSyncState.PENDING);

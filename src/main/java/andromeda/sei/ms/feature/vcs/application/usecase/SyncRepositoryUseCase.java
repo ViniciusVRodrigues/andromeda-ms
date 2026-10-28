@@ -28,6 +28,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Provider-neutral sync of one repository binding (vcs-core D5): repository → commits → pull
@@ -108,7 +109,7 @@ public class SyncRepositoryUseCase {
         binding.setMissingBranches(List.copyOf(context.missingBranches()));
         binding.setSyncState(VcsSyncState.OK);
         binding.setSyncStateAt(Instant.now());
-        saveKeepingVersion(binding);
+        saveSyncOutcome(binding);
         int processed = 1 + commits + pullRequests.size() + events;
         log.info("VCS sync completed: org={} project={} provider={} repo={} processed={}", orgId,
                 binding.getProjectId(), binding.getProvider(), repository.getDisplayName(), processed);
@@ -131,9 +132,37 @@ public class SyncRepositoryUseCase {
         if (saved != null && saved != binding) binding.setVersion(saved.getVersion());
     }
 
+    /**
+     * Saves what the sync owns (watermark, missing branches, state, repository after a merge). A non-destructive
+     * edit (sync on/off, production branch) may have saved the binding meanwhile and bumped its version, so the
+     * outcome goes onto the stored binding instead of overwriting it. An unbound binding is left alone.
+     */
+    private void saveSyncOutcome(VcsRepoBinding binding) {
+        VcsRepoBinding stored = bindingRepository
+                .findByIdAndOrganizationIdAndActiveTrue(binding.getId(), binding.getOrganizationId())
+                .orElse(null);
+        if (stored == null) {
+            log.warn("Binding {} was removed during its sync; outcome not saved", binding.getId());
+            return;
+        }
+        if (stored != binding && !Objects.equals(stored.getVersion(), binding.getVersion())) {
+            stored.setLastSyncAt(binding.getLastSyncAt());
+            stored.setMissingBranches(binding.getMissingBranches());
+            stored.setSyncState(binding.getSyncState());
+            stored.setSyncStateAt(binding.getSyncStateAt());
+            stored.setRepositoryId(binding.getRepositoryId());
+            saveKeepingVersion(stored);
+            binding.setVersion(stored.getVersion());
+            return;
+        }
+        saveKeepingVersion(binding);
+    }
+
     private void markFailed(VcsRepoBinding binding) {
         try {
-            markState(binding, VcsSyncState.FAILED, Instant.now());
+            binding.setSyncState(VcsSyncState.FAILED);
+            binding.setSyncStateAt(Instant.now());
+            saveSyncOutcome(binding);
         } catch (RuntimeException e) {
             log.warn("Could not record the failed sync state of binding {}: {}", binding.getId(), e.getMessage());
         }

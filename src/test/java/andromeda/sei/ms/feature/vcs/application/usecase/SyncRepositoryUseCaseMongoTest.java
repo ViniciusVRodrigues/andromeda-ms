@@ -29,6 +29,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -100,5 +101,40 @@ class SyncRepositoryUseCaseMongoTest {
 
         VcsRepoBinding read = bindings.findByIdAndOrganizationIdAndActiveTrue(binding.getId(), ORG).orElseThrow();
         assertThat(read.getSyncState()).isEqualTo(VcsSyncState.FAILED);
+    }
+    @Test
+    void should_endOk_whenTheBindingIsEditedWhileTheSyncRuns() {
+        VcsRepoBinding binding = savedBinding();
+        doAnswer(inv -> {
+            VcsRepoBinding edited = bindings.findByIdAndOrganizationIdAndActiveTrue(binding.getId(), ORG).orElseThrow();
+            edited.setSyncEnabled(false);
+            bindings.save(edited);
+            return 2;
+        }).when(contentSync).syncCommits(any(), any());
+
+        useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, null);
+
+        VcsRepoBinding read = bindings.findByIdAndOrganizationIdAndActiveTrue(binding.getId(), ORG).orElseThrow();
+        assertThat(read.getSyncState()).isEqualTo(VcsSyncState.OK);
+        assertThat(read.getLastSyncAt()).isNotNull();
+        assertThat(read.isSyncEnabled()).isFalse();
+    }
+
+    @Test
+    void should_recordFailed_whenTheBindingIsEditedAndThenTheSyncThrows() {
+        VcsRepoBinding binding = savedBinding();
+        doAnswer(inv -> {
+            VcsRepoBinding edited = bindings.findByIdAndOrganizationIdAndActiveTrue(binding.getId(), ORG).orElseThrow();
+            edited.setSyncEnabled(false);
+            bindings.save(edited);
+            throw new IllegalStateException("boom");
+        }).when(contentSync).syncCommits(any(), any());
+
+        assertThatThrownBy(() -> useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, null))
+                .isInstanceOf(IllegalStateException.class);
+
+        VcsRepoBinding read = bindings.findByIdAndOrganizationIdAndActiveTrue(binding.getId(), ORG).orElseThrow();
+        assertThat(read.getSyncState()).isEqualTo(VcsSyncState.FAILED);
+        assertThat(read.isSyncEnabled()).isFalse();
     }
 }

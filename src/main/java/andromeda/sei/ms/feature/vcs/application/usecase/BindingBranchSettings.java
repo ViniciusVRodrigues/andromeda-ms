@@ -59,7 +59,7 @@ public class BindingBranchSettings {
         binding.setSyncStateAt(Instant.now());
     }
 
-    /** An existing binding: validates, then saves; a change of the branch set or filter wipes and goes {@code PENDING}. */
+    /** An existing binding: validates, then saves; a change of the branch set or filter wipes first and goes {@code PENDING}. */
     public Applied update(VcsRepoBinding binding, VcsRepository repository, Change change) {
         validate(binding, repository, change);
         String defaultBranch = repository.getDefaultBranch();
@@ -70,16 +70,20 @@ public class BindingBranchSettings {
         if (destructive && binding.isSyncRunning(Instant.now())) {
             throw new RepoSyncRunningException(binding.getId());
         }
-        setFields(binding, change);
-        VcsRepoBinding saved = bindingRepository.save(binding);
-        if (!destructive) return new Applied(saved, false);
+        if (!destructive) {
+            setFields(binding, change);
+            return new Applied(bindingRepository.save(binding), false);
+        }
 
-        dataWiper.wipeRepository(saved.getOrganizationId(), saved.getRepositoryId());
-        saved.setLastSyncAt(null);
-        saved.setMissingBranches(List.of());
-        saved.setSyncState(VcsSyncState.PENDING);
-        saved.setSyncStateAt(Instant.now());
-        saved = bindingRepository.save(saved);
+        /* Wipe before saving the new branches: a failed wipe leaves the binding as it was, never new branches over
+         * the old data. */
+        dataWiper.wipeRepository(binding.getOrganizationId(), binding.getRepositoryId());
+        setFields(binding, change);
+        binding.setLastSyncAt(null);
+        binding.setMissingBranches(List.of());
+        binding.setSyncState(VcsSyncState.PENDING);
+        binding.setSyncStateAt(Instant.now());
+        VcsRepoBinding saved = bindingRepository.save(binding);
         cooldownService.release(saved.getId());
         submit(saved);
         return new Applied(saved, true);

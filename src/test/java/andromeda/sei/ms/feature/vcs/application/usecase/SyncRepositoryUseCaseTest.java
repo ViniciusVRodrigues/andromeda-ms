@@ -63,6 +63,7 @@ class SyncRepositoryUseCaseTest {
     private SyncRepositoryUseCase useCase;
     private final List<IntegrationSyncLog> savedLogs = new ArrayList<>();
     private VcsRepository repository;
+    private VcsRepoBinding current;
 
     @BeforeEach
     void setUp() {
@@ -74,6 +75,8 @@ class SyncRepositoryUseCaseTest {
             savedLogs.add(log);
             return log;
         });
+        lenient().when(bindingRepository.findByIdAndOrganizationIdAndActiveTrue(any(), eq(ORG)))
+                .thenAnswer(inv -> Optional.ofNullable(current));
         lenient().when(providerRegistry.client(VcsProvider.GITHUB)).thenReturn(client);
         lenient().when(providerRegistry.authorResolver(VcsProvider.GITHUB)).thenReturn(authors);
         lenient().when(organizationRepository.findById(ORG)).thenReturn(Optional.empty());
@@ -210,9 +213,10 @@ class SyncRepositoryUseCaseTest {
         verify(repositoryRepository).save(existing);
     }
 
-    private static VcsRepoBinding binding(Instant lastSyncAt) {
+    private VcsRepoBinding binding(Instant lastSyncAt) {
         VcsRepoBinding binding = new VcsRepoBinding("bind-1", ORG, "proj-1", "repo-1", VcsProvider.GITHUB, true);
         binding.setLastSyncAt(lastSyncAt);
+        current = binding;
         return binding;
     }
 
