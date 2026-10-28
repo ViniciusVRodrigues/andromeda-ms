@@ -5,7 +5,9 @@ import andromeda.sei.ms.feature.github.infrastructure.client.GhCommitDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhPullRequestDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GhRepoDto;
 import andromeda.sei.ms.feature.github.infrastructure.client.GithubApiClient;
+import andromeda.sei.ms.feature.github.infrastructure.client.GhBranchDto;
 import andromeda.sei.ms.feature.vcs.application.port.VcsBindableRepository;
+import andromeda.sei.ms.feature.vcs.application.port.VcsBranch;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
 import andromeda.sei.ms.feature.vcs.application.port.VcsProviderClient;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteCommit;
@@ -17,10 +19,13 @@ import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoIdInvalidException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -71,12 +76,36 @@ public class GithubVcsProviderClient implements VcsProviderClient {
         return toRemote(githubApiClient.getRepoById(repository.getExternalRepoId(), auth(credentials)));
     }
 
+    /** Branches of the repository: the default first, the rest by name, at most {@code MAX_BRANCHES_LISTED + 1} read. */
     @Override
-    public List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, Instant since) {
+    public List<VcsBranch> listBranches(VcsCredentials credentials, VcsRepository repository) {
         GithubRepoFullName name = nameOf(repository);
-        return githubApiClient.getCommits(name.owner(), name.name(), auth(credentials), since).stream()
-                .map(GithubVcsProviderClient::toRemote)
+        String defaultBranch = repository.getDefaultBranch();
+        return githubApiClient.getBranches(name.owner(), name.name(), auth(credentials), MAX_BRANCHES_LISTED + 1)
+                .stream()
+                .map(GhBranchDto::name)
+                .filter(branch -> branch != null && !branch.isBlank())
+                .distinct()
+                .map(branch -> new VcsBranch(branch, branch.equals(defaultBranch)))
+                .sorted(Comparator.comparing(VcsBranch::isDefault).reversed()
+                        .thenComparing(VcsBranch::name, String.CASE_INSENSITIVE_ORDER))
                 .toList();
+    }
+
+    /** {@code GET commits?sha=branch}; GitHub answers 404 or 422 for a branch that no longer exists. */
+    @Override
+    public List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, String branch,
+                                              Instant since) {
+        GithubRepoFullName name = nameOf(repository);
+        List<GhCommitDto> commits;
+        try {
+            commits = githubApiClient.getCommits(name.owner(), name.name(), auth(credentials), branch, since);
+        } catch (WebClientResponseException e) {
+            int status = e.getStatusCode().value();
+            if (branch != null && (status == 404 || status == 422)) throw new VcsBranchNotFoundException(branch, e);
+            throw e;
+        }
+        return commits.stream().map(GithubVcsProviderClient::toRemote).toList();
     }
 
     @Override

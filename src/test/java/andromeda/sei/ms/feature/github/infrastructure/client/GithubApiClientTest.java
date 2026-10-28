@@ -143,6 +143,55 @@ class GithubApiClientTest {
         assertThat(second.get(0).sha()).isEqualTo("abc123");
     }
 
+    @Test
+    void getCommits_shouldSendTheBranchFullyEncodedAsSha() {
+        List<String> urls = new java.util.ArrayList<>();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            urls.add(request.url().toString());
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE).body("[]").build());
+        }).build();
+
+        clientFor(webClient).getCommits("octo", "hello", "Bearer t", "feature/a&b#1+x", Instant.parse("2024-01-01T00:00:00Z"));
+
+        assertThat(urls).singleElement().satisfies(url -> {
+            assertThat(url).contains("/repos/octo/hello/commits?per_page=100&sha=feature%2Fa%26b%231%2Bx");
+            assertThat(url).contains("&since=2024-01-01T00:00:00Z");
+        });
+    }
+
+    @Test
+    void getCommits_shouldOmitShaWhenNoBranch() {
+        List<String> urls = new java.util.ArrayList<>();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            urls.add(request.url().toString());
+            return Mono.just(ClientResponse.create(HttpStatus.OK)
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE).body("[]").build());
+        }).build();
+
+        clientFor(webClient).getCommits("octo", "hello", "Bearer t", null);
+
+        assertThat(urls.getFirst()).doesNotContain("sha=");
+    }
+
+    @Test
+    void getBranches_shouldFollowTheLinkHeaderAndStopAtTheLimit() {
+        AtomicInteger calls = new AtomicInteger();
+        WebClient webClient = WebClient.builder().exchangeFunction(request -> {
+            int n = calls.incrementAndGet();
+            ClientResponse.Builder b = ClientResponse.create(HttpStatus.OK)
+                    .header("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                    .header("Link", "<https://api.github.com/repos/octo/hello/branches?per_page=100&page=" + (n + 1)
+                            + ">; rel=\"next\"");
+            return Mono.just(b.body("[{\"name\":\"a" + n + "\"},{\"name\":\"b" + n + "\"}]").build());
+        }).build();
+
+        List<GhBranchDto> branches = clientFor(webClient).getBranches("octo", "hello", "Bearer t", 3);
+
+        assertThat(branches).extracting(GhBranchDto::name).containsExactly("a1", "b1", "a2");
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
     private WebClient jsonClient(String body) {
         return WebClient.builder()
                 .exchangeFunction(request -> Mono.just(ClientResponse.create(HttpStatus.OK)

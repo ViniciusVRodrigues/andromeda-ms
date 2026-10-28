@@ -93,6 +93,33 @@ class ListProjectRepositoriesUseCaseTest {
     }
 
     @Test
+    void should_exposeTheBindingBranchSettings_andLegacyDefaults() {
+        var binding = new andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding("b-1", ORG, "proj-1", "repo-1",
+                andromeda.sei.ms.feature.vcs.domain.VcsProvider.GITHUB, true);
+        binding.setBranches(List.of("develop", "main"));
+        binding.setProductionBranch("main");
+        binding.setFilterPullRequestsByBranch(true);
+        binding.setMissingBranches(List.of("old"));
+        binding.setSyncState(andromeda.sei.ms.feature.vcs.domain.VcsSyncState.OK);
+        binding.setSyncStateAt(Instant.now());
+        binding.setLastSyncAt(WINDOW_TO);
+        when(vcsReadPort.repositoriesOfProject(ORG, "proj-1")).thenReturn(List.of(repo));
+        when(vcsReadPort.bindingsOfProject(ORG, "proj-1")).thenReturn(List.of(binding));
+        when(vcsReadPort.pullRequestsOfRepository(ORG, "repo-1")).thenReturn(List.of());
+        when(deliveryMetricsService.calculate(any(), anyList(), anyList(), any(), any())).thenReturn(
+                new DeliveryMetrics(DeliveryMethod.VCS_PROXY, null, null, null, null, null, null, 0, 0));
+
+        ProjectRepositoryOutput summary = useCase.execute("proj-1", START, END).get(0);
+
+        assertThat(summary.branches()).containsExactly("develop", "main");
+        assertThat(summary.productionBranch()).isEqualTo("main");
+        assertThat(summary.filterPullRequestsByBranch()).isTrue();
+        assertThat(summary.missingBranches()).containsExactly("old");
+        assertThat(summary.syncState()).isEqualTo(andromeda.sei.ms.feature.vcs.domain.VcsSyncState.OK);
+        assertThat(summary.lastSyncAt()).isEqualTo(WINDOW_TO);
+    }
+
+    @Test
     void should_countOpenAndStaleIgnoringDrafts_when_pullRequestsAreOpen() {
         VcsPullRequest staleOpen = pr("pr-4", PullRequestStatus.OPEN, Instant.now().minus(Duration.ofDays(3)));
         VcsPullRequest draft = pr("pr-5", PullRequestStatus.OPEN, Instant.now().minus(Duration.ofDays(3)));

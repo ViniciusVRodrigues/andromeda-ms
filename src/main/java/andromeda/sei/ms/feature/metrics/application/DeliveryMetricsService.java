@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.RemediationRules;
 import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -78,8 +80,12 @@ public class DeliveryMetricsService {
                 .filter(pr -> pr.getMergedAt() != null && pr.getId() != null && pr.isActive())
                 .toList();
         Set<String> bugExternalIds = bugExternalIds(organizationId, merged);
+        Map<String, VcsRepoBinding> bindingByRepo = new HashMap<>();
+        List<VcsRepoBinding> bindings = vcsReadPort.activeBindingsOfRepositories(organizationId, repoById.keySet());
+        if (bindings != null) bindings.forEach(binding -> bindingByRepo.putIfAbsent(binding.getRepositoryId(), binding));
         return merged.stream()
-                .map(pr -> toChange(pr, repoById.get(pr.getRepositoryId()), bugExternalIds))
+                .map(pr -> toChange(pr, repoById.get(pr.getRepositoryId()),
+                        bindingByRepo.get(pr.getRepositoryId()), bugExternalIds))
                 .toList();
     }
 
@@ -122,11 +128,18 @@ public class DeliveryMetricsService {
                 .collect(Collectors.toSet());
     }
 
-    private MergedChange toChange(VcsPullRequest pr, VcsRepository repo, Set<String> bugExternalIds) {
+    /** The binding's production branch, or the repository's default branch without a binding or a choice. */
+    private static String productionBranch(VcsRepository repo, VcsRepoBinding binding) {
+        String defaultBranch = repo != null ? repo.getDefaultBranch() : null;
+        return binding != null ? binding.effectiveProductionBranch(defaultBranch) : defaultBranch;
+    }
+
+    private MergedChange toChange(VcsPullRequest pr, VcsRepository repo, VcsRepoBinding binding,
+                                  Set<String> bugExternalIds) {
         boolean linkedToBug = pr.getLinkedWorkItemExternalId() != null
                 && bugExternalIds.contains(pr.getLinkedWorkItemExternalId());
         return new MergedChange(pr.getId(), pr.getTitle(), pr.getSourceBranch(), pr.getBaseBranch(),
-                repo != null ? repo.getDefaultBranch() : null, linkedToBug,
+                productionBranch(repo, binding), linkedToBug,
                 pr.getCreatedAt(), pr.getEarliestCommitAt(), pr.getMergedAt());
     }
 }

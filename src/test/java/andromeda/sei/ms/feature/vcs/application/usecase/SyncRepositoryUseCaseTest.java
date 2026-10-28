@@ -15,6 +15,7 @@ import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
+import andromeda.sei.ms.feature.vcs.domain.VcsSyncState;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepositoryRepository;
@@ -37,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
-import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -62,6 +63,7 @@ class SyncRepositoryUseCaseTest {
     private SyncRepositoryUseCase useCase;
     private final List<IntegrationSyncLog> savedLogs = new ArrayList<>();
     private VcsRepository repository;
+    private VcsRepoBinding current;
 
     @BeforeEach
     void setUp() {
@@ -73,6 +75,8 @@ class SyncRepositoryUseCaseTest {
             savedLogs.add(log);
             return log;
         });
+        lenient().when(bindingRepository.findByIdAndOrganizationIdAndActiveTrue(any(), eq(ORG)))
+                .thenAnswer(inv -> Optional.ofNullable(current));
         lenient().when(providerRegistry.client(VcsProvider.GITHUB)).thenReturn(client);
         lenient().when(providerRegistry.authorResolver(VcsProvider.GITHUB)).thenReturn(authors);
         lenient().when(organizationRepository.findById(ORG)).thenReturn(Optional.empty());
@@ -94,8 +98,9 @@ class SyncRepositoryUseCaseTest {
 
         assertThat(processed).isEqualTo(1 + 3 + 2 + 4);
         ArgumentCaptor<VcsRepoBinding> saved = ArgumentCaptor.forClass(VcsRepoBinding.class);
-        verify(bindingRepository).save(saved.capture());
+        verify(bindingRepository, times(2)).save(saved.capture());
         assertThat(saved.getValue().getLastSyncAt()).isBetween(before, Instant.now());
+        assertThat(saved.getValue().getSyncState()).isEqualTo(VcsSyncState.OK);
         assertThat(savedLogs.getLast().getStatus()).isEqualTo(SyncStatus.SUCCESS);
         assertThat(savedLogs.getLast().getIntegration()).isEqualTo(Integration.GITHUB);
         assertThat(savedLogs.getLast().getOperation()).isEqualTo(SyncOperation.SYNC_REPOS);
@@ -130,10 +135,43 @@ class SyncRepositoryUseCaseTest {
         assertThatThrownBy(() -> useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, BACKFILL))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(bindingRepository, never()).save(any());
         assertThat(binding.getLastSyncAt()).isNull();
+        assertThat(binding.getSyncState()).isEqualTo(VcsSyncState.FAILED);
         assertThat(savedLogs.getLast().getStatus()).isEqualTo(SyncStatus.FAILED);
         assertThat(savedLogs.getLast().getErrorCode()).isEqualTo(SyncRepositoryUseCase.SYNC_FAILED);
+    }
+
+    @Test
+    void should_saveRunningFirst_thenOkWithMissingBranches() {
+        VcsRepoBinding binding = binding(null);
+        binding.setBranches(List.of("main", "gone"));
+        binding.setProductionBranch("main");
+        java.util.List<VcsSyncState> states = new ArrayList<>();
+        when(bindingRepository.save(any())).thenAnswer(inv -> {
+            states.add(((VcsRepoBinding) inv.getArgument(0)).getSyncState());
+            return inv.getArgument(0);
+        });
+        when(contentSync.syncCommits(any(), any())).thenAnswer(inv -> {
+            VcsRepositoryContentSync.Context context = inv.getArgument(0);
+            context.missingBranches().add("gone");
+            return 1;
+        });
+
+        useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, BACKFILL);
+
+        assertThat(states).containsExactly(VcsSyncState.RUNNING, VcsSyncState.OK);
+        assertThat(binding.getMissingBranches()).containsExactly("gone");
+        assertThat(savedLogs.getLast().getStatus()).isEqualTo(SyncStatus.SUCCESS);
+    }
+
+    @Test
+    void should_rewriteMissingBranches_onEverySync() {
+        VcsRepoBinding binding = binding(null);
+        binding.setMissingBranches(List.of("old"));
+
+        useCase.execute(CREDENTIALS, binding, SyncTrigger.MANUAL, BACKFILL);
+
+        assertThat(binding.getMissingBranches()).isEmpty();
     }
 
     @Test
@@ -175,9 +213,10 @@ class SyncRepositoryUseCaseTest {
         verify(repositoryRepository).save(existing);
     }
 
-    private static VcsRepoBinding binding(Instant lastSyncAt) {
+    private VcsRepoBinding binding(Instant lastSyncAt) {
         VcsRepoBinding binding = new VcsRepoBinding("bind-1", ORG, "proj-1", "repo-1", VcsProvider.GITHUB, true);
         binding.setLastSyncAt(lastSyncAt);
+        current = binding;
         return binding;
     }
 

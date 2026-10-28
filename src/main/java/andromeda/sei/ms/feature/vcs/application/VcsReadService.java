@@ -38,6 +38,16 @@ public class VcsReadService implements VcsReadPort {
     }
 
     @Override
+    public List<VcsRepoBinding> activeBindingsOfRepositories(String organizationId,
+                                                              java.util.Collection<String> repositoryIds) {
+        if (repositoryIds == null || repositoryIds.isEmpty()) return List.of();
+        java.util.Set<String> wanted = new java.util.HashSet<>(repositoryIds);
+        return bindingRepository.findAllActiveByOrganizationId(organizationId).stream()
+                .filter(binding -> wanted.contains(binding.getRepositoryId()))
+                .toList();
+    }
+
+    @Override
     public List<VcsRepository> repositoriesOfProject(String organizationId, String projectId) {
         List<String> repositoryIds = bindingsOfProject(organizationId, projectId).stream()
                 .map(VcsRepoBinding::getRepositoryId)

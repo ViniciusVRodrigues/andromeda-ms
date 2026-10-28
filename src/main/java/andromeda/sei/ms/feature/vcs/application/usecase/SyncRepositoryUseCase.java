@@ -19,6 +19,7 @@ import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepositoryRepository;
+import andromeda.sei.ms.feature.vcs.domain.VcsSyncState;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +28,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Provider-neutral sync of one repository binding (vcs-core D5): repository → commits → pull
@@ -66,12 +68,14 @@ public class SyncRepositoryUseCase {
                 null, binding.getOrganizationId(), VcsIntegrations.integrationOf(binding.getProvider()),
                 SyncOperation.SYNC_REPOS, SyncStatus.RUNNING, trigger, binding.getProjectId(), startedAt,
                 null, null, 0, 0, null, null));
+        markState(binding, VcsSyncState.RUNNING, startedAt);
         try {
             int processed = sync(credentials, binding, startedAt, backfillFrom);
             finish(syncLog, startedAt, SyncStatus.SUCCESS, processed, 0);
             return processed;
         } catch (RuntimeException e) {
             fail(syncLog, startedAt, e);
+            markFailed(binding);
             throw e;
         }
     }
@@ -89,7 +93,7 @@ public class SyncRepositoryUseCase {
 
         VcsRepository repository = refreshRepository(credentials, client, binding);
         VcsRepositoryContentSync.Context context = new VcsRepositoryContentSync.Context(
-                credentials, client, authors, repository, workItemLinkConfig(orgId));
+                credentials, client, authors, repository, workItemLinkConfig(orgId), binding);
 
         int commits = contentSync.syncCommits(context, lastSyncAt != null ? lastSyncAt : backfillFrom);
         List<VcsPullRequest> pullRequests = contentSync.syncPullRequests(context, lastSyncAt, backfillFrom);
@@ -102,11 +106,66 @@ public class SyncRepositoryUseCase {
         }
 
         binding.setLastSyncAt(startedAt);
-        bindingRepository.save(binding);
+        binding.setMissingBranches(List.copyOf(context.missingBranches()));
+        binding.setSyncState(VcsSyncState.OK);
+        binding.setSyncStateAt(Instant.now());
+        saveSyncOutcome(binding);
         int processed = 1 + commits + pullRequests.size() + events;
         log.info("VCS sync completed: org={} project={} provider={} repo={} processed={}", orgId,
                 binding.getProjectId(), binding.getProvider(), repository.getDisplayName(), processed);
         return processed;
+    }
+
+    /** Early save of the sync state ({@code RUNNING}). */
+    private void markState(VcsRepoBinding binding, VcsSyncState state, Instant at) {
+        binding.setSyncState(state);
+        binding.setSyncStateAt(at);
+        saveKeepingVersion(binding);
+    }
+
+    /**
+     * The repository returns a new instance with the bumped {@code version}; this run keeps using the original
+     * one, so it takes the version over or the next save would lose the optimistic lock.
+     */
+    private void saveKeepingVersion(VcsRepoBinding binding) {
+        VcsRepoBinding saved = bindingRepository.save(binding);
+        if (saved != null && saved != binding) binding.setVersion(saved.getVersion());
+    }
+
+    /**
+     * Saves what the sync owns (watermark, missing branches, state, repository after a merge). A non-destructive
+     * edit (sync on/off, production branch) may have saved the binding meanwhile and bumped its version, so the
+     * outcome goes onto the stored binding instead of overwriting it. An unbound binding is left alone.
+     */
+    private void saveSyncOutcome(VcsRepoBinding binding) {
+        VcsRepoBinding stored = bindingRepository
+                .findByIdAndOrganizationIdAndActiveTrue(binding.getId(), binding.getOrganizationId())
+                .orElse(null);
+        if (stored == null) {
+            log.warn("Binding {} was removed during its sync; outcome not saved", binding.getId());
+            return;
+        }
+        if (stored != binding && !Objects.equals(stored.getVersion(), binding.getVersion())) {
+            stored.setLastSyncAt(binding.getLastSyncAt());
+            stored.setMissingBranches(binding.getMissingBranches());
+            stored.setSyncState(binding.getSyncState());
+            stored.setSyncStateAt(binding.getSyncStateAt());
+            stored.setRepositoryId(binding.getRepositoryId());
+            saveKeepingVersion(stored);
+            binding.setVersion(stored.getVersion());
+            return;
+        }
+        saveKeepingVersion(binding);
+    }
+
+    private void markFailed(VcsRepoBinding binding) {
+        try {
+            binding.setSyncState(VcsSyncState.FAILED);
+            binding.setSyncStateAt(Instant.now());
+            saveSyncOutcome(binding);
+        } catch (RuntimeException e) {
+            log.warn("Could not record the failed sync state of binding {}: {}", binding.getId(), e.getMessage());
+        }
     }
 
     /**

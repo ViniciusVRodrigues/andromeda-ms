@@ -4,7 +4,9 @@ import andromeda.sei.ms.feature.azure.domain.AzureProjectsAccess;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureCredentialRejectedException;
 import andromeda.sei.ms.feature.azure.domain.exception.AzureReposScopeMissingException;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzProjectRefDto;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzCommitDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzPullRequestDto;
+import andromeda.sei.ms.feature.azure.infrastructure.client.AzRefDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzPullRequestQuery;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzRepositoryDto;
 import andromeda.sei.ms.feature.azure.infrastructure.client.AzWorkItemRefDto;
@@ -14,6 +16,9 @@ import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.VcsSettings;
 import andromeda.sei.ms.feature.vcs.application.port.VcsBindableRepository;
+import andromeda.sei.ms.feature.vcs.application.port.VcsBranch;
+import andromeda.sei.ms.feature.vcs.application.port.VcsProviderClient;
+import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteCommit;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemotePullRequest;
 import andromeda.sei.ms.feature.vcs.application.port.VcsRemoteRepository;
@@ -22,6 +27,7 @@ import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.exception.RepoNotFoundException;
+import andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -189,8 +195,40 @@ class AzureReposVcsProviderClientTest {
         VcsRepository empty = repository();
         empty.setDefaultBranch(null);
 
-        assertThat(client.commitsSince(CREDENTIALS, empty, null)).isEmpty();
+        assertThat(client.commitsSince(CREDENTIALS, empty, null, null)).isEmpty();
         verify(apiClient, never()).listCommits(any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void shouldReadCommitsOfTheRequestedBranch() {
+        Instant since = Instant.parse("2026-09-01T00:00:00Z");
+        when(apiClient.listCommits(ORG_URL, "p-pay", "r-3", "release/1", since, AUTH)).thenReturn(List.of(
+                new AzCommitDto("abc", new AzCommitDto.GitUser("n", "e@x", "2026-09-02T00:00:00Z"), "msg")));
+
+        assertThat(client.commitsSince(CREDENTIALS, repository(), "release/1", since)).extracting(VcsRemoteCommit::sha)
+                .containsExactly("abc");
+    }
+
+    @Test
+    void shouldRaiseBranchNotFoundWhenTheProviderAnswers404() {
+        when(apiClient.listCommits(any(), any(), any(), eq("gone"), any(), any())).thenThrow(
+                WebClientResponseException.create(404, "Not Found", HttpHeaders.EMPTY, new byte[0], StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> client.commitsSince(CREDENTIALS, repository(), "gone", null))
+                .isInstanceOf(VcsBranchNotFoundException.class)
+                .extracting("branch").isEqualTo("gone");
+    }
+
+    @Test
+    void shouldListBranchesWithTheDefaultFirstAndShortNames() {
+        when(apiClient.listBranchRefs(ORG_URL, "p-pay", "r-3", VcsProviderClient.MAX_BRANCHES_LISTED + 1, AUTH))
+                .thenReturn(List.of(new AzRefDto("refs/heads/feature/x", "1"), new AzRefDto("refs/heads/main", "2"),
+                        new AzRefDto("refs/heads/develop", "3"), new AzRefDto(null, "4")));
+
+        List<VcsBranch> branches = client.listBranches(CREDENTIALS, repository());
+
+        assertThat(branches).extracting(VcsBranch::name).containsExactly("main", "develop", "feature/x");
+        assertThat(branches).extracting(VcsBranch::isDefault).containsExactly(true, false, false);
     }
 
     @Test

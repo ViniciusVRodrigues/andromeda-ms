@@ -53,7 +53,7 @@ public final class DeliveryMetricsCalculator {
         double weeks = weeks(from, to);
         List<MergedChange> merged = changes == null ? List.of() : changes.stream()
                 .filter(Objects::nonNull)
-                .filter(c -> inWindow(c.mergedAt(), from, to) && c.isIntoDefaultBranch())
+                .filter(c -> inWindow(c.mergedAt(), from, to) && c.isIntoProductionBranch())
                 .toList();
         if (!merged.isEmpty()) return fromChanges(merged, rules, weeks);
 

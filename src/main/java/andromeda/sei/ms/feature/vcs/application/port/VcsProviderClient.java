@@ -15,6 +15,9 @@ import java.util.List;
  */
 public interface VcsProviderClient {
 
+    /** Cap of {@link #listBranches}. */
+    int MAX_BRANCHES_LISTED = 1000;
+
     VcsProvider provider();
 
     /**
@@ -38,8 +41,20 @@ public interface VcsProviderClient {
     /** Current metadata of a stored repository: by external id when known, by display name otherwise. */
     VcsRemoteRepository getRepository(VcsCredentials credentials, VcsRepository repository);
 
-    /** Commits authored after {@code since}; {@code null} reads the full history. */
-    List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, Instant since);
+    /**
+     * Branches of the repository, the default one first and the rest by name. At most
+     * {@link #MAX_BRANCHES_LISTED} + 1 are read: a result larger than {@link #MAX_BRANCHES_LISTED} tells the
+     * caller the listing was truncated.
+     */
+    List<VcsBranch> listBranches(VcsCredentials credentials, VcsRepository repository);
+
+    /**
+     * Commits of {@code branch} authored after {@code since}; {@code null} reads the full history.
+     *
+     * @throws andromeda.sei.ms.feature.vcs.domain.exception.VcsBranchNotFoundException when the branch no longer exists
+     */
+    List<VcsRemoteCommit> commitsSince(VcsCredentials credentials, VcsRepository repository, String branch,
+                                       Instant since);
 
     /**
      * Pull requests changed after {@code watermark}. Without a watermark and with a

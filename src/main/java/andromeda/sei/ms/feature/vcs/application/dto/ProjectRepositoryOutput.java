@@ -3,10 +3,12 @@ package andromeda.sei.ms.feature.vcs.application.dto;
 import andromeda.sei.ms.feature.metrics.domain.DeliveryMetrics;
 import andromeda.sei.ms.feature.vcs.domain.ReviewMetrics;
 import andromeda.sei.ms.feature.vcs.domain.VcsProvider;
+import andromeda.sei.ms.feature.vcs.domain.VcsSyncState;
 import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 
 /**
  * One bound repository plus its health over the requested window. A null metric means "no data",
@@ -33,4 +35,23 @@ public record ProjectRepositoryOutput(
         String repositoryId,
         VcsProvider provider,
         String displayName,
-        String defaultBranch) {}
+        String defaultBranch,
+        List<String> branches,
+        String productionBranch,
+        boolean filterPullRequestsByBranch,
+        List<String> missingBranches,
+        VcsSyncState syncState,
+        Instant lastSyncAt) {
+
+    /** Without binding data (no active binding found): branches follow the default branch. */
+    public ProjectRepositoryOutput(String repoId, String fullName, long openPrCount, long stalePrCount,
+                                   Double avgCycleTimeHours, Double avgTimeToFirstReviewHours, Double latestCfr,
+                                   Boolean latestCfrEstimated, Instant latestCfrPeriodEnd, DurationStat prCycleTime,
+                                   ReviewMetrics review, DeliveryMetrics delivery, String repositoryId,
+                                   VcsProvider provider, String displayName, String defaultBranch) {
+        this(repoId, fullName, openPrCount, stalePrCount, avgCycleTimeHours, avgTimeToFirstReviewHours, latestCfr,
+                latestCfrEstimated, latestCfrPeriodEnd, prCycleTime, review, delivery, repositoryId, provider,
+                displayName, defaultBranch, defaultBranch == null ? List.of() : List.of(defaultBranch),
+                defaultBranch, false, List.of(), null, null);
+    }
+}

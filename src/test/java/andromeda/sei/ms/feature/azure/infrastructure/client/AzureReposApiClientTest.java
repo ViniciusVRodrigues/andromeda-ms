@@ -166,6 +166,30 @@ class AzureReposApiClientTest {
     }
 
     @Test
+    void shouldListBranchRefsFollowingTheContinuationToken() {
+        server.enqueue(200, "{\"count\":2,\"value\":[{\"name\":\"refs/heads/develop\",\"objectId\":\"a\"},"
+                        + "{\"name\":\"refs/heads/main\",\"objectId\":\"b\"}]}", Map.of("x-ms-continuationtoken", "tok"))
+                .enqueue(200, "{\"count\":1,\"value\":[{\"name\":\"refs/heads/feature/x\",\"objectId\":\"c\"}]}");
+
+        List<AzRefDto> refs = client.listBranchRefs(orgUrl, PROJECT, REPO, 1001, AUTH);
+
+        assertThat(refs).extracting(AzRefDto::name)
+                .containsExactly("refs/heads/develop", "refs/heads/main", "refs/heads/feature/x");
+        assertThat(server.requests()).extracting(FakeAzureDevOpsServer.Recorded::rawPathAndQuery).satisfiesExactly(
+                first -> assertThat(first).endsWith("/refs?filter=heads/&$top=100&api-version=7.1"),
+                second -> assertThat(second).contains("continuationToken=tok"));
+    }
+
+    @Test
+    void shouldStopReadingBranchRefsAtTheLimit() {
+        String page = "{\"value\":[{\"name\":\"refs/heads/a\"},{\"name\":\"refs/heads/b\"},{\"name\":\"refs/heads/c\"}]}";
+        server.enqueue(200, page, Map.of("x-ms-continuationtoken", "t1")).enqueue(200, page, Map.of("x-ms-continuationtoken", "t2"));
+
+        assertThat(client.listBranchRefs(orgUrl, PROJECT, REPO, 4, AUTH)).hasSize(4);
+        assertThat(server.requests()).hasSize(2);
+    }
+
+    @Test
     void shouldListBranchCommitsSinceADate() {
         server.enqueueFixture("commits-branch.json");
 
