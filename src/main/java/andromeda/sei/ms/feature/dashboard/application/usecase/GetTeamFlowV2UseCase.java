@@ -25,6 +25,7 @@ import andromeda.sei.ms.feature.project.domain.exception.ProjectNotFoundExceptio
 import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.domain.PullRequestStatus;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver;
 import andromeda.sei.ms.feature.workitem.application.usecase.EffortBearingLevelResolver.EffortSummary;
@@ -140,7 +141,9 @@ public class GetTeamFlowV2UseCase {
         return new Context(orgId, sprint, window, now, SprintWindow.toDay(now), itemsBySprint, doneInWindow,
                 transitionsOf(orgId, itemsBySprint.values(), doneInWindow), repositories,
                 pullRequests(orgId, repositories, window, DashboardV2Views.isCurrent(sprint)),
-                peopleDirectory.people(orgId));
+                peopleDirectory.people(orgId),
+                StalePullRequestPolicy.chosenBranchesByRepository(
+                        vcsReadPort.bindingsOfProject(orgId, projectId), repositories));
     }
 
     /** Active items of the selected sprint and of its history, in one query, grouped by sprint. */
@@ -243,7 +246,7 @@ public class GetTeamFlowV2UseCase {
         /* a lista para a tela é limitada; a taxa usa o total */
         List<ItemView> reopened = reopenedItems.stream().limit(REOPENED_LIST_LIMIT)
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), null, prByItem.get(wi.getExternalId()),
-                        repoNames, ctx.now(), effortScope))
+                        repoNames, ctx.now(), effortScope, ctx.chosenBranches()))
                 .toList();
         int done = ctx.doneInWindow().size();
         return new Rework(reopened, done, done == 0 ? null : Ratios.percent(reopenedItems.size(), done));
@@ -305,7 +308,8 @@ public class GetTeamFlowV2UseCase {
     private record Context(String orgId, Sprint sprint, SprintWindow window, Instant now, LocalDate today,
                            Map<String, List<WorkItem>> itemsBySprint, List<WorkItem> doneInWindow,
                            Map<String, List<WorkItemTransition>> transitions, List<VcsRepository> repositories,
-                           List<VcsPullRequest> pullRequests, Map<String, PersonInfo> people) {
+                           List<VcsPullRequest> pullRequests, Map<String, PersonInfo> people,
+                           Map<String, Set<String>> chosenBranches) {
 
         List<WorkItem> sprintItems(Sprint s) {
             return itemsBySprint.getOrDefault(s.getId(), List.of());

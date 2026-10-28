@@ -83,7 +83,8 @@ public final class DashboardV2Views {
 
     public static ItemView itemView(WorkItem item, Map<String, PersonInfo> people, BigDecimal aiCostUsd,
                                     VcsPullRequest linkedPr, Map<String, String> repositoryNames, Instant now,
-                                    EffortBearingLevelResolver.EffortScope scope) {
+                                    EffortBearingLevelResolver.EffortScope scope,
+                                    Map<String, Set<String>> chosenBranches) {
         return new ItemView(item.getId(), item.getExternalId(), item.getTitle(),
                 enumName(item.getResolvedType()), enumName(item.getResolvedStatus()), item.getRawStatus(),
                 item.getPriority(), item.getEffort(), assignee(item, people), item.getStartedAt(),
@@ -91,7 +92,7 @@ public final class DashboardV2Views {
                 daysInProgress(item, now), aiCostUsd,
                 linkedPr == null ? null : new ItemPullRequest(linkedPr.getNumber(),
                         repositoryNames.get(linkedPr.getRepositoryId()), enumName(linkedPr.getStatus()),
-                        StalePullRequestPolicy.isStale(linkedPr, now)),
+                        StalePullRequestPolicy.isStale(linkedPr, now, chosenBranches)),
                 item.getComplexity(), scope == null ? null : scope.taskEffortRolledUp(item),
                 item.getTokensPerPoint(), item.getTokensPerHour(),
                 aiCostPerPoint(item, aiCostUsd, scope));
@@ -112,7 +113,8 @@ public final class DashboardV2Views {
 
     public static PullRequestView pullRequestView(VcsPullRequest pr, Map<String, PersonInfo> people,
                                                   Map<String, String> repositoryNames,
-                                                  Map<String, String> titleByExternalId, Instant now) {
+                                                  Map<String, String> titleByExternalId, Instant now,
+                                                  Map<String, Set<String>> chosenBranches) {
         PersonInfo author = pr.getAuthorUserId() == null ? null : people.get(pr.getAuthorUserId());
         String linked = pr.getLinkedWorkItemExternalId();
         return new PullRequestView(pr.getId(), pr.getNumber(), pr.getTitle(), repositoryNames.get(pr.getRepositoryId()),
@@ -122,7 +124,7 @@ public final class DashboardV2Views {
                 pr.getCreatedAt(), pr.getMergedAt(),
                 pr.getStatus() == PullRequestStatus.OPEN && pr.getCreatedAt() != null
                         ? Ratios.hours(pr.getCreatedAt(), now) : null,
-                pr.getTimeToFirstReviewHours(), pr.getCycleTimeHours(), StalePullRequestPolicy.isStale(pr, now),
+                pr.getTimeToFirstReviewHours(), pr.getCycleTimeHours(), StalePullRequestPolicy.isStale(pr, now, chosenBranches),
                 linked == null ? null : new WorkItemRef(linked, titleByExternalId.get(linked)));
     }
 

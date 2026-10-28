@@ -26,6 +26,7 @@ import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBinding;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepoBindingRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
@@ -334,6 +335,11 @@ public class OrganizationDashboardData {
      */
     public record Vcs(List<VcsRepoBinding> bindings, List<VcsRepository> repositories,
                       List<VcsPullRequest> pullRequests, Map<LocalDate, Long> commitsByDay, List<MergedChange> changes) {
+
+        /** Repository id to the branches chosen on its binding (a promotion pull request is not stalled). */
+        public Map<String, Set<String>> chosenBranches() {
+            return StalePullRequestPolicy.chosenBranchesByRepository(bindings, repositories);
+        }
 
         public Set<String> repositoryIdsOf(String projectId) {
             return bindings.stream().filter(b -> projectId.equals(b.getProjectId()))

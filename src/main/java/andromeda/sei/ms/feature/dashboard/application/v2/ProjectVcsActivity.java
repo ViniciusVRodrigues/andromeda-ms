@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEvent;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -36,7 +38,8 @@ public class ProjectVcsActivity {
                 .toList();
         List<VcsCommit> commits = commitRepository.findAllByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(
                 organizationId, repositoryIds, from, to);
-        return new Snapshot(repositories, pullRequests, commits, reviews(organizationId, pullRequests, from, to));
+        return new Snapshot(repositories, pullRequests, commits, reviews(organizationId, pullRequests, from, to),
+                chosenBranches(organizationId, projectId, repositories));
     }
 
     /**
@@ -52,7 +55,7 @@ public class ProjectVcsActivity {
         List<VcsPullRequest> pullRequests = vcsReadPort.pullRequestsTouchedSince(organizationId, repositoryIds, from);
         return new Snapshot(repositories, pullRequests, commitRepository
                 .findMessagesByOrganizationIdAndRepositoryIdInAndAuthoredAtBetween(organizationId, repositoryIds, from, to),
-                List.of());
+                List.of(), chosenBranches(organizationId, projectId, repositories));
     }
 
     /**
@@ -64,7 +67,14 @@ public class ProjectVcsActivity {
         if (repositories.isEmpty()) return Snapshot.EMPTY;
         List<String> repositoryIds = repositories.stream().map(VcsRepository::getId).toList();
         return new Snapshot(repositories, vcsReadPort.pullRequestsTouchedSince(organizationId, repositoryIds, since),
-                List.of(), List.of());
+                List.of(), List.of(), chosenBranches(organizationId, projectId, repositories));
+    }
+
+    /** Repository id to the branches chosen on its binding: what tells a promotion pull request from a stalled one. */
+    private Map<String, Set<String>> chosenBranches(String organizationId, String projectId,
+                                                    List<VcsRepository> repositories) {
+        return StalePullRequestPolicy.chosenBranchesByRepository(
+                vcsReadPort.bindingsOfProject(organizationId, projectId), repositories);
     }
 
     /** Active commits authored in {@code [from, to)} per repository, counted in the database (indexed). */
@@ -98,9 +108,10 @@ public class ProjectVcsActivity {
     }
 
     public record Snapshot(List<VcsRepository> repositories, List<VcsPullRequest> pullRequests,
-                           List<VcsCommit> commits, List<VcsReviewEvent> reviews) {
+                           List<VcsCommit> commits, List<VcsReviewEvent> reviews,
+                           Map<String, Set<String>> chosenBranches) {
 
-        static final Snapshot EMPTY = new Snapshot(List.of(), List.of(), List.of(), List.of());
+        static final Snapshot EMPTY = new Snapshot(List.of(), List.of(), List.of(), List.of(), Map.of());
 
         public Map<String, String> repositoryNames() {
             return repositories.stream().filter(r -> r.getId() != null)

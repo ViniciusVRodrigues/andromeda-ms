@@ -215,7 +215,7 @@ public class GetTeamDashboardV2UseCase {
         return new Kpis(s.itemsDone(), s.itemsTotal(), s.itemsWithPoints(),
                 s.unassigned(), s.cycleTimeHours(), s.leadTimeHours(), s.aiCostUsd(),
                 s.timeToFirstReviewHours(), s.prsMerged(), isCurrent ? open.size() : null,
-                isCurrent ? (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now())).count() : null,
+                isCurrent ? (int) open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now(), ctx.vcs().chosenBranches())).count() : null,
                 current.hasAiUsage() ? current.aiCost().totalUnallocated() : null,
                 s.complexityPlanned(), s.complexityDelivered(), s.effortLogged(), s.itemsWithComplexity(),
                 s.aiCostPerPoint(), s.aiCostPerHour());
@@ -261,7 +261,8 @@ public class GetTeamDashboardV2UseCase {
                 .sorted(Comparator.comparing((WorkItem wi) -> DashboardV2Views.daysInProgress(wi, ctx.now())).reversed())
                 .limit(AGING_ITEMS_LIMIT)
                 .map(wi -> DashboardV2Views.itemView(wi, ctx.people(), null, prByItem.get(wi.getExternalId()),
-                        repoNames, ctx.now(), current.summary().scope()))
+                        repoNames, ctx.now(), current.summary().scope(),
+                        ctx.vcs().chosenBranches()))
                 .toList();
     }
 
@@ -319,9 +320,9 @@ public class GetTeamDashboardV2UseCase {
         Map<String, String> repoNames = ctx.vcs().repositoryNames();
         Map<String, String> titles = DashboardV2Views.titlesByExternalId(items(ctx, ctx.sprint()));
         return openPrs(ctx).stream()
-                .filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now()))
+                .filter(pr -> StalePullRequestPolicy.isStale(pr, ctx.now(), ctx.vcs().chosenBranches()))
                 .sorted(Comparator.comparing(VcsPullRequest::getCreatedAt, Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(pr -> DashboardV2Views.pullRequestView(pr, ctx.people(), repoNames, titles, ctx.now()))
+                .map(pr -> DashboardV2Views.pullRequestView(pr, ctx.people(), repoNames, titles, ctx.now(), ctx.vcs().chosenBranches()))
                 .toList();
     }
 

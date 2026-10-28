@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -70,7 +71,9 @@ public class ListProjectRepositoriesUseCase {
                                               Instant now) {
         List<VcsPullRequest> all = vcsReadPort.pullRequestsOfRepository(orgId, repo.getId());
         List<VcsPullRequest> open = all.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).toList();
-        long staleCount = open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, now)).count();
+        Set<String> chosenBranches = Set.copyOf(binding != null ? binding.effectiveBranches(repo.getDefaultBranch())
+                : defaultBranches(repo));
+        long staleCount = open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, now, chosenBranches)).count();
 
         List<VcsPullRequest> mergedInWindow = all.stream().filter(pr -> window.contains(pr.getMergedAt())).toList();
         List<VcsPullRequest> createdInWindow = all.stream().filter(pr -> window.contains(pr.getCreatedAt())).toList();
