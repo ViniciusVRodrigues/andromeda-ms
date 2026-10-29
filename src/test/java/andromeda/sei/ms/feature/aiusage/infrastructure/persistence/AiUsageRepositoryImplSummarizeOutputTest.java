@@ -57,7 +57,9 @@ class AiUsageRepositoryImplSummarizeOutputTest {
         String json = pipeline(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31));
 
         assertThat(json).contains("organizationId").contains("org-1").contains("active").contains("$gte").contains("$lte")
-                .contains("$group").contains("$sum").contains("outputTokens");
+                .contains("$group").contains("$sum").contains("outputTokens")
+                .contains("$cond").contains("AGENT").contains("agentCacheReadTokens").contains("agentCacheWriteTokens")
+                .contains("agentInputTokens");
     }
 
     @Test

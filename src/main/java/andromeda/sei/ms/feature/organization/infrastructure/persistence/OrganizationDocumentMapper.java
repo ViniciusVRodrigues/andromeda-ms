@@ -18,7 +18,8 @@ public class OrganizationDocumentMapper {
     public Organization toDomain(OrganizationDocument doc) {
         List<AiPriceEntry> aiPrices = doc.getAiPrices() == null ? null :
                 doc.getAiPrices().stream()
-                        .map(e -> new AiPriceEntry(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput()))
+                        .map(e -> new AiPriceEntry(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput(),
+                                e.getPricePerKCacheRead(), e.getPricePerKCacheWrite()))
                         .toList();
 
         Organization organization = new Organization(
@@ -143,7 +144,8 @@ public class OrganizationDocumentMapper {
     public OrganizationDocument toDocument(Organization org) {
         List<AiPriceEntryDocument> aiPriceDocs = org.getAiPrices() == null ? null :
                 org.getAiPrices().stream()
-                        .map(e -> new AiPriceEntryDocument(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput()))
+                        .map(e -> new AiPriceEntryDocument(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput(),
+                                e.getPricePerKCacheRead(), e.getPricePerKCacheWrite()))
                         .toList();
 
         var builder = OrganizationDocument.builder()

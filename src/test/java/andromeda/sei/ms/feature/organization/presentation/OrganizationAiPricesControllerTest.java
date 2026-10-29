@@ -84,4 +84,34 @@ class OrganizationAiPricesControllerTest {
         verify(useCase).execute(eq("org-1"), in.capture());
         assertThat(in.getValue().entries().get(0).pricePerKInput()).isNull();
     }
+
+    @Test
+    void should_return400_whenACachePriceIsNegative() throws Exception {
+        putPrices("{\"entries\":[{\"model\":\"m\",\"pricePerKOutput\":1,\"pricePerKCacheRead\":-0.01}]}")
+                .andExpect(status().isBadRequest());
+        putPrices("{\"entries\":[{\"model\":\"m\",\"pricePerKOutput\":1,\"pricePerKCacheWrite\":-0.01}]}")
+                .andExpect(status().isBadRequest());
+        verify(useCase, never()).execute(any(), any());
+    }
+
+    @Test
+    void should_saveAndReturnCachePrices_andNullWhenAbsent() throws Exception {
+        var output = new CreateOrganizationOutput("org-1", "n", "s", null, null, List.of(),
+                List.of(new AiPriceEntry("m", null, BigDecimal.ONE, new BigDecimal("0.0005"), new BigDecimal("0.00625")),
+                        new AiPriceEntry("n", null, BigDecimal.ONE)), null, null);
+        when(useCase.execute(eq("org-1"), any(UpdateAiPricesInput.class))).thenReturn(output);
+
+        putPrices("{\"entries\":[{\"model\":\"m\",\"pricePerKOutput\":1,\"pricePerKCacheRead\":0.0005,\"pricePerKCacheWrite\":0.00625},"
+                + "{\"model\":\"n\",\"pricePerKOutput\":1}]}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.aiPrices[0].pricePerKCacheRead").value(0.0005))
+                .andExpect(jsonPath("$.aiPrices[0].pricePerKCacheWrite").value(0.00625))
+                .andExpect(jsonPath("$.aiPrices[1].pricePerKCacheRead").value((Object) null))
+                .andExpect(jsonPath("$.aiPrices[1].pricePerKCacheWrite").value((Object) null));
+
+        ArgumentCaptor<UpdateAiPricesInput> in = ArgumentCaptor.forClass(UpdateAiPricesInput.class);
+        verify(useCase).execute(eq("org-1"), in.capture());
+        assertThat(in.getValue().entries().get(0).pricePerKCacheRead()).isEqualByComparingTo("0.0005");
+        assertThat(in.getValue().entries().get(1).pricePerKCacheWrite()).isNull();
+    }
 }

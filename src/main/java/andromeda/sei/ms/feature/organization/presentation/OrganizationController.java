@@ -114,7 +114,8 @@ public class OrganizationController {
         var input = new UpdateAiPricesInput(
                 request.entries() == null ? null :
                         request.entries().stream()
-                                .map(e -> new UpdateAiPricesInput.AiPriceEntryInput(e.model(), e.pricePerKInput(), e.pricePerKOutput()))
+                                .map(e -> new UpdateAiPricesInput.AiPriceEntryInput(e.model(), e.pricePerKInput(), e.pricePerKOutput(),
+                                        e.pricePerKCacheRead(), e.pricePerKCacheWrite()))
                                 .toList()
         );
         var output = updateAiPricesUseCase.execute(orgId, input);

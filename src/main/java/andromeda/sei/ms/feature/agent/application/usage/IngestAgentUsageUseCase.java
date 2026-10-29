@@ -361,6 +361,7 @@ public class IngestAgentUsageUseCase {
             AIUsage values = new AIUsage(null, principal.organizationId(), current.getUserId(), null, null,
                     current.getDay(), current.getModel(), null, null, null, null, input, output, interactions,
                     null, null, null, now, true, null, now, now);
+            values.setSource("AGENT");
             values.setCacheReadTokens(cacheRead);
             values.setCacheWriteTokens(cacheWrite);
             values.setThinkingTokens(thinking);

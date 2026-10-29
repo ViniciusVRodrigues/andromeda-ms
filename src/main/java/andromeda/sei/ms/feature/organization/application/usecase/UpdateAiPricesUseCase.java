@@ -23,7 +23,8 @@ public class UpdateAiPricesUseCase {
 
         List<AiPriceEntry> entries = input.entries() == null ? List.of() :
                 input.entries().stream()
-                        .map(e -> new AiPriceEntry(e.model(), e.pricePerKInput(), e.pricePerKOutput()))
+                        .map(e -> new AiPriceEntry(e.model(), e.pricePerKInput(), e.pricePerKOutput(),
+                                e.pricePerKCacheRead(), e.pricePerKCacheWrite()))
                         .toList();
 
         org.setAiPrices(entries);

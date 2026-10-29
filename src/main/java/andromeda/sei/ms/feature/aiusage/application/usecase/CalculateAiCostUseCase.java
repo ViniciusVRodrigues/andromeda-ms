@@ -11,12 +11,15 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Cost of one usage record = {@code outputTokens x pricePerKOutput / 1000}.
+ * Cost of one usage record.
  *
- * <p>The input price is deliberately NOT part of the cost: the connector's {@code inputTokens} sums
- * plain input, cache read and cache write, which are billed at very different rates, and there is no
- * way to separate them afterwards. Charging the sum at the plain input price would overstate the cost
- * several times over, so only the output side (which is unambiguous) is priced.
+ * <p>Local agent rows ({@code source == "AGENT"}): input, cache read, cache write and output tokens,
+ * each at its own price per 1000 tokens (a missing price counts as zero); thinking tokens are already
+ * part of the output and never added.
+ *
+ * <p>AIEF rows (extension): {@code outputTokens x pricePerKOutput / 1000} only. The extension's
+ * {@code inputTokens} sums plain input, cache read and cache write, which cannot be separated, so
+ * the input side is not priced.
  */
 @Component
 public class CalculateAiCostUseCase {
@@ -27,7 +30,7 @@ public class CalculateAiCostUseCase {
             Pattern.compile("(-\\d{8}|-\\d{4}-\\d{2}-\\d{2}|@\\d{8})$");
 
     /** Lowercase, trimmed, dots as dashes and without a trailing date suffix. */
-    static String normalize(String model) {
+    public static String normalize(String model) {
         if (model == null) return "";
         String m = model.trim().toLowerCase().replace('.', '-');
         return DATE_SUFFIX.matcher(m).replaceFirst("");
@@ -66,9 +69,26 @@ public class CalculateAiCostUseCase {
 
     public BigDecimal execute(AIUsage usage, List<AiPriceEntry> prices) {
         return findPrice(usage.getModel(), prices)
-                .map(entry -> BigDecimal.valueOf(usage.getOutputTokens())
-                        .multiply(entry.getPricePerKOutput())
-                        .divide(K, SCALE, RoundingMode.HALF_UP))
+                .map(entry -> "AGENT".equals(usage.getSource()) ? agentCost(usage, entry) : aiefCost(usage, entry))
                 .orElse(null);
+    }
+
+    private static BigDecimal aiefCost(AIUsage usage, AiPriceEntry entry) {
+        return BigDecimal.valueOf(usage.getOutputTokens())
+                .multiply(entry.getPricePerKOutput())
+                .divide(K, SCALE, RoundingMode.HALF_UP);
+    }
+
+    /** input + cache read + cache write + output, each at its own price; a missing price counts as 0. */
+    private static BigDecimal agentCost(AIUsage usage, AiPriceEntry entry) {
+        return part(usage.getInputTokens(), entry.getPricePerKInput())
+                .add(part(usage.getCacheReadTokens(), entry.getPricePerKCacheRead()))
+                .add(part(usage.getCacheWriteTokens(), entry.getPricePerKCacheWrite()))
+                .add(part(usage.getOutputTokens(), entry.getPricePerKOutput()))
+                .divide(K, SCALE, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal part(long tokens, BigDecimal pricePerK) {
+        return pricePerK == null ? BigDecimal.ZERO : BigDecimal.valueOf(tokens).multiply(pricePerK);
     }
 }

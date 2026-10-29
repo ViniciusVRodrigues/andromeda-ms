@@ -164,4 +164,56 @@ class CalculateAiCostUseCaseTest {
         assertThat(useCase.isBillable("gpt-4o")).isTrue();
         assertThat(useCase.execute(usage("auto", 1L, 1000L), one("auto"))).isNull();
     }
+
+    private AIUsage agent(long in, long out, long cacheRead, long cacheWrite, long thinking) {
+        AIUsage u = usage("claude-opus-4-8", in, out);
+        u.setSource("AGENT");
+        u.setCacheReadTokens(cacheRead);
+        u.setCacheWriteTokens(cacheWrite);
+        u.setThinkingTokens(thinking);
+        return u;
+    }
+
+    private List<AiPriceEntry> opus(String cacheRead, String cacheWrite) {
+        return List.of(new AiPriceEntry("claude-opus-4-8", new BigDecimal("0.005"), new BigDecimal("0.025"),
+                cacheRead == null ? null : new BigDecimal(cacheRead),
+                cacheWrite == null ? null : new BigDecimal(cacheWrite)));
+    }
+
+    @Test
+    void should_priceInputCacheAndOutput_whenTheRowIsFromTheAgent() {
+        BigDecimal cost = useCase.execute(agent(1000, 2000, 1_000_000, 10_000, 0), opus("0.0005", "0.00625"));
+
+        // 1000*0.005 + 1000000*0.0005 + 10000*0.00625 + 2000*0.025 = 5 + 500 + 62.5 + 50 = 617.5 -> /1000
+        assertThat(cost).isEqualByComparingTo("0.617500");
+    }
+
+    @Test
+    void should_treatMissingCachePricesAsZero_whenTheRowIsFromTheAgent() {
+        BigDecimal cost = useCase.execute(agent(1000, 2000, 1_000_000, 10_000, 0), opus(null, null));
+
+        // 1000*0.005 + 2000*0.025 = 55 -> /1000
+        assertThat(cost).isEqualByComparingTo("0.055000");
+    }
+
+    @Test
+    void should_neverSumThinking_whenTheRowIsFromTheAgent() {
+        BigDecimal with = useCase.execute(agent(1000, 2000, 0, 0, 5000), opus(null, null));
+        BigDecimal without = useCase.execute(agent(1000, 2000, 0, 0, 0), opus(null, null));
+
+        assertThat(with).isEqualByComparingTo(without);
+    }
+
+    @Test
+    void should_keepOutputOnly_whenTheRowIsFromTheAiefEvenWithCachePrices() {
+        AIUsage u = usage("claude-opus-4-8", 613000, 2000);
+        u.setCacheReadTokens(600000);
+
+        assertThat(useCase.execute(u, opus("0.0005", "0.00625"))).isEqualByComparingTo("0.050000");
+    }
+
+    @Test
+    void should_returnNull_whenTheAgentRowHasNoPrice() {
+        assertThat(useCase.execute(agent(1000, 2000, 0, 0, 0), List.of())).isNull();
+    }
 }

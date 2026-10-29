@@ -55,7 +55,7 @@ class AiUsageControllerUnpricedModelsTest {
 
     @Test
     void should_return200_withOpenPeriodByDefault() throws Exception {
-        when(useCase.execute("org-1", null, null)).thenReturn(List.of(new UnpricedModelOutput("gpt-6", 10L, 2, true)));
+        when(useCase.execute("org-1", null, null)).thenReturn(List.of(new UnpricedModelOutput("gpt-6", 10L, 2, true, List.of("OUTPUT"), 0L, 0L, 0L)));
 
         mockMvc.perform(get("/api/v1/ai/unpriced-models"))
                 .andExpect(status().isOk())

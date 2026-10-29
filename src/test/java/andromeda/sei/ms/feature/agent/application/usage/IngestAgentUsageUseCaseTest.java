@@ -423,6 +423,35 @@ class IngestAgentUsageUseCaseTest {
         assertThat(usages.byKey.get("k1").getCostUsd()).isEqualByComparingTo("0.030000");
     }
 
+    private void withOpusPrices() {
+        var org = mock(andromeda.sei.ms.feature.organization.domain.Organization.class);
+        var price = new andromeda.sei.ms.feature.organization.domain.AiPriceEntry("claude-sonnet-5-5",
+                new java.math.BigDecimal("0.005"), new java.math.BigDecimal("0.025"),
+                new java.math.BigDecimal("0.0005"), new java.math.BigDecimal("0.00625"));
+        when(org.getAiPrices()).thenReturn(List.of(price));
+        when(organizations.findById(ORG)).thenReturn(Optional.of(org));
+    }
+
+    @Test
+    void should_chargeCache_whenInsertingAnAgentRow() {
+        withOpusPrices();
+
+        useCase.execute(principal, batch(rowWith("k1", 1000, 2000, 1_000_000, 10_000)));
+
+        assertThat(usages.byKey.get("k1").getCostUsd()).isEqualByComparingTo("0.617500");
+    }
+
+    @Test
+    void should_chargeCache_whenAResendGrowsTheRow() {
+        withOpusPrices();
+        useCase.execute(principal, batch(rowWith("k1", 1000, 2000, 0, 0)));
+
+        useCase.execute(principal, batch("8a3e0000-0000-4000-8000-000000000002",
+                rowWith("k1", 1000, 2000, 1_000_000, 10_000)));
+
+        assertThat(usages.byKey.get("k1").getCostUsd()).isEqualByComparingTo("0.617500");
+    }
+
     // ---- helpers ----------------------------------------------------------------------------
 
     static String reason(UsageUploadResult r, String key) {

@@ -14,4 +14,6 @@ public class AiPriceEntryDocument {
     private String model;
     private BigDecimal pricePerKInput;
     private BigDecimal pricePerKOutput;
+    private BigDecimal pricePerKCacheRead;
+    private BigDecimal pricePerKCacheWrite;
 }
