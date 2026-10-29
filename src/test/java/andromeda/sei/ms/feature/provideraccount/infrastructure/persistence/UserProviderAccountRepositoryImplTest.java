@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.index.IndexInfo;
 
 import java.time.Instant;
 import java.util.List;
@@ -19,6 +21,9 @@ class UserProviderAccountRepositoryImplTest {
 
     @Autowired
     private UserProviderAccountMongoRepository mongoRepository;
+
+    @Autowired
+    private MongoTemplate mongoTemplate;
 
     private UserProviderAccountRepositoryImpl repository;
 
@@ -45,6 +50,47 @@ class UserProviderAccountRepositoryImplTest {
 
         assertThatThrownBy(() -> mongoRepository.save(document("user-1", "99999", true, ORG_ID)))
                 .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void shouldCreatePartialUniqueIndexesWithExplicitNames() {
+        List<IndexInfo> indexes = mongoTemplate.indexOps("user_provider_accounts").getIndexInfo();
+
+        for (String name : List.of("uk_org_provider_external_active", "uk_org_user_provider_active")) {
+            IndexInfo index = indexes.stream().filter(i -> name.equals(i.getName())).findFirst().orElseThrow();
+            assertThat(index.isUnique()).isTrue();
+            assertThat(index.getPartialFilterExpression()).contains("active");
+        }
+    }
+
+    @Test
+    void shouldAllowRelinkingSameExternalAccountAfterSoftDelete() {
+        var first = mongoRepository.save(document("user-1", "58421", true, ORG_ID));
+        first.setActive(false);
+        mongoRepository.save(first);
+
+        mongoRepository.save(document("user-2", "58421", true, ORG_ID));
+
+        assertThat(mongoRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldAllowRelinkingSameUserProviderAfterSoftDelete() {
+        var first = mongoRepository.save(document("user-1", "58421", true, ORG_ID));
+        first.setActive(false);
+        mongoRepository.save(first);
+
+        mongoRepository.save(document("user-1", "99999", true, ORG_ID));
+
+        assertThat(mongoRepository.count()).isEqualTo(2);
+    }
+
+    @Test
+    void shouldAllowManyInactiveWithSameKeys() {
+        mongoRepository.save(document("user-1", "58421", false, ORG_ID));
+        mongoRepository.save(document("user-1", "58421", false, ORG_ID));
+
+        assertThat(mongoRepository.count()).isEqualTo(2);
     }
 
     @Test

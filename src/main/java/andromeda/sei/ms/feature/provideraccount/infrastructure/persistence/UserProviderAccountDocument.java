@@ -16,14 +16,21 @@ import java.util.List;
 
 @Document(collection = "user_provider_accounts")
 @CompoundIndexes({
-        @CompoundIndex(def = "{'organizationId': 1, 'provider': 1, 'externalUserId': 1}", unique = true),
-        @CompoundIndex(def = "{'organizationId': 1, 'userId': 1, 'provider': 1}", unique = true)
+        @CompoundIndex(name = UserProviderAccountDocument.UK_EXTERNAL_ACTIVE,
+                def = "{'organizationId': 1, 'provider': 1, 'externalUserId': 1}",
+                unique = true, partialFilter = "{'active': true}"),
+        @CompoundIndex(name = UserProviderAccountDocument.UK_USER_PROVIDER_ACTIVE,
+                def = "{'organizationId': 1, 'userId': 1, 'provider': 1}",
+                unique = true, partialFilter = "{'active': true}")
 })
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserProviderAccountDocument {
+
+    public static final String UK_EXTERNAL_ACTIVE = "uk_org_provider_external_active";
+    public static final String UK_USER_PROVIDER_ACTIVE = "uk_org_user_provider_active";
 
     @Id
     private String id;
