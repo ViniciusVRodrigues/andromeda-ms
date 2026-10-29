@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 
 /**
  * The logged-in person approves the pairing: creates the {@link AgentDevice} in their organization.
@@ -24,17 +23,25 @@ public class ApprovePairingUseCase {
 
     private final AgentDeviceAuthorizationRepository authorizations;
     private final AgentDeviceRepository devices;
+    private final AiefCutover cutover;
     private final Clock clock;
 
     @Autowired
-    public ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices) {
-        this(authorizations, devices, Clock.systemUTC());
+    public ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
+                                 AiefCutover cutover) {
+        this(authorizations, devices, cutover, Clock.systemUTC());
     }
 
     ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
                           Clock clock) {
+        this(authorizations, devices, AiefCutover.NONE, clock);
+    }
+
+    ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
+                          AiefCutover cutover, Clock clock) {
         this.authorizations = authorizations;
         this.devices = devices;
+        this.cutover = cutover;
         this.clock = clock;
     }
 
@@ -62,7 +69,8 @@ public class ApprovePairingUseCase {
         device.setAgentVersion(authorization.getAgentVersion());
         device.setPairedFromIp(authorization.getIp());
         device.setPairedAt(now);
-        device.setCutoverDay(cutoverDay(authorization.getTimezone(), now));
+        LocalDate cutoverDay = cutover.cutoverDay(organizationId, userId, authorization.getTimezone(), now);
+        device.setCutoverDay(cutoverDay);
         device.setActive(true);
         device.setCreatedAt(now);
         device.setUpdatedAt(now);
@@ -91,13 +99,5 @@ public class ApprovePairingUseCase {
         return devices.findActiveByIdAndOrganizationId(a.getDeviceId(), organizationId)
                 .map(d -> new ApprovedDeviceOutput(d.getId(), d.getMachineName()))
                 .orElseThrow(AgentPairingConflictException::used);
-    }
-
-    /**
-     * Extension point for the AIEF cutover (package 4): the first day the agent counts for. Today it is
-     * the local day of the approval in the time zone of the device.
-     */
-    LocalDate cutoverDay(String timezone, Instant approvedAt) {
-        return approvedAt.atZone(ZoneId.of(timezone)).toLocalDate();
     }
 }

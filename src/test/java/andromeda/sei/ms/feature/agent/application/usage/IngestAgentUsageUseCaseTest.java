@@ -329,6 +329,54 @@ class IngestAgentUsageUseCaseTest {
     }
 
     @Test
+    void should_callAfterStoredWithTheTool_when_aRowThatCountsIsStored() {
+        java.util.List<String> calls = new java.util.ArrayList<>();
+        AgentRowDispositionPolicy live = new AgentRowDispositionPolicy() {
+            @Override
+            public Disposition classify(AgentDevice d, String u, java.time.LocalDate day, Instant hour) {
+                return Disposition.LIVE;
+            }
+
+            @Override
+            public void afterStored(AgentDevice d, String u, java.time.LocalDate day, String tool) {
+                calls.add(u + "|" + tool);
+            }
+        };
+        useCase = new IngestAgentUsageUseCase(devices, batches, usages, resolveTask, live, registerAllocation,
+                autoAssign, new CalculateAiCostUseCase(), organizations, Duration.ofDays(90), Duration.ofDays(7),
+                false, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        useCase.execute(principal, batch(row("k1", 1, 2)));
+
+        assertThat(calls).hasSize(1);
+        assertThat(calls.get(0)).startsWith(USER + "|");
+    }
+
+    @Test
+    void should_notCallAfterStored_when_theRowIsSuperseded() {
+        java.util.List<String> calls = new java.util.ArrayList<>();
+        AgentRowDispositionPolicy superseded = new AgentRowDispositionPolicy() {
+            @Override
+            public Disposition classify(AgentDevice d, String u, java.time.LocalDate day, Instant hour) {
+                return Disposition.SUPERSEDED;
+            }
+
+            @Override
+            public void afterStored(AgentDevice d, String u, java.time.LocalDate day, String tool) {
+                calls.add("called");
+            }
+        };
+        useCase = new IngestAgentUsageUseCase(devices, batches, usages, resolveTask, superseded, registerAllocation,
+                autoAssign, new CalculateAiCostUseCase(), organizations, Duration.ofDays(90), Duration.ofDays(7),
+                false, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        useCase.execute(principal, batch(row("k1", 1, 2)));
+
+        assertThat(calls).isEmpty();
+        assertThat(usages.byKey.get("k1").getSupersededBy()).isEqualTo("AIEF");
+    }
+
+    @Test
     void should_notResolveTheTaskAgain_when_theRowAlreadyExists() {
         useCase.execute(principal, batch(row("k1", 1, 2)));
         org.mockito.Mockito.clearInvocations(resolveTask);

@@ -52,6 +52,7 @@ public class AiUsageDocumentMapper {
         usage.setAgentVersion(doc.getAgentVersion());
         usage.setBatchId(doc.getBatchId());
         usage.setSupersededBy(doc.getSupersededBy());
+        usage.setPossibleDuplicate(doc.isPossibleDuplicate());
         return usage;
     }
 
@@ -97,7 +98,8 @@ public class AiUsageDocumentMapper {
                 .projectId(usage.getProjectId())
                 .agentVersion(usage.getAgentVersion())
                 .batchId(usage.getBatchId())
-                .supersededBy(usage.getSupersededBy());
+                .supersededBy(usage.getSupersededBy())
+                .possibleDuplicate(usage.isPossibleDuplicate());
 
         if (usage.getId() != null) {
             builder.id(usage.getId());

@@ -62,6 +62,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 .set("interactions", usage.getInteractions())
                 .set("uploadedAt", usage.getUploadedAt())
                 .set("active", true)
+                .set("possibleDuplicate", usage.isPossibleDuplicate())
                 .set("updatedAt", now)
                 .setOnInsert("createdAt", now)
                 .setOnInsert("allocationId", null);

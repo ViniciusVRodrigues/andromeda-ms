@@ -34,6 +34,8 @@ public class AiUsageAllocation {
     private SuggestionSource suggestionSource;
     /** Only on {@code AGENT} allocations; null on every other. */
     private AgentInfo agent;
+    /** True on a MANUAL allocation made by moving agent rows to another task (agente-endpoint-v2, design 15). */
+    private boolean movedFromAgent;
 
     public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
                               List<String> aiUsageIds, List<AllocationSplit> splits,
@@ -106,7 +108,13 @@ public class AiUsageAllocation {
     public AgentInfo getAgent() { return agent; }
     public void setAgent(AgentInfo agent) { this.agent = agent; }
 
+    public boolean isMovedFromAgent() { return movedFromAgent; }
+    public void setMovedFromAgent(boolean movedFromAgent) { this.movedFromAgent = movedFromAgent; }
+
     public boolean isAgent() { return assignedBy == AssignedBy.AGENT; }
+
+    /** Whether this allocation closes the day for the per-day flows (neither the agent's nor a moved correction does). */
+    public boolean closesTheDay() { return status == Status.VALIDATED && !isAgent() && !movedFromAgent; }
 
     /** The source, with an absent value read as {@link SuggestionSource#IN_PROGRESS}. */
     public SuggestionSource suggestionSourceOrDefault() {

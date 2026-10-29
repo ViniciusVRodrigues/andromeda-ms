@@ -40,6 +40,7 @@ public class AiUsageAllocationDocument {
     private AiUsageAllocation.AssignedBy assignedBy;
     private AiUsageAllocation.SuggestionSource suggestionSource;
     private AgentInfoDocument agent;
+    private boolean movedFromAgent;
 
     @Data
     @NoArgsConstructor

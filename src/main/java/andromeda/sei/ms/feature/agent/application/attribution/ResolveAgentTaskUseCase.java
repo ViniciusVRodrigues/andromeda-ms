@@ -67,6 +67,18 @@ public class ResolveAgentTaskUseCase {
         return byTaskRef(organizationId, userId, taskRef).map(i -> toResolved(i, AttributionSource.TASK_REF));
     }
 
+    /**
+     * For moving agent usage by hand: the chosen item itself, when it is active, in a project the user
+     * can open and eligible for AI allocation. No ancestor is substituted: the person picked this item.
+     */
+    public Optional<ResolvedTask> resolveItem(String organizationId, String userId, String workItemId) {
+        if (workItemId == null || workItemId.isBlank()) return Optional.empty();
+        return workItemRepository.findByIdAndOrganizationIdAndActiveTrue(workItemId, organizationId)
+                .filter(i -> canAccess(organizationId, userId, i.getProjectId()))
+                .filter(i -> typeEligibility.isEligible(organizationId, i))
+                .map(i -> toResolved(i, AttributionSource.TASK_REF));
+    }
+
     private AgentAttribution outcome(WorkItem item, AttributionSource source, String repositoryProjectId) {
         return new AgentAttribution(toResolved(item, source), repositoryProjectId, source);
     }

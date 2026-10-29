@@ -51,6 +51,7 @@ public class AIUsage {
     private String agentVersion;
     private String batchId;
     private String supersededBy;
+    private boolean possibleDuplicate;
 
     public AIUsage(String id, String organizationId, String userId, String gitHubLogin,
                    String datasetId, LocalDate day, String model,
@@ -192,6 +193,8 @@ public class AIUsage {
     public void setAgentVersion(String agentVersion) { this.agentVersion = agentVersion; }
     public String getBatchId() { return batchId; }
     public void setBatchId(String batchId) { this.batchId = batchId; }
+    public boolean isPossibleDuplicate() { return possibleDuplicate; }
+    public void setPossibleDuplicate(boolean possibleDuplicate) { this.possibleDuplicate = possibleDuplicate; }
     public String getSupersededBy() { return supersededBy; }
     public void setSupersededBy(String supersededBy) { this.supersededBy = supersededBy; }
 

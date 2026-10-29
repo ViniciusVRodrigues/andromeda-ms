@@ -91,4 +91,5 @@ public class AiUsageDocument {
     private String agentVersion;
     private String batchId;
     private String supersededBy;
+    private boolean possibleDuplicate;
 }

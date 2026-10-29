@@ -65,8 +65,11 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     @Override
     public boolean existsValidatedByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day) {
-        return mongoRepository.existsByOrganizationIdAndUserIdAndDayAndStatusAndAssignedByNot(
-                organizationId, userId, day, AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT);
+        // AGENT allocations and the manual corrections moved from them (movedFromAgent) do not close the day
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and(USER_ID).is(userId)
+                .and(DAY).is(day).and("status").is(AiUsageAllocation.Status.VALIDATED)
+                .and("assignedBy").ne(AiUsageAllocation.AssignedBy.AGENT).and("movedFromAgent").ne(true));
+        return mongoTemplate.exists(query, AiUsageAllocationDocument.class);
     }
 
     @Override

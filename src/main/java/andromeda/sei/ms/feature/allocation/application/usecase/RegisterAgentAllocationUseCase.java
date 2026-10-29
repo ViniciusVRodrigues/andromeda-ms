@@ -43,6 +43,7 @@ public class RegisterAgentAllocationUseCase {
         List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(r.organizationId(), r.userId(), r.day());
         AiUsageAllocation existing = ofTheDay.stream()
                 .filter(AiUsageAllocation::isAgent)
+                .filter(AiUsageAllocation::isActive)
                 .filter(a -> a.getSplits() != null && a.getSplits().size() == 1
                         && r.workItemId().equals(a.getSplits().get(0).getWorkItemId()))
                 .findFirst().orElse(null);

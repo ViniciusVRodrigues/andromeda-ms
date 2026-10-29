@@ -1,14 +1,12 @@
 package andromeda.sei.ms.feature.agent.application.usage;
 
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
-import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
-/** Pairing rule only: a row whose hour is before the pairing (truncated to the hour) is historical. */
-@Component
+/** Pairing rule only (a building block of {@link CutoverRowDispositionPolicy}, not a bean): a row whose hour is before the pairing (truncated to the hour) is historical. */
 public class PairingRowDispositionPolicy implements AgentRowDispositionPolicy {
 
     @Override

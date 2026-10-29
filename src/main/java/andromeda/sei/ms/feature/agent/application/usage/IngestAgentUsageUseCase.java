@@ -374,7 +374,8 @@ public class IngestAgentUsageUseCase {
     private Allocation labelOf(AgentDevice device, AIUsage stored) {
         if (stored.getAllocationId() != null) return Allocation.ALLOCATED;
         if (!stored.isActive()) return Allocation.SUPERSEDED;
-        Disposition d = dispositionPolicy.classify(device, stored.getUserId(), stored.getDay(), stored.getBucketStart());
+        Disposition d = dispositionPolicy.classify(device, stored.getUserId(), stored.getDay(), stored.getBucketStart(),
+                stored.getTool());
         return d == Disposition.HISTORY ? Allocation.HISTORY : Allocation.QUEUED;
     }
 
@@ -382,7 +383,7 @@ public class IngestAgentUsageUseCase {
     private Created insertNew(AgentPrincipal principal, AgentDevice device, UsageBatchInput in, Valid v,
                               List<AiPriceEntry> prices, Instant now) {
         UsageBatchInput.Row r = v.row();
-        Disposition disposition = dispositionPolicy.classify(device, principal.userId(), v.day(), v.hour());
+        Disposition disposition = dispositionPolicy.classify(device, principal.userId(), v.day(), v.hour(), r.tool());
 
         ResolvedTask task = null;
         AttributionSource source = AttributionSource.NONE;
@@ -427,6 +428,9 @@ public class IngestAgentUsageUseCase {
 
         Optional<AIUsage> inserted = usages.insert(usage);
         if (inserted.isEmpty()) return null;
+        if (disposition != Disposition.SUPERSEDED) {
+            dispositionPolicy.afterStored(device, principal.userId(), v.day(), r.tool());
+        }
         return new Created(v.index(), inserted.get(), task, source, disposition);
     }
 

@@ -29,6 +29,7 @@ public class GetAllocationHistoryUseCase {
                                 .toList(),
                         allocation.getAssignedBy(),
                         allocation.getAgent(),
+                        allocation.isMovedFromAgent(),
                         allocation.getUpdatedAt()));
     }
 }

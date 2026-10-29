@@ -35,6 +35,7 @@ public class AiUsageAllocationDocumentMapper {
                     doc.getAgent().getRepositories() == null ? List.of() : doc.getAgent().getRepositories(),
                     doc.getAgent().getBranches() == null ? List.of() : doc.getAgent().getBranches()));
         }
+        allocation.setMovedFromAgent(doc.isMovedFromAgent());
         return allocation;
     }
 
@@ -61,6 +62,7 @@ public class AiUsageAllocationDocumentMapper {
                 .agent(allocation.getAgent() == null ? null : new AiUsageAllocationDocument.AgentInfoDocument(
                         allocation.getAgent().resolvedBy(), allocation.getAgent().repositories(),
                         allocation.getAgent().branches()))
+                .movedFromAgent(allocation.isMovedFromAgent())
                 .active(allocation.isActive())
                 .version(allocation.getVersion())
                 .createdAt(allocation.getCreatedAt())

@@ -3,6 +3,8 @@ package andromeda.sei.ms.feature.agent.presentation.dto;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 /** Wire formats of the agent and pairing endpoints (snake_case where the RFC asks for it). */
@@ -56,6 +58,23 @@ public final class AgentWire {
             @Size(max = 64) String timezone,
             Integer pendingRows,
             String oldestPendingDay) {
+    }
+
+    /** Body of {@code PUT /agent/v1/active-task}; {@code since} defaults to now. */
+    public record ActiveTaskRequest(
+            @NotBlank @Size(max = 64) String taskRef,
+            java.time.Instant since,
+            @NotNull java.time.LocalDate day,
+            @Size(max = 300) String repo) {
+    }
+
+    public record ActiveTaskResponse(String workItemId, String ref, String title, int retroactiveRows) {
+    }
+
+    /** Body of {@code POST /api/v1/ai/allocations/{allocationId}/move}. */
+    public record MoveUsageRequest(
+            @NotEmpty @Size(max = 2000) java.util.List<@NotBlank String> aiUsageIds,
+            @NotBlank String workItemId) {
     }
 
     /** Response of {@code POST /agent/v1/usage}. */

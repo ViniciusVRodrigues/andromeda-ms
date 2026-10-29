@@ -18,4 +18,13 @@ public interface AgentRowDispositionPolicy {
     enum Disposition { LIVE, HISTORY, SUPERSEDED }
 
     Disposition classify(AgentDevice device, String userId, LocalDate day, Instant bucketStart);
+
+    /** Same, for a row of this agent tool: the AIEF coexistence is per tool. */
+    default Disposition classify(AgentDevice device, String userId, LocalDate day, Instant bucketStart, String tool) {
+        return classify(device, userId, day, bucketStart);
+    }
+
+    /** Hook after a row that counts was stored: the AIEF rows of the same tool and day without allocation go off. */
+    default void afterStored(AgentDevice device, String userId, LocalDate day, String tool) {
+    }
 }

@@ -13,5 +13,6 @@ public record AllocationHistoryResponse(
         AiUsageAllocation.AssignedBy assignedBy,
         /** Only on AGENT allocations (how the task was resolved, repositories and branches); null on the others. */
         AiUsageAllocation.AgentInfo agent,
+        boolean movedFromAgent,
         Instant updatedAt
 ) {}
