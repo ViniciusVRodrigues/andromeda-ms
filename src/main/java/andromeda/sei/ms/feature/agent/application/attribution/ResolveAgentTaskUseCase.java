@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.agent.domain.attribution.TaskRefParser;
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
@@ -19,7 +20,7 @@ import java.util.Optional;
 /**
  * Server-side task resolution of an agent usage row (agente-endpoint-v2, design 5). The first step
  * that resolves wins: the row taskRef; the device active task; the branch matched against the
- * organization patterns; the single in-progress item of the user in the current sprint of the
+ * organization work item patterns (only an item of the user's sprint); the single in-progress item of the user in the current sprint of the
  * project bound to the row repository. A step that does not resolve (unknown or ambiguous
  * reference, project the user cannot access, no eligible item) falls through to the next.
  *
@@ -94,12 +95,36 @@ public class ResolveAgentTaskUseCase {
         return a.trim().equalsIgnoreCase(b.trim());
     }
 
+    /**
+     * Branch step (design 5.3). Off when the organization disabled the patterns. A number taken
+     * from a branch is not explicit, so the item must be the user's own: in the current sprint of
+     * its project or assigned to the user ({@code 2026-ajustes} must not grab an old item 2026).
+     */
     private Optional<WorkItem> byBranch(AgentTaskQuery q) {
         if (q.branch() == null || q.branch().isBlank()) return Optional.empty();
-        List<String> patterns = organizationRepository.findById(q.organizationId())
-                .map(Organization::getAgentSettings).map(s -> s.branchPatterns()).orElse(null);
-        return BranchPatternMatcher.of(patterns).match(q.branch())
-                .flatMap(group -> byTaskRef(q.organizationId(), q.userId(), group));
+        WorkItemPatterns patterns = organizationRepository.findById(q.organizationId())
+                .map(Organization::getWorkItemPatterns).orElseGet(WorkItemPatterns::defaults);
+        if (!patterns.enabled()) return Optional.empty();
+        return BranchPatternMatcher.of(patterns.regexes()).match(q.branch())
+                .flatMap(group -> TaskRefParser.parse(group))
+                .flatMap(externalId -> {
+                    List<WorkItem> found = workItemRepository
+                            .findAllActiveByOrganizationIdAndExternalId(q.organizationId(), externalId);
+                    if (found.size() != 1) return Optional.<WorkItem>empty();
+                    WorkItem item = found.get(0);
+                    if (!item.isActive() || !belongsToUserSprint(q.organizationId(), q.userId(), item)) {
+                        return Optional.<WorkItem>empty();
+                    }
+                    return usable(q.organizationId(), q.userId(), item);
+                });
+    }
+
+    private boolean belongsToUserSprint(String organizationId, String userId, WorkItem item) {
+        if (userId != null && userId.equals(item.getAssigneeUserId())) return true;
+        if (item.getSprintId() == null || item.getProjectId() == null) return false;
+        return sprintRepository.findCurrentSprintByOrganizationIdAndProjectId(organizationId, item.getProjectId())
+                .map(sprint -> item.getSprintId().equals(sprint.getId()))
+                .orElse(false);
     }
 
     private Optional<WorkItem> byTaskRef(String organizationId, String userId, String taskRef) {

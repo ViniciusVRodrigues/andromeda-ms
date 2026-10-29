@@ -13,19 +13,26 @@ class BranchPatternMatcherTest {
     private final BranchPatternMatcher defaults = BranchPatternMatcher.defaults();
 
     @Test
-    void should_matchDefaults() {
+    void should_matchOnlyTheAzureBoardsConventionByDefault() {
         assertThat(defaults.match("feature/AB#123-x")).contains("123");
-        assertThat(defaults.match("feature/1234-desc")).contains("1234");
-        assertThat(defaults.match("bugfix/task-987")).contains("987");
-        assertThat(defaults.match("PROJ-45-login")).contains("PROJ-45");
+        assertThat(defaults.match("feature/ab#123-x")).contains("123");
+        assertThat(defaults.match("feature/AB#12")).contains("12");
+        assertThat(defaults.match("feature/1234-desc")).isEmpty();
+        assertThat(defaults.match("PROJ-45-login")).isEmpty();
         assertThat(defaults.match("main")).isEmpty();
         assertThat(defaults.match(null)).isEmpty();
     }
 
     @Test
-    void should_acceptYearAsNumericReference_documentedLimitation() {
-        // release/2026 casa o default numerico (2026); sem work item 2026 o servidor nao resolve.
-        assertThat(defaults.match("release/2026")).contains("2026");
+    void should_matchThePresetMolds() {
+        var jiraThenNumber = BranchPatternMatcher.of(
+                List.of(BranchPatternMatcher.JIRA_KEY_REGEX, BranchPatternMatcher.NUMBER_REGEX));
+        assertThat(jiraThenNumber.match("PROJ-45-login")).contains("PROJ-45");
+        assertThat(jiraThenNumber.match("feature/1234-desc")).contains("1234");
+        assertThat(jiraThenNumber.match("bugfix/task-987")).contains("987");
+        // release/2026 matches the numeric mold; without a work item 2026 in the sprint the agent does not resolve it
+        assertThat(jiraThenNumber.match("release/2026")).contains("2026");
+        assertThat(jiraThenNumber.match("main")).isEmpty();
     }
 
     @Test

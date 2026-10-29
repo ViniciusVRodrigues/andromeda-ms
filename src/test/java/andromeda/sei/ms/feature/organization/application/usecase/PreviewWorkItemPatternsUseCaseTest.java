@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.organization.application.usecase;
 
-import andromeda.sei.ms.feature.organization.domain.exception.AgentBranchPatternInvalidException;
+import andromeda.sei.ms.feature.organization.domain.exception.WorkItemPatternInvalidException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -8,9 +8,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class PreviewAgentBranchPatternsUseCaseTest {
+class PreviewWorkItemPatternsUseCaseTest {
 
-    private final PreviewAgentBranchPatternsUseCase useCase = new PreviewAgentBranchPatternsUseCase();
+    private final PreviewWorkItemPatternsUseCase useCase = new PreviewWorkItemPatternsUseCase();
 
     @Test
     void should_previewDefaults_when_noPatterns() {
@@ -40,6 +40,6 @@ class PreviewAgentBranchPatternsUseCaseTest {
     @Test
     void should_reject_when_patternInvalid() {
         assertThatThrownBy(() -> useCase.execute(List.of("no-group"), List.of("x")))
-                .isInstanceOf(AgentBranchPatternInvalidException.class);
+                .isInstanceOf(WorkItemPatternInvalidException.class);
     }
 }

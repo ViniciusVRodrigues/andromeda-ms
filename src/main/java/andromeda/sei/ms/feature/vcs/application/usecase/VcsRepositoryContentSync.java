@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.vcs.application.usecase;
 
-import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.vcs.application.WorkItemLinkResolver;
 import andromeda.sei.ms.feature.vcs.application.port.VcsAuthorResolver;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
@@ -48,18 +48,18 @@ public class VcsRepositoryContentSync {
 
     /** What every step needs about the repository being synced. */
     public record Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
-                          VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding,
+                          VcsRepository repository, WorkItemPatterns linkPatterns, VcsRepoBinding binding,
                           List<String> missingBranches, AtomicInteger reviewFailures) {
 
         /** Legacy context: no binding, so the default branch only and no pull request filter. */
         public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
-                       VcsRepository repository, WorkItemLinkConfig linkConfig) {
-            this(credentials, client, authors, repository, linkConfig, null, new ArrayList<>(), new AtomicInteger());
+                       VcsRepository repository, WorkItemPatterns linkPatterns) {
+            this(credentials, client, authors, repository, linkPatterns, null, new ArrayList<>(), new AtomicInteger());
         }
 
         public Context(VcsCredentials credentials, VcsProviderClient client, VcsAuthorResolver authors,
-                       VcsRepository repository, WorkItemLinkConfig linkConfig, VcsRepoBinding binding) {
-            this(credentials, client, authors, repository, linkConfig, binding, new ArrayList<>(), new AtomicInteger());
+                       VcsRepository repository, WorkItemPatterns linkPatterns, VcsRepoBinding binding) {
+            this(credentials, client, authors, repository, linkPatterns, binding, new ArrayList<>(), new AtomicInteger());
         }
 
         /** The branches read; a legacy binding (or none) reads the default branch only. */
@@ -218,7 +218,7 @@ public class VcsRepositoryContentSync {
         try {
             List<String> nativeLinks = context.client()
                     .nativeWorkItemLinks(context.credentials(), context.repository(), remote);
-            return WorkItemLinkResolver.resolve(nativeLinks, context.linkConfig(), remote.sourceBranch(),
+            return WorkItemLinkResolver.resolve(nativeLinks, context.linkPatterns(), remote.sourceBranch(),
                     remote.body(), remote.title()).orElse(null);
         } catch (RuntimeException e) {
             log.warn("Work item link resolution failed for PR #{}: {}", remote.number(), e.getMessage());

@@ -1,22 +1,21 @@
 package andromeda.sei.ms.feature.organization.application.usecase;
 
-import andromeda.sei.ms.feature.organization.application.dto.AgentSettingsOutput;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.organization.domain.exception.OrganizationNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
-public class GetAgentSettingsUseCase {
+public class GetWorkItemPatternsUseCase {
 
     private final OrganizationRepository organizationRepository;
 
-    public AgentSettingsOutput execute(String organizationId) {
+    public WorkItemPatterns execute(String organizationId) {
         return organizationRepository.findById(organizationId)
-                .map(Organization::getAgentSettings)
-                .map(AgentSettingsOutput::from)
+                .map(Organization::getWorkItemPatterns)
                 .orElseThrow(() -> new OrganizationNotFoundException(organizationId));
     }
 }

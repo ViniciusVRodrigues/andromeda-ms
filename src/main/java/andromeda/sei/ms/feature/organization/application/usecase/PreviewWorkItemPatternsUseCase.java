@@ -1,7 +1,7 @@
 package andromeda.sei.ms.feature.organization.application.usecase;
 
 import andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher;
-import andromeda.sei.ms.feature.organization.domain.exception.AgentBranchPatternInvalidException;
+import andromeda.sei.ms.feature.organization.domain.exception.WorkItemPatternInvalidException;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -11,14 +11,14 @@ import java.util.List;
  * attribution uses. Nothing is stored. Null or empty patterns preview the defaults.
  */
 @Component
-public class PreviewAgentBranchPatternsUseCase {
+public class PreviewWorkItemPatternsUseCase {
 
     /** {@code workItemNumber}, {@code patternIndex} and {@code matchStart/End} are null when nothing matched. */
     public record Result(String branch, String workItemNumber, Integer patternIndex, Integer matchStart, Integer matchEnd) {}
 
     public List<Result> execute(List<String> branchPatterns, List<String> branches) {
         List<BranchPatternMatcher.Error> errors = BranchPatternMatcher.validateAll(branchPatterns);
-        if (!errors.isEmpty()) throw new AgentBranchPatternInvalidException(errors);
+        if (!errors.isEmpty()) throw new WorkItemPatternInvalidException(errors);
         BranchPatternMatcher matcher = BranchPatternMatcher.of(branchPatterns);
         return (branches == null ? List.<String>of() : branches).stream()
                 .map(branch -> matcher.matchDetailed(branch)

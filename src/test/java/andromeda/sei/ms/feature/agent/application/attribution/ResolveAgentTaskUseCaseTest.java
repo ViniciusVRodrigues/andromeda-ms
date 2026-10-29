@@ -1,9 +1,9 @@
 package andromeda.sei.ms.feature.agent.application.attribution;
 
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
-import andromeda.sei.ms.feature.organization.domain.AgentSettings;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.workitem.domain.Sprint;
 import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItem;
@@ -114,6 +114,32 @@ class ResolveAgentTaskUseCaseTest {
         assertThat(useCase.execute(query(null, null, T0, noRepo)).source()).isEqualTo(AttributionSource.ACTIVE_TASK);
     }
 
+    private void orgPatterns(WorkItemPatterns patterns) {
+        Organization org = mock(Organization.class);
+        when(org.getWorkItemPatterns()).thenReturn(patterns);
+        when(organizations.findById(ORG)).thenReturn(Optional.of(org));
+    }
+
+    private static WorkItemPatterns custom(boolean enabled, String... regexes) {
+        return new WorkItemPatterns(enabled, WorkItemPatterns.Mode.CUSTOM,
+                java.util.Arrays.stream(regexes).map(r -> WorkItemPatterns.Entry.of(r, false)).toList(),
+                null, null, null, null, null);
+    }
+
+    /** Item of a given sprint and assignee (the default helper puts it in sp-1, assigned to the user). */
+    private WorkItem inSprint(String ext, String sprintId, String assignee) {
+        return new WorkItem("wi-" + ext, ORG, P1, WorkItem.Source.AZURE_DEVOPS, ext, T0, "Title " + ext, "Story",
+                WorkItem.ResolvedType.STORY, "Active", WorkItem.ResolvedStatus.IN_PROGRESS, "2", List.of(), sprintId,
+                null, assignee, null, null, T0, null, null, null, null, true, 1L, T0, null, null, null, null, null,
+                null, null, null);
+    }
+
+    private void currentSprint(String id) {
+        Sprint sprint = mock(Sprint.class);
+        when(sprint.getId()).thenReturn(id);
+        when(sprints.findCurrentSprintByOrganizationIdAndProjectId(ORG, P1)).thenReturn(Optional.of(sprint));
+    }
+
     @Test
     void should_resolveByBranch_withDefaultAndCustomPatterns() {
         exists(azure("123"), azure("77"));
@@ -121,11 +147,60 @@ class ResolveAgentTaskUseCaseTest {
         assertThat(useCase.execute(query(null, "feature/AB#123-login", T0, null)).source())
                 .isEqualTo(AttributionSource.BRANCH);
 
-        Organization org = mock(Organization.class);
-        when(org.getAgentSettings()).thenReturn(new AgentSettings(List.of("^wi-(\\d+)")));
-        when(organizations.findById(ORG)).thenReturn(Optional.of(org));
+        orgPatterns(custom(true, "^wi-(\\d+)"));
         var r = useCase.execute(query(null, "wi-77", T0, null));
         assertThat(r.resolvedTask().workItemId()).isEqualTo("wi-77");
+    }
+
+    @Test
+    void should_notResolveBranchNumber_when_itemIsOutsideTheUsersSprintAndOfSomeoneElse() {
+        orgPatterns(custom(true, WorkItemPatterns.defaults().regexes().get(0),
+                andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher.NUMBER_REGEX));
+        exists(inSprint("2026", "sp-old", "other-user"));
+        currentSprint("sp-1");
+
+        var r = useCase.execute(query(null, "2026-ajustes", T0, null));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.NONE);
+        assertThat(r.resolvedTask()).isNull();
+    }
+
+    @Test
+    void should_resolveBranchNumber_when_itemIsInTheCurrentSprintOfItsProject() {
+        orgPatterns(custom(true, andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher.NUMBER_REGEX));
+        exists(inSprint("2026", "sp-1", "other-user"));
+        currentSprint("sp-1");
+
+        var r = useCase.execute(query(null, "feature/2026-ajustes", T0, null));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+        assertThat(r.resolvedTask().workItemId()).isEqualTo("wi-2026");
+    }
+
+    @Test
+    void should_resolveBranchNumber_when_itemIsAssignedToTheUser() {
+        orgPatterns(custom(true, andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher.NUMBER_REGEX));
+        exists(inSprint("2026", "sp-old", USER));
+
+        var r = useCase.execute(query(null, "feature/2026-ajustes", T0, null));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+    }
+
+    @Test
+    void should_skipTheBranchStep_when_patternsAreDisabled() {
+        orgPatterns(custom(false, "AB#(\\d+)"));
+        exists(azure("123"));
+
+        assertThat(useCase.execute(query(null, "feature/AB#123-login", T0, null)).source())
+                .isEqualTo(AttributionSource.NONE);
+    }
+
+    @Test
+    void should_notApplyTheSprintCheck_toTaskRef() {
+        exists(inSprint("2026", "sp-old", "other-user"));
+
+        assertThat(useCase.execute(query("2026", null, T0, null)).source()).isEqualTo(AttributionSource.TASK_REF);
     }
 
     @Test

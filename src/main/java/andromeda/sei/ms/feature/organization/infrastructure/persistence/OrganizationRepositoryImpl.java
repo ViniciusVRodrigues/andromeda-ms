@@ -80,7 +80,7 @@ public class OrganizationRepositoryImpl implements OrganizationRepository {
             doc.setLastScheduledSyncAt(null);
             doc.setMetricSettings(null);
             doc.setVcsSettings(null);
-            doc.setAgentSettings(null);
+            doc.setWorkItemPatterns(null);
             doc.setPurgedAt(purgedAt);
             doc.setUpdatedAt(purgedAt);
             mongoRepository.save(doc);

@@ -21,14 +21,37 @@ public final class BranchPatternMatcher {
     public static final int MAX_BRANCH_LENGTH = 255;
     public static final Duration DEADLINE = Duration.ofMillis(50);
 
-    /**
-     * Defaults (design 5.3). The Jira key comes before the numeric pattern: {@code PROJ-45-login}
-     * would otherwise match the numeric one first and resolve to {@code 45}.
-     */
-    public static final List<String> DEFAULTS = List.of(
-            "AB#(\\d+)",
-            "([A-Z][A-Z0-9]{1,9}-\\d+)",
-            "(?i)(?:^|/)(?:[a-z]+[-_])?(\\d{2,7})(?=[-_/.]|$)");
+    /** Preset molds (design 14.2 and 14.5). {@code PREFIX} and {@code CUSTOM} have no fixed regex. */
+    public static final String AB_HASH_REGEX = "(?i)\\QAB#\\E(\\d+)(?!\\d)";
+    public static final String JIRA_KEY_REGEX = "([A-Z][A-Z0-9]{1,9}-\\d+)";
+    public static final String NUMBER_REGEX = "(?i)(?:^|/)(?:[a-z]+[-_])?(\\d{2,7})(?=[-_/.]|$)";
+
+    /** Default of an organization that configured nothing: only the Azure Boards convention, so today's links do not change. */
+    public static final List<String> DEFAULTS = List.of(AB_HASH_REGEX);
+
+    /** Literal-prefix mold: (?i) quoted prefix, digits, not followed by a digit. */
+    public static String prefixRegex(String prefix) {
+        return "(?i)" + Pattern.quote(prefix) + "(\\d+)(?!\\d)";
+    }
+
+    private static final Pattern PREFIX_MOLD =
+            Pattern.compile("^\\(\\?i\\)\\\\Q(.+)\\\\E\\(\\\\d\\+\\)\\(\\?!\\\\d\\)$", Pattern.DOTALL);
+
+    /** The literal prefix of a regex built by {@link #prefixRegex}, or empty when it is not that mold. */
+    public static Optional<String> literalPrefix(String regex) {
+        if (regex == null) return Optional.empty();
+        Matcher m = PREFIX_MOLD.matcher(regex);
+        if (!m.matches() || m.group(1).contains("\\E")) return Optional.empty();
+        return Optional.of(m.group(1));
+    }
+
+    /** Preset id of a regex by comparison with the molds: AB_HASH, JIRA_KEY, NUMBER, PREFIX or CUSTOM. */
+    public static String classify(String regex) {
+        if (AB_HASH_REGEX.equals(regex)) return "AB_HASH";
+        if (JIRA_KEY_REGEX.equals(regex)) return "JIRA_KEY";
+        if (NUMBER_REGEX.equals(regex)) return "NUMBER";
+        return literalPrefix(regex).isPresent() ? "PREFIX" : "CUSTOM";
+    }
 
     public enum ErrorCode { PATTERN_INVALID, PATTERN_NO_GROUP, PATTERN_TOO_LONG, PATTERN_TOO_MANY }
 
@@ -121,6 +144,29 @@ public final class BranchPatternMatcher {
         }
         return Optional.empty();
     }
+
+    /**
+     * First group 1 over free text (pull request body or title): no cut, since a reference may sit
+     * anywhere, but the same kind of deadline (200 ms) against slow regexes.
+     */
+    public Optional<String> matchText(String text) {
+        if (text == null || text.isBlank()) return Optional.empty();
+        DeadlineCharSequence input = new DeadlineCharSequence(text, System.nanoTime() + TEXT_DEADLINE.toNanos());
+        try {
+            for (Indexed entry : patterns) {
+                Matcher m = entry.pattern().matcher(input);
+                if (m.find()) {
+                    String group = m.groupCount() >= 1 ? m.group(1) : null;
+                    if (group != null && !group.isBlank()) return Optional.of(group);
+                }
+            }
+        } catch (MatchTimeoutException timeout) {
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    public static final Duration TEXT_DEADLINE = Duration.ofMillis(200);
 
     private static final class MatchTimeoutException extends RuntimeException {
         MatchTimeoutException() {

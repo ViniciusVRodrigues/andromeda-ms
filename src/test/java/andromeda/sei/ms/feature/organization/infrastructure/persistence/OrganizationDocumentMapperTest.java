@@ -1,6 +1,9 @@
 package andromeda.sei.ms.feature.organization.infrastructure.persistence;
 
+import andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher;
 import andromeda.sei.ms.feature.organization.domain.Organization;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
+import java.util.List;
 import andromeda.sei.ms.feature.organization.domain.ScheduledSyncFrequency;
 import andromeda.sei.ms.feature.organization.domain.SyncSettings;
 import org.junit.jupiter.api.Test;
@@ -90,21 +93,75 @@ class OrganizationDocumentMapperTest {
     }
 
     @Test
-    void should_readDefaultAgentSettings_when_documentHasNone() {
+    void should_readDefaultPatterns_when_documentHasNothing() {
         Organization organization = mapper.toDomain(OrganizationDocument.builder().id("org-1").active(true).build());
 
-        assertThat(organization.getAgentSettings().usingDefaults()).isTrue();
-        assertThat(mapper.toDocument(organization).getAgentSettings()).isNull();
+        assertThat(organization.getWorkItemPatterns().mode()).isEqualTo(WorkItemPatterns.Mode.DEFAULT);
+        assertThat(organization.getWorkItemPatterns().enabled()).isTrue();
+        assertThat(organization.getWorkItemPatterns().regexes()).containsExactly(BranchPatternMatcher.AB_HASH_REGEX);
+        assertThat(organization.getWorkItemPatterns().patterns().get(0).preset()).isEqualTo("AB_HASH");
+        assertThat(organization.getWorkItemPatterns().patterns().get(0).alsoInText()).isTrue();
+        assertThat(mapper.toDocument(organization).getWorkItemPatterns()).isNull();
     }
 
     @Test
-    void should_roundTripAgentBranchPatterns() {
+    void should_fallBackToLegacyDefault_asModeDefault() {
         OrganizationDocument doc = OrganizationDocument.builder().id("org-1").active(true)
-                .agentSettings(new AgentSettingsDocument(java.util.List.of("^wi-([0-9]+)"))).build();
+                .vcsSettings(new VcsSettingsDocument(new VcsSettingsDocument.WorkItemLinkDocument(true, List.of("AB#"))))
+                .build();
+
+        WorkItemPatterns patterns = mapper.toDomain(doc).getWorkItemPatterns();
+
+        assertThat(patterns.mode()).isEqualTo(WorkItemPatterns.Mode.DEFAULT);
+        assertThat(patterns.regexes()).containsExactly(BranchPatternMatcher.AB_HASH_REGEX);
+    }
+
+    @Test
+    void should_fallBackToLegacyCustomPrefixes_asLiteralPatternsInCustomMode() {
+        OrganizationDocument doc = OrganizationDocument.builder().id("org-1").active(true)
+                .vcsSettings(new VcsSettingsDocument(
+                        new VcsSettingsDocument.WorkItemLinkDocument(true, List.of("AB#", "[WI]-"))))
+                .build();
+
+        WorkItemPatterns patterns = mapper.toDomain(doc).getWorkItemPatterns();
+
+        assertThat(patterns.mode()).isEqualTo(WorkItemPatterns.Mode.CUSTOM);
+        assertThat(patterns.enabled()).isTrue();
+        assertThat(patterns.patterns()).extracting(WorkItemPatterns.Entry::preset).containsExactly("AB_HASH", "PREFIX");
+        assertThat(patterns.patterns()).allMatch(WorkItemPatterns.Entry::alsoInText);
+        assertThat(patterns.patterns().get(1).regex()).isEqualTo(BranchPatternMatcher.prefixRegex("[WI]-"));
+        assertThat(patterns.legacyPrefixes()).containsExactly("AB#", "[WI]-");
+    }
+
+    @Test
+    void should_fallBackToLegacyDisabled_keepingEnabledFalse() {
+        OrganizationDocument doc = OrganizationDocument.builder().id("org-1").active(true)
+                .vcsSettings(new VcsSettingsDocument(new VcsSettingsDocument.WorkItemLinkDocument(false, List.of("AB#"))))
+                .build();
+
+        WorkItemPatterns patterns = mapper.toDomain(doc).getWorkItemPatterns();
+
+        assertThat(patterns.enabled()).isFalse();
+        assertThat(patterns.mode()).isEqualTo(WorkItemPatterns.Mode.CUSTOM);
+    }
+
+    @Test
+    void should_preferStoredPatterns_overLegacyAndRoundTripThem() {
+        WorkItemPatternsDocument stored = new WorkItemPatternsDocument(true, "DETECTED",
+                List.of(new WorkItemPatternsDocument.EntryDocument(BranchPatternMatcher.AB_HASH_REGEX, "AB_HASH", true),
+                        new WorkItemPatternsDocument.EntryDocument(BranchPatternMatcher.NUMBER_REGEX, "NUMBER", false)),
+                "user-1", Instant.parse("2026-10-29T10:00:00Z"), "user-1", Instant.parse("2026-10-29T10:00:00Z"), null);
+        OrganizationDocument doc = OrganizationDocument.builder().id("org-1").active(true)
+                .vcsSettings(new VcsSettingsDocument(new VcsSettingsDocument.WorkItemLinkDocument(true, List.of("WI-"))))
+                .workItemPatterns(stored).build();
 
         Organization organization = mapper.toDomain(doc);
 
-        assertThat(organization.getAgentSettings().branchPatterns()).containsExactly("^wi-([0-9]+)");
-        assertThat(mapper.toDocument(organization).getAgentSettings().getBranchPatterns()).containsExactly("^wi-([0-9]+)");
+        assertThat(organization.getWorkItemPatterns().mode()).isEqualTo(WorkItemPatterns.Mode.DETECTED);
+        assertThat(organization.getWorkItemPatterns().patterns()).extracting(WorkItemPatterns.Entry::preset)
+                .containsExactly("AB_HASH", "NUMBER");
+        OrganizationDocument back = mapper.toDocument(organization);
+        assertThat(back.getWorkItemPatterns()).isEqualTo(stored);
+        assertThat(back.getVcsSettings().getWorkItemLink().getPrefixes()).containsExactly("WI-");
     }
 }

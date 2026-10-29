@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.vcs.application.usecase;
 
-import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.vcs.application.port.VcsAuthorResolver;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
 import andromeda.sei.ms.feature.vcs.application.port.VcsProviderClient;
@@ -66,7 +66,7 @@ class VcsRepositoryContentSyncTest {
 
     @BeforeEach
     void setUp() {
-        context = new VcsRepositoryContentSync.Context(CREDENTIALS, client, authors, repository, WorkItemLinkConfig.defaults());
+        context = new VcsRepositoryContentSync.Context(CREDENTIALS, client, authors, repository, WorkItemPatterns.defaults());
         lenient().when(commitRepository.findByOrganizationIdAndRepositoryIdAndSha(any(), any(), any()))
                 .thenReturn(Optional.empty());
         lenient().when(pullRequestRepository.findByOrganizationIdAndRepositoryIdAndExternalId(any(), any(), any()))
@@ -158,7 +158,7 @@ class VcsRepositoryContentSyncTest {
 
     private VcsRepositoryContentSync.Context contextOf(VcsRepoBinding binding) {
         return new VcsRepositoryContentSync.Context(CREDENTIALS, client, authors, repository,
-                WorkItemLinkConfig.defaults(), binding);
+                WorkItemPatterns.defaults(), binding);
     }
 
     @Test
@@ -359,7 +359,7 @@ class VcsRepositoryContentSyncTest {
     @Test
     void should_notLink_when_linkingDisabled() {
         context = new VcsRepositoryContentSync.Context(CREDENTIALS, client, authors, repository,
-                new WorkItemLinkConfig(false, List.of("AB#")));
+                new WorkItemPatterns(false, WorkItemPatterns.Mode.CUSTOM, null, null, null, null, null, null));
         givenRemotePullRequests(remote("62", 62, PullRequestStatus.OPEN, "feature/AB#5", null, "t"));
 
         assertThat(contentSync.syncPullRequests(context, null, null).get(0).getLinkedWorkItemExternalId()).isNull();
