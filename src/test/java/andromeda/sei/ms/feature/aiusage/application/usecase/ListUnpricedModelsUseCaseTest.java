@@ -51,9 +51,9 @@ class ListUnpricedModelsUseCaseTest {
         List<UnpricedModelOutput> result = useCase.execute("org-1", null, null);
 
         assertThat(result).containsExactly(
-                new UnpricedModelOutput("gemini-x", 900L, 1, true),
-                new UnpricedModelOutput("auto", 500L, 7, false),
-                new UnpricedModelOutput("gpt-6", 100L, 2, true));
+                new UnpricedModelOutput("gemini-x", 900L, 1, true, List.of("OUTPUT"), 0, 0, 0),
+                new UnpricedModelOutput("gpt-6", 100L, 2, true, List.of("OUTPUT"), 0, 0, 0),
+                new UnpricedModelOutput("auto", 500L, 7, false, List.of(), 0, 0, 0));
     }
 
     @Test
@@ -70,5 +70,48 @@ class ListUnpricedModelsUseCaseTest {
     void should_reject_when_fromIsAfterTo() {
         assertThatThrownBy(() -> useCase.execute("org-1", LocalDate.of(2026, 10, 2), LocalDate.of(2026, 10, 1)))
                 .isInstanceOf(AiUsagePeriodInvalidException.class);
+    }
+
+    @Test
+    void should_listIncompletePrice_withMissingPartsInOrder() {
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+        when(organization.getAiPrices()).thenReturn(List.of(
+                new AiPriceEntry("claude-opus-5", new BigDecimal("0.005"), new BigDecimal("0.025"))));
+        when(aiUsageRepository.summarizeOutputByModel("org-1", null, null)).thenReturn(List.of(
+                new AiUsageModelOutput("claude-opus-5", 5_000L, 4, 1_000L, 3_400_000L, 90_000L)));
+
+        assertThat(useCase.execute("org-1", null, null)).containsExactly(
+                new UnpricedModelOutput("claude-opus-5", 5_000L, 4, true,
+                        List.of("CACHE_READ", "CACHE_WRITE"), 1_000L, 3_400_000L, 90_000L));
+    }
+
+    @Test
+    void should_notFlagZeroPrice_orPartsTheAgentDidNotUse() {
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+        when(organization.getAiPrices()).thenReturn(List.of(
+                new AiPriceEntry("m1", new BigDecimal("0.005"), new BigDecimal("0.025"), new BigDecimal("0.0005"), BigDecimal.ZERO),
+                new AiPriceEntry("m2", null, new BigDecimal("0.025"))));
+        when(aiUsageRepository.summarizeOutputByModel("org-1", null, null)).thenReturn(List.of(
+                new AiUsageModelOutput("m1", 10L, 1, 5L, 5L, 5L),
+                new AiUsageModelOutput("m2", 10L, 1, 0L, 0L, 0L)));
+
+        assertThat(useCase.execute("org-1", null, null)).isEmpty();
+    }
+
+    @Test
+    void should_orderNoPrice_thenIncomplete_thenNonBillable_eachByOutputDesc() {
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+        when(organization.getAiPrices()).thenReturn(List.of(
+                new AiPriceEntry("a", new BigDecimal("1"), new BigDecimal("1"), null, null),
+                new AiPriceEntry("b", new BigDecimal("1"), new BigDecimal("1"), null, null)));
+        when(aiUsageRepository.summarizeOutputByModel("org-1", null, null)).thenReturn(List.of(
+                new AiUsageModelOutput("auto", 9_000L, 1, 0, 0, 0),
+                new AiUsageModelOutput("a", 100L, 1, 0, 1L, 0),
+                new AiUsageModelOutput("b", 300L, 1, 0, 1L, 0),
+                new AiUsageModelOutput("zzz", 10L, 1, 0, 0, 0),
+                new AiUsageModelOutput("yyy", 20L, 1, 0, 0, 0)));
+
+        assertThat(useCase.execute("org-1", null, null)).extracting(UnpricedModelOutput::model)
+                .containsExactly("yyy", "zzz", "b", "a", "auto");
     }
 }

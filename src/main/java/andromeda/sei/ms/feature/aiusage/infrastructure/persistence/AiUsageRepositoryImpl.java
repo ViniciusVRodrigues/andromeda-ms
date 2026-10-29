@@ -160,13 +160,26 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         MatchOperation match = Aggregation.match(criteria);
         GroupOperation group = Aggregation.group("model")
                 .sum("outputTokens").as("outputTokens")
-                .count().as("records");
+                .count().as("records")
+                .sum(agentOnly("inputTokens")).as("agentInputTokens")
+                .sum(agentOnly("cacheReadTokens")).as("agentCacheReadTokens")
+                .sum(agentOnly("cacheWriteTokens")).as("agentCacheWriteTokens");
         Aggregation agg = Aggregation.newAggregation(match, group);
         AggregationResults<Map> results = mongoTemplate.aggregate(agg, AiUsageDocument.class, Map.class);
         return results.getMappedResults().stream()
                 .map(r -> new AiUsageModelOutput((String) r.get("_id"),
-                        toLong(r.get("outputTokens")), toLong(r.get("records"))))
+                        toLong(r.get("outputTokens")), toLong(r.get("records")),
+                        toLong(r.get("agentInputTokens")), toLong(r.get("agentCacheReadTokens")),
+                        toLong(r.get("agentCacheWriteTokens"))))
                 .toList();
+    }
+
+    /** {@code $cond: [{$eq: ["$source", "AGENT"]}, "$field", 0]} */
+    private static org.springframework.data.mongodb.core.aggregation.AggregationExpression agentOnly(String field) {
+        return org.springframework.data.mongodb.core.aggregation.ConditionalOperators
+                .when(Criteria.where("source").is("AGENT"))
+                .thenValueOf(field)
+                .otherwise(0);
     }
 
     @Override

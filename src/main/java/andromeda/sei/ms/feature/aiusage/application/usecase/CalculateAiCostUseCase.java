@@ -30,7 +30,7 @@ public class CalculateAiCostUseCase {
             Pattern.compile("(-\\d{8}|-\\d{4}-\\d{2}-\\d{2}|@\\d{8})$");
 
     /** Lowercase, trimmed, dots as dashes and without a trailing date suffix. */
-    static String normalize(String model) {
+    public static String normalize(String model) {
         if (model == null) return "";
         String m = model.trim().toLowerCase().replace('.', '-');
         return DATE_SUFFIX.matcher(m).replaceFirst("");
