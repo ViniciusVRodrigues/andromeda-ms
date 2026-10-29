@@ -199,6 +199,42 @@ class OrganizationWorkItemPatternsControllerTest {
     }
 
     @Test
+    void should_acceptEveryPatternForm_when_putting() throws Exception {
+        String abHash = "(?i)\\\\QAB#\\\\E(\\\\d+)(?!\\\\d)";
+        for (String patterns : List.of(
+                "[{\"regex\":\"" + abHash + "\",\"alsoInText\":true}]",
+                "[{\"regex\":\"" + abHash + "\"}]",
+                "[\"" + abHash + "\"]",
+                "[]")) {
+            mockMvc.perform(put(URL).contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"enabled\":true,\"patterns\":" + patterns + "}"))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void should_answer400_when_aPatternIsANumberOrTheJsonEscapeIsInvalid() throws Exception {
+        mockMvc.perform(put(URL).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"patterns\":[42]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+        // a raw \Q is not a valid JSON escape: the usual shell-quoting slip when calling the API by hand
+        mockMvc.perform(put(URL).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"patterns\":[{\"regex\":\"(?i)\\QAB#\\E(\\d+)\"}]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+    }
+
+    @Test
+    void should_previewWithAnAbHashObjectPattern() throws Exception {
+        mockMvc.perform(post(URL + "/preview").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"patterns\":[{\"regex\":\"(?i)\\\\QAB#\\\\E(\\\\d+)(?!\\\\d)\",\"alsoInText\":true}],"
+                                + "\"branches\":[\"feature/AB#123-x\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].workItemNumber").value("123"));
+    }
+
+    @Test
     void should_previewAgainstSampleBranchesAndStoreNothing() throws Exception {
         mockMvc.perform(post(URL + "/preview").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"patterns\":[{\"regex\":\"^wi-(\\\\d+)\"}],\"branches\":[\"wi-77\",\"main\"]}"))
