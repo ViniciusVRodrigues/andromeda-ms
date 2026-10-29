@@ -1,12 +1,15 @@
 package andromeda.sei.ms.feature.agent.application.usecase;
 
 import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.ApprovedDeviceOutput;
+import andromeda.sei.ms.feature.agent.application.event.FirstAgentDeviceApproved;
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceAuthorization;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceAuthorizationRepository;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceRepository;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentPairingConflictException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
 
@@ -18,30 +21,38 @@ import java.time.LocalDate;
  * The logged-in person approves the pairing: creates the {@link AgentDevice} in their organization.
  * Idempotent for the same person; any other state answers 409.
  */
+@Slf4j
 @Component
 public class ApprovePairingUseCase {
 
     private final AgentDeviceAuthorizationRepository authorizations;
     private final AgentDeviceRepository devices;
     private final AiefCutover cutover;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     @Autowired
     public ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
-                                 AiefCutover cutover) {
-        this(authorizations, devices, cutover, Clock.systemUTC());
+                                 AiefCutover cutover, ApplicationEventPublisher events) {
+        this(authorizations, devices, cutover, events, Clock.systemUTC());
     }
 
     ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
                           Clock clock) {
-        this(authorizations, devices, AiefCutover.NONE, clock);
+        this(authorizations, devices, AiefCutover.NONE, event -> { }, clock);
     }
 
     ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
                           AiefCutover cutover, Clock clock) {
+        this(authorizations, devices, cutover, event -> { }, clock);
+    }
+
+    ApprovePairingUseCase(AgentDeviceAuthorizationRepository authorizations, AgentDeviceRepository devices,
+                          AiefCutover cutover, ApplicationEventPublisher events, Clock clock) {
         this.authorizations = authorizations;
         this.devices = devices;
         this.cutover = cutover;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -57,6 +68,7 @@ public class ApprovePairingUseCase {
             throw PendingPairings.conflictFor(status);
         }
 
+        boolean firstDeviceOfTheOrganization = !devices.existsByOrganizationId(organizationId);
         AgentDevice device = new AgentDevice();
         device.setOrganizationId(organizationId);
         device.setUserId(userId);
@@ -89,7 +101,17 @@ public class ApprovePairingUseCase {
             devices.save(saved);
             throw AgentPairingConflictException.used();
         }
+        if (firstDeviceOfTheOrganization) publishFirstDevice(organizationId);
         return new ApprovedDeviceOutput(saved.getId(), saved.getMachineName());
+    }
+
+    /** The detection runs in the background; whatever happens there never fails the approval. */
+    private void publishFirstDevice(String organizationId) {
+        try {
+            events.publishEvent(new FirstAgentDeviceApproved(organizationId));
+        } catch (RuntimeException e) {
+            log.warn("Could not publish the first agent device event for organization {}", organizationId, e);
+        }
     }
 
     private ApprovedDeviceOutput alreadyApprovedBy(AgentDeviceAuthorization a, String organizationId, String userId) {

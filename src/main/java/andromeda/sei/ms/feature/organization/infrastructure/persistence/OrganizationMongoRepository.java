@@ -14,6 +14,8 @@ public interface OrganizationMongoRepository extends MongoRepository<Organizatio
 
     boolean existsBySlug(String slug);
 
+    List<OrganizationDocument> findAllByActiveTrue();
+
     /** {@code lastScheduledSyncAt: null} casa tanto o campo nulo quanto ausente. */
     @Query("{ 'active': true, 'syncSettings.scheduledSync': ?0, "
             + "'$or': [ { 'lastScheduledSyncAt': null }, { 'lastScheduledSyncAt': { '$lte': ?1 } } ] }")

@@ -10,6 +10,8 @@ import andromeda.sei.ms.feature.organization.presentation.dto.WorkItemPatternPre
 import andromeda.sei.ms.feature.organization.presentation.dto.WorkItemPatternsPreviewRequest;
 import andromeda.sei.ms.feature.organization.presentation.dto.WorkItemPatternsRequest;
 import andromeda.sei.ms.feature.organization.presentation.dto.WorkItemPatternsResponse;
+import andromeda.sei.ms.feature.organization.domain.exception.WorkItemPatternDetectionRateLimitedException;
+import andromeda.sei.ms.shared.infrastructure.ratelimit.RateLimiter;
 import andromeda.sei.ms.shared.infrastructure.security.AndromedaUserDetails;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.util.List;
 
 @Tag(name = "Organization work item patterns",
@@ -41,6 +44,10 @@ public class OrganizationWorkItemPatternsController {
     private final ConfirmWorkItemPatternsUseCase confirmUseCase;
     private final PreviewWorkItemPatternsUseCase previewUseCase;
     private final DetectWorkItemPatternsUseCase detectUseCase;
+    private final RateLimiter rateLimiter;
+
+    /** One manual detection per organization every 10 minutes. */
+    static final Duration DETECT_WINDOW = Duration.ofMinutes(10);
 
     @Operation(summary = "Get the organization's work item patterns, defaults, presets and last detection")
     @GetMapping
@@ -88,12 +95,19 @@ public class OrganizationWorkItemPatternsController {
                 .map(WorkItemPatternPreviewItem::from).toList());
     }
 
-    @Operation(summary = "Run the automatic detection now (not available yet: 501)")
-    @ApiResponse(responseCode = "501", description = "WORK_ITEM_PATTERN_DETECTION_UNAVAILABLE")
+    @Operation(summary = "Run the automatic detection now and answer like the GET")
+    @ApiResponse(responseCode = "403", description = "Missing REPOS_CONFIGURE permission")
+    @ApiResponse(responseCode = "429", description = "More than one detection per organization in 10 minutes (Retry-After)")
     @PostMapping("/detect")
     @PreAuthorize("hasAuthority('REPOS_CONFIGURE')")
     public ResponseEntity<WorkItemPatternsResponse> detect() {
-        return ResponseEntity.ok(WorkItemPatternsResponse.from(detectUseCase.execute(TenantContextHolder.get())));
+        String organizationId = TenantContextHolder.get();
+        String key = "work-item-pattern-detect:" + organizationId;
+        if (!rateLimiter.tryAcquire(key, 1, DETECT_WINDOW)) {
+            throw new WorkItemPatternDetectionRateLimitedException(rateLimiter.retryAfterSeconds(key, DETECT_WINDOW));
+        }
+        return ResponseEntity.ok(WorkItemPatternsResponse.from(
+                detectUseCase.execute(organizationId, DetectWorkItemPatternsUseCase.Trigger.MANUAL)));
     }
 
     private static String userId(AndromedaUserDetails user) {
