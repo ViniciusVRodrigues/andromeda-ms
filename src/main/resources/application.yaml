@@ -50,6 +50,19 @@ security:
     expiration-ms: 86400000  # 24h
 
 andromeda:
+  agent:
+    min-version: ${AGENT_MIN_VERSION:0.1.0}
+    recommended-version: ${AGENT_RECOMMENDED_VERSION:0.1.0}
+    package-name: ${AGENT_PACKAGE_NAME:andromeda-agent}
+    node-min: ${AGENT_NODE_MIN:22}
+    privacy-url: ${AGENT_PRIVACY_URL:}
+    task-clear-command: ${AGENT_TASK_CLEAR_COMMAND:andromeda task --clear}
+    stale-after: P3D
+    access-token-ttl: PT1H
+    refresh-token-ttl: P90D
+    refresh-grace: PT2M
+    device-code-ttl: PT10M
+    poll-interval: 5
   telemetry:
     enabled: ${TELEMETRY_ENABLED:true}  # chave de desligar a coleta de uso (usage_events); lastLoginAt grava sempre
 
