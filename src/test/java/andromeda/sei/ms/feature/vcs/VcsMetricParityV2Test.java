@@ -65,6 +65,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -146,6 +147,8 @@ class VcsMetricParityV2Test {
     private final List<Cm> cms = new ArrayList<>();
     /** Branches of the binding of {@link #PROJECT_2}; null = no second binding. */
     private List<String> secondBindingBranches;
+    /** Branches of the binding of {@link #PROJECT} (production branch main); null = default (main only). */
+    private List<String> firstBindingBranches;
 
     private VcsReadService read;
     private DeliveryMetricsService delivery;
@@ -253,7 +256,12 @@ class VcsMetricParityV2Test {
         VcsRepository repo = new VcsRepository(REPO, ORG, VcsProvider.GITHUB, "ext-repo", "owner/orion");
         repo.setDefaultBranch("main");
         store.repositories.add(repo);
-        store.bindings.add(new VcsRepoBinding("bind-1", ORG, PROJECT, REPO, VcsProvider.GITHUB, true));
+        VcsRepoBinding first = new VcsRepoBinding("bind-1", ORG, PROJECT, REPO, VcsProvider.GITHUB, true);
+        if (firstBindingBranches != null) {
+            first.setBranches(firstBindingBranches);
+            first.setProductionBranch("main");
+        }
+        store.bindings.add(first);
         if (secondBindingBranches != null) {
             VcsRepoBinding second = new VcsRepoBinding("bind-2", ORG, PROJECT_2, REPO, VcsProvider.GITHUB, true);
             second.setBranches(secondBindingBranches);
@@ -929,6 +937,208 @@ class VcsMetricParityV2Test {
     }
 
     // ------------------------------------------------------------------
+    // VCS1/2: time zone and window boundaries (BLOQUEIO 1)
+    // ------------------------------------------------------------------
+
+    /**
+     * O dia é o dia UTC; não há fuso da organização. Commits escritos com offset -03:00 que mudam de dia em
+     * UTC: 2026-10-14T22:00-03:00 = 10-15T01:00Z (A) e 2026-10-14T23:30-03:00 = 10-15T02:30Z (B).
+     * 2026-10-15T22:00-03:00 = 10-16T01:00Z é do dia 16 em UTC: fora do período e do gráfico.
+     */
+    @Test
+    void should_putItemsOnTheUtcDay_notTheLocalDay_inCommitsByDay_andCounts_v2() {
+        cms.add(new Cm("tz1", A, "2026-10-14T22:00:00-03:00"));
+        cms.add(new Cm("tz2", B, "2026-10-14T23:30:00-03:00"));
+        cms.add(new Cm("tz3", A, "2026-10-15T22:00:00-03:00"));
+        load();
+
+        TeamDashboardV2Output team = teamUseCase().execute(ORG, A, PROJECT, "s2");
+        IndividualDashboardV2Output ana = individualUseCase().execute(ORG, A, PROJECT, "s2");
+        IndividualDashboardV2Output bruno = individualUseCase().execute(ORG, B, PROJECT, "s2");
+        ProjectOverviewV2Output project = projectUseCase().execute(ORG, PROJECT, 30);
+        OrganizationDashboardV2Output org = organizationUseCase().execute(ORG, Set.of(PROJECT), 30);
+
+        LocalDate d14 = LocalDate.parse("2026-10-14");
+        LocalDate d15 = LocalDate.parse("2026-10-15");
+        Map<LocalDate, Integer> teamDays = commitsByDay(team.commitsByDay());
+        assertSoftly(s -> {
+            s.assertThat(teamDays).isEqualTo(commitsPerDay(LocalDate.parse("2026-10-08"), TODAY, c -> true));
+            s.assertThat(commitsByDay(ana.commitsByDay()))
+                    .isEqualTo(commitsPerDay(LocalDate.parse("2026-10-08"), TODAY, c -> A.equals(c.author)));
+            s.assertThat(commitsByDay(bruno.commitsByDay()))
+                    .isEqualTo(commitsPerDay(LocalDate.parse("2026-10-08"), TODAY, c -> B.equals(c.author)));
+            // small literals: the local day 14 would hold tz1 and tz2; the UTC day is 15 (c4 is the only one on 14)
+            s.assertThat(teamDays.get(d14)).as("team UTC day 14").isEqualTo(1);
+            s.assertThat(teamDays.get(d15)).as("team UTC day 15").isEqualTo(2);
+            s.assertThat(commitsByDay(ana.commitsByDay()).get(d15)).as("A UTC day 15").isEqualTo(1);
+            s.assertThat(commitsByDay(bruno.commitsByDay()).get(d15)).as("B UTC day 15").isEqualTo(1);
+            // tz3 (local 10-15, UTC 10-16) is outside the 30 days and outside the chart
+            s.assertThat(project.kpis().commitsCount()).isEqualTo(commits(PERIOD_FROM, PERIOD_TO, c -> true));
+            s.assertThat(org.kpis().commits()).isEqualTo(commits(PERIOD_FROM, PERIOD_TO, c -> true));
+            s.assertThat(project.kpis().commitsCount()).as("10 in the base period + tz1 + tz2, tz3 out").isEqualTo(12);
+        });
+    }
+
+    /**
+     * O dia é o dia UTC; não há fuso da organização. PRs com offset -03:00: criado 10-07T20:00-03:00
+     * (= 10-07T23:00Z) e mergeado 10-07T22:30-03:00 (= 10-08T01:30Z) cai na sprint s2 (começa 10-08Z), embora
+     * seja dia 7 no horário local. Outro, mergeado 09-15T23:00-03:00 (= 09-16T02:00Z), entra no período de 30
+     * dias (que começa 09-16Z) e não no anterior, embora seja dia 15 no horário local.
+     */
+    @Test
+    void should_countPullRequestsByTheUtcInstant_acrossSprintAndPeriodStarts_v2() {
+        prs.add(new Pr("tzp1", A, PullRequestStatus.MERGED, "2026-10-07T20:00:00-03:00")
+                .merged("2026-10-07T22:30:00-03:00"));
+        prs.add(new Pr("tzp2", B, PullRequestStatus.MERGED, "2026-09-15T22:00:00-03:00")
+                .merged("2026-09-15T23:00:00-03:00"));
+        load();
+
+        TeamDashboardV2Output team = teamUseCase().execute(ORG, A, PROJECT, "s2");
+        IndividualDashboardV2Output ana = individualUseCase().execute(ORG, A, PROJECT, "s2");
+        ProjectOverviewV2Output project = projectUseCase().execute(ORG, PROJECT, 30);
+        OrganizationDashboardV2Output org = organizationUseCase().execute(ORG, Set.of(PROJECT), 30);
+
+        assertSoftly(s -> {
+            s.assertThat(team.kpis().prsMerged()).isEqualTo(merged(SPRINT_FROM, SPRINT_TO).size());
+            s.assertThat(team.previous().prsMerged()).isEqualTo(merged(PREV_SPRINT_FROM, PREV_SPRINT_TO).size());
+            s.assertThat(ana.kpis().prsMerged()).isEqualTo(merged(byAuthor(A), SPRINT_FROM, SPRINT_TO).size());
+            s.assertThat(project.kpis().prsMerged()).isEqualTo(merged(PERIOD_FROM, PERIOD_TO).size());
+            s.assertThat(project.previous().prsMerged()).isEqualTo(merged(PREV_PERIOD_FROM, PREV_PERIOD_TO).size());
+            s.assertThat(org.kpis().prsMerged()).isEqualTo(merged(PERIOD_FROM, PERIOD_TO).size());
+            s.assertThat(org.previous().prsMerged()).isEqualTo(merged(PREV_PERIOD_FROM, PREV_PERIOD_TO).size());
+            // literals: sprint 5 + tzp1 = 6; period 6 + tzp1 + tzp2 = 8; previous period stays 1 (p11)
+            s.assertThat(team.kpis().prsMerged()).isEqualTo(6);
+            s.assertThat(project.kpis().prsMerged()).isEqualTo(8);
+            s.assertThat(project.previous().prsMerged()).isEqualTo(1);
+        });
+    }
+
+    /**
+     * Fronteira do fim da sprint, com a sprint anterior s1 (09-24..10-07), que já terminou no Clock 10-15
+     * (nada fica no futuro): o último segundo (10-07T23:59:59Z) é da s1; 10-08T00:00:00Z já é da s2. Vale para
+     * PR mergeado e para commit (c8 e c7 da fixture-base estão nesses dois instantes).
+     */
+    @Test
+    void should_keepTheLastSecondOfASprintInIt_andTheNextInstantInTheNext_v2() {
+        prs.add(new Pr("pb1", A, PullRequestStatus.MERGED, "2026-10-07T10:00:00").merged("2026-10-07T23:59:59"));
+        prs.add(new Pr("pb2", A, PullRequestStatus.MERGED, "2026-10-07T11:00:00").merged("2026-10-08T00:00:00"));
+        load();
+        when(sprintRepository.findByIdAndOrganizationIdAndActiveTrue("s1", ORG)).thenReturn(Optional.of(S1));
+
+        TeamDashboardV2Output s1 = teamUseCase().execute(ORG, A, PROJECT, "s1");
+        TeamDashboardV2Output s2 = teamUseCase().execute(ORG, A, PROJECT, "s2");
+
+        LocalDate d7 = LocalDate.parse("2026-10-07");
+        LocalDate d8 = LocalDate.parse("2026-10-08");
+        Map<LocalDate, Integer> s1Days = commitsByDay(s1.commitsByDay());
+        assertSoftly(s -> {
+            s.assertThat(s1.kpis().prsMerged()).isEqualTo(merged(PREV_SPRINT_FROM, PREV_SPRINT_TO).size());
+            s.assertThat(s2.kpis().prsMerged()).isEqualTo(merged(SPRINT_FROM, SPRINT_TO).size());
+            s.assertThat(s2.previous().prsMerged()).isEqualTo(merged(PREV_SPRINT_FROM, PREV_SPRINT_TO).size());
+            s.assertThat(s1Days).isEqualTo(commitsPerDay(LocalDate.parse("2026-09-24"), d7, c -> true));
+            s.assertThat(s1Days).as("s1 chart ends on its last day").doesNotContainKey(d8);
+            // literals: pb1 is the only merge of s1; pb2 joins the 5 of s2
+            s.assertThat(s1.kpis().prsMerged()).isEqualTo(1);
+            s.assertThat(s2.kpis().prsMerged()).isEqualTo(6);
+            s.assertThat(s1Days.get(d7)).as("c8 at 23:59:59Z is in s1").isEqualTo(1);
+            s.assertThat(commitsByDay(s2.commitsByDay()).get(d8)).as("c1, c2 and c7 (00:00:00Z) are in s2").isEqualTo(3);
+        });
+    }
+
+    /**
+     * Fronteira do período de 30 dias [09-16 00:00Z, 10-16 00:00Z). Começo (coerente com o Clock): merge e
+     * commit em 09-15T23:59:59Z são do período anterior, em 09-16T00:00:00Z do atual. Fim: 10-15T23:59:59Z
+     * entra e 10-16T00:00:00Z não (esses dois instantes ficam depois do Clock 10-15T12:00Z; o teste é só da janela).
+     */
+    @Test
+    void should_honorTheHalfOpenWindowOfThePeriod_atBothEnds_v2() {
+        prs.add(new Pr("pw1", A, PullRequestStatus.MERGED, "2026-09-15T10:00:00").merged("2026-09-15T23:59:59"));
+        prs.add(new Pr("pw2", A, PullRequestStatus.MERGED, "2026-09-15T11:00:00").merged("2026-09-16T00:00:00"));
+        prs.add(new Pr("pw3", B, PullRequestStatus.MERGED, "2026-10-15T09:00:00").merged("2026-10-15T23:59:59"));
+        prs.add(new Pr("pw4", B, PullRequestStatus.MERGED, "2026-10-15T10:00:00").merged("2026-10-16T00:00:00"));
+        cms.add(new Cm("cw1", A, "2026-09-15T23:59:59"));
+        cms.add(new Cm("cw2", A, "2026-09-16T00:00:00"));
+        cms.add(new Cm("cw3", B, "2026-10-15T23:59:59"));
+        load();
+
+        ProjectOverviewV2Output project = projectUseCase().execute(ORG, PROJECT, 30);
+        OrganizationDashboardV2Output org = organizationUseCase().execute(ORG, Set.of(PROJECT), 30);
+
+        Oracle current = deliveryOf(PERIOD_FROM, PERIOD_TO, "main");
+        Oracle previous = deliveryOf(PREV_PERIOD_FROM, PREV_PERIOD_TO, "main");
+        assertSoftly(s -> {
+            s.assertThat(project.kpis().prsMerged()).isEqualTo(merged(PERIOD_FROM, PERIOD_TO).size());
+            s.assertThat(project.previous().prsMerged()).isEqualTo(merged(PREV_PERIOD_FROM, PREV_PERIOD_TO).size());
+            s.assertThat(org.kpis().prsMerged()).isEqualTo(merged(PERIOD_FROM, PERIOD_TO).size());
+            s.assertThat(org.previous().prsMerged()).isEqualTo(merged(PREV_PERIOD_FROM, PREV_PERIOD_TO).size());
+            s.assertThat(project.kpis().commitsCount()).isEqualTo(commits(PERIOD_FROM, PERIOD_TO, c -> true));
+            s.assertThat(project.previous().commitsCount()).isEqualTo(commits(PREV_PERIOD_FROM, PREV_PERIOD_TO, c -> true));
+            s.assertThat(org.kpis().commits()).isEqualTo(commits(PERIOD_FROM, PERIOD_TO, c -> true));
+            s.assertThat(org.previous().commits()).isEqualTo(commits(PREV_PERIOD_FROM, PREV_PERIOD_TO, c -> true));
+            s.assertThat(project.kpis().deployFreqPerWeek()).isEqualTo(current.deploysPerWeek());
+            s.assertThat(project.previous().deployFreqPerWeek()).isEqualTo(previous.deploysPerWeek());
+            s.assertThat(project.kpis().cfrPct()).isEqualTo(current.cfr());
+            // literals: period 6 + pw2 + pw3 = 8 (pw4 out); previous 1 (p11) + pw1 = 2
+            s.assertThat(project.kpis().prsMerged()).isEqualTo(8);
+            s.assertThat(project.previous().prsMerged()).isEqualTo(2);
+            s.assertThat(project.kpis().commitsCount()).as("10 in the base period + cw2 + cw3").isEqualTo(12);
+            s.assertThat(project.previous().commitsCount()).as("c13 + cw1").isEqualTo(2);
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // VCS1/2: BRN1, one binding with branches [main, release] (BLOQUEIO 2)
+    // ------------------------------------------------------------------
+
+    /**
+     * BRN1: um vínculo com branches [main, release] e produção main. r1 é um PR aberto antigo release -> main
+     * sem revisão: promoção, NÃO é stale. p4 e r2 (feature -> main, sem revisão, antigos) são stale. Nos quatro
+     * dashboards o stale bate com o oráculo; deploys e cfr contam só merges em main (o merge de p7 em release
+     * fica fora). Sem a promoção seriam 3 stale.
+     */
+    @Test
+    void should_exemptPromotionFromStale_andDeployOnlyOnProduction_withOneBindingOfTwoBranches_v2() {
+        firstBindingBranches = List.of("main", "release");
+        prs.add(new Pr("r1", A, PullRequestStatus.OPEN, "2026-10-10T08:00:00").base("main").source("release"));
+        prs.add(new Pr("r2", B, PullRequestStatus.OPEN, "2026-10-11T08:00:00").base("main").source("feature/r2"));
+        load();
+
+        Set<String> chosen = Set.of("main", "release");
+        List<String> staleIds = stale(chosen).stream().map(p -> p.id).toList();
+        ProjectOverviewV2Output project = projectUseCase().execute(ORG, PROJECT, 30);
+        TeamDashboardV2Output team = teamUseCase().execute(ORG, A, PROJECT, "s2");
+        IndividualDashboardV2Output ana = individualUseCase().execute(ORG, A, PROJECT, "s2");
+        IndividualDashboardV2Output bruno = individualUseCase().execute(ORG, B, PROJECT, "s2");
+        OrganizationDashboardV2Output org = organizationUseCase().execute(ORG, Set.of(PROJECT), 30);
+
+        Oracle current = deliveryOf(PERIOD_FROM, PERIOD_TO, "main");
+        assertSoftly(s -> {
+            s.assertThat(staleIds).as("oracle: p4 and r2 are stale, r1 is a promotion").containsExactlyInAnyOrder("p4", "r2");
+            s.assertThat(project.kpis().stalePrs()).as("project").isEqualTo(staleIds.size());
+            s.assertThat(project.repos().getFirst().stalePrs()).as("project repo row").isEqualTo(staleIds.size());
+            s.assertThat(team.kpis().stalePrs()).as("team kpi").isEqualTo(staleIds.size());
+            s.assertThat(team.stalePrs()).extracting(v -> v.id())
+                    .containsExactlyElementsOf(stale(chosen).stream()
+                            .sorted(Comparator.comparing((Pr p) -> p.created)).map(p -> p.id).toList());
+            s.assertThat(ana.pullRequests().stream().filter(v -> v.stale()).map(v -> v.id()).toList())
+                    .as("individual A").containsExactlyElementsOf(
+                            stale(chosen).stream().filter(p -> A.equals(p.author)).map(p -> p.id).toList());
+            s.assertThat(bruno.pullRequests().stream().filter(v -> v.stale()).map(v -> v.id()).toList())
+                    .as("individual B").containsExactlyInAnyOrderElementsOf(
+                            stale(chosen).stream().filter(p -> B.equals(p.author)).map(p -> p.id).toList());
+            s.assertThat(org.portfolio().getFirst().stalePrs()).as("organization portfolio").isEqualTo(staleIds.size());
+            s.assertThat(org.engineering().repos().getFirst().stalePrs()).as("organization repo").isEqualTo(staleIds.size());
+            // deploys / cfr: production branch main only (p7 merged into release is out)
+            s.assertThat(current.merges()).isEqualTo(5);
+            s.assertThat(project.kpis().deployFreqPerWeek()).isEqualTo(current.deploysPerWeek());
+            s.assertThat(project.kpis().cfrPct()).isEqualTo(current.cfr());
+            s.assertThat(org.kpis().cfrPct()).isEqualTo(current.cfr());
+            s.assertThat(project.kpis().prsMerged()).as("prsMerged still sees the release merge").isEqualTo(6);
+            s.assertThat(staleIds).hasSize(2);
+        });
+    }
+
+    // ------------------------------------------------------------------
     // Oracle: plain loops over the fixture lists
     // ------------------------------------------------------------------
 
@@ -1119,8 +1329,10 @@ class VcsMetricParityV2Test {
         return at != null && !at.isBefore(from) && at.isBefore(to);
     }
 
-    private static Instant t(String isoWithoutZone) {
-        return Instant.parse(isoWithoutZone + "Z");
+    /** UTC when there is no zone ("2026-10-08T09:00:00"); an explicit offset ("2026-10-14T22:00-03:00") is honored. */
+    private static Instant t(String iso) {
+        if (iso.endsWith("Z") || iso.matches(".*T.*[+-]\\d{2}:\\d{2}$")) return OffsetDateTime.parse(iso).toInstant();
+        return Instant.parse(iso + "Z");
     }
 
     private static TeamDashboardV2Output.Member member(TeamDashboardV2Output out, String userId) {
