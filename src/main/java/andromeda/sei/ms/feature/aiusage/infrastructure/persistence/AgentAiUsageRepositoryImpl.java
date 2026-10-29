@@ -156,6 +156,14 @@ public class AgentAiUsageRepositoryImpl implements AgentAIUsageRepository, Agent
     }
 
     @Override
+    public List<AIUsage> findActiveRowsOfAllocation(String organizationId, String userId, String allocationId) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId).and("userId").is(userId)
+                .and("allocationId").is(allocationId).and("active").is(true))
+                .with(org.springframework.data.domain.Sort.by("bucketStart", "repository", "branch"));
+        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public void stampTask(String organizationId, Collection<String> ids, String workItemId, String projectId,
                           String taskRef, String attributionSource) {
         if (ids == null || ids.isEmpty()) return;

@@ -104,6 +104,12 @@ public final class AgentWire {
                                String sprintName) {
     }
 
+    /** A usage row of an AGENT allocation (agente-telas); no session hash, agent key or cost. */
+    public record AllocationRowResponse(String id, java.time.Instant hour, String tool, String model,
+                                        String repository, String branch, boolean branchApproximate,
+                                        long outputTokens) {
+    }
+
     public record TasksResponse(java.util.List<TaskResponse> items) {
     }
 

@@ -219,4 +219,21 @@ class AgentUsageQueriesMongoTest {
         assertThat(allocations.existsValidatedByOrganizationIdAndUserIdAndDay("org-2", "user-1", DAY)).isFalse();
         assertThat(allocations.existsValidatedByOrganizationIdAndUserIdAndDay("org-1", "user-1", BEFORE)).isFalse();
     }
+
+    @Test
+    void should_listOnlyTheActiveRowsOfTheAllocationOfTheOrgAndUser_sortedByHour() {
+        AIUsage late = save("org-1", "user-1", DAY, true, true, "al-1");
+        mongoTemplate.updateFirst(Query.query(Criteria.where("_id").is(late.getId())),
+                new org.springframework.data.mongodb.core.query.Update()
+                        .set("bucketStart", Instant.parse("2099-01-01T11:00:00Z")), AiUsageDocument.class);
+        AIUsage early = save("org-1", "user-1", DAY, true, true, "al-1");
+        save("org-1", "user-1", DAY, true, false, "al-1");
+        save("org-2", "user-1", DAY, true, true, "al-1");
+        save("org-1", "user-2", DAY, true, true, "al-1");
+        save("org-1", "user-1", DAY, true, true, "al-2");
+
+        List<AIUsage> rows = usages.findActiveRowsOfAllocation("org-1", "user-1", "al-1");
+
+        assertThat(rows).extracting(AIUsage::getId).containsExactly(early.getId(), late.getId());
+    }
 }

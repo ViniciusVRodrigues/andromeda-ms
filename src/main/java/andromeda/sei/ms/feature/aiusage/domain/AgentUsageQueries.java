@@ -38,6 +38,9 @@ public interface AgentUsageQueries {
     /** Active agent rows of the user whose hour is at or after {@code since}. */
     List<AIUsage> findActiveAgentRowsSince(String organizationId, String userId, Instant since);
 
+    /** Active rows of the allocation owned by the user (org, user, allocation and active in the query), by hour, repository, branch. */
+    List<AIUsage> findActiveRowsOfAllocation(String organizationId, String userId, String allocationId);
+
     /** Stamps the resolved task on these rows (only those of the organization). */
     void stampTask(String organizationId, Collection<String> ids, String workItemId, String projectId,
                    String taskRef, String attributionSource);

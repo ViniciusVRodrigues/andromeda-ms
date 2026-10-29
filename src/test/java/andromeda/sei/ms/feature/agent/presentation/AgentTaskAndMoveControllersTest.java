@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.agent.presentation;
 
 import andromeda.sei.ms.feature.agent.application.usage.ClearActiveTaskUseCase;
 import andromeda.sei.ms.feature.agent.application.usage.GetAgentTodayUseCase;
+import andromeda.sei.ms.feature.agent.application.usage.ListAgentAllocationRowsUseCase;
 import andromeda.sei.ms.feature.agent.application.usage.MoveAgentUsageUseCase;
 import andromeda.sei.ms.feature.agent.application.usage.SetActiveTaskUseCase;
 import andromeda.sei.ms.feature.agent.domain.AgentPrincipal;
@@ -47,6 +48,7 @@ class AgentTaskAndMoveControllersTest {
     ClearActiveTaskUseCase clear = mock(ClearActiveTaskUseCase.class);
     GetAgentTodayUseCase today = mock(GetAgentTodayUseCase.class);
     MoveAgentUsageUseCase move = mock(MoveAgentUsageUseCase.class);
+    ListAgentAllocationRowsUseCase listRows = mock(ListAgentAllocationRowsUseCase.class);
 
     @AfterEach
     void tearDown() {
@@ -146,7 +148,7 @@ class AgentTaskAndMoveControllersTest {
     // ---- POST /api/v1/ai/allocations/{id}/move -----------------------------------------------------
 
     MockMvc moveMvc() {
-        return personMvc(new AgentAllocationMoveController(move));
+        return personMvc(new AgentAllocationMoveController(move, listRows));
     }
 
     @Test
@@ -191,5 +193,54 @@ class AgentTaskAndMoveControllersTest {
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("AI_USAGE_NOT_IN_ALLOCATION"));
         mvc.perform(post("/api/v1/ai/allocations/nt/move").contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isUnprocessableEntity()).andExpect(jsonPath("$.code").value("AGENT_TASK_NOT_FOUND"));
+    }
+
+    // ---- GET /api/v1/ai/allocations/{id}/rows -------------------------------------------------------
+
+    @Test
+    void should_answerTheRowsWithExactlyTheEightFields() throws Exception {
+        andromeda.sei.ms.feature.aiusage.domain.AIUsage u = new andromeda.sei.ms.feature.aiusage.domain.AIUsage(
+                "u1", "org-1", "user-1", null, "agent", LocalDate.of(2026, 10, 29), "claude-opus", null,
+                "github.com/a/b", "dev-1", "NOTE", 1, 7, 1, "claude-code", "a1", null, Instant.now(), true, 0L,
+                Instant.now(), Instant.now());
+        u.setBucketStart(Instant.parse("2026-10-29T15:00:00Z"));
+        u.setTool("claude-code");
+        u.setRepository("github.com/a/b");
+        u.setBranch("feat/x");
+        u.setBranchApproximate(true);
+        u.setSessionHash("secret");
+        u.setAgentKey("key");
+        when(listRows.execute("org-1", "user-1", "a1")).thenReturn(List.of(u));
+
+        String json = moveMvc().perform(get("/api/v1/ai/allocations/a1/rows"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value("u1"))
+                .andExpect(jsonPath("$[0].hour").value("2026-10-29T15:00:00Z"))
+                .andExpect(jsonPath("$[0].tool").value("claude-code"))
+                .andExpect(jsonPath("$[0].model").value("claude-opus"))
+                .andExpect(jsonPath("$[0].repository").value("github.com/a/b"))
+                .andExpect(jsonPath("$[0].branch").value("feat/x"))
+                .andExpect(jsonPath("$[0].branchApproximate").value(true))
+                .andExpect(jsonPath("$[0].outputTokens").value(7))
+                .andReturn().getResponse().getContentAsString();
+        com.fasterxml.jackson.databind.JsonNode node = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readTree(json).get(0);
+        org.assertj.core.api.Assertions.assertThat(node.fieldNames()).toIterable().containsExactlyInAnyOrder(
+                "id", "hour", "tool", "model", "repository", "branch", "branchApproximate", "outputTokens");
+    }
+
+    @Test
+    void should_answer404_when_theRowsAllocationIsNotTheirs() throws Exception {
+        when(listRows.execute(any(), any(), eq("x"))).thenThrow(new AiAllocationNotFoundException());
+        moveMvc().perform(get("/api/v1/ai/allocations/x/rows"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("AI_ALLOCATION_NOT_FOUND"));
+    }
+
+    @Test
+    void should_requireAiReadOwn_onTheRowsRoute() throws Exception {
+        var m = AgentAllocationMoveController.class.getMethod("rows", AndromedaUserDetails.class, String.class);
+        org.assertj.core.api.Assertions.assertThat(
+                m.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value())
+                .isEqualTo("hasAuthority('AI_READ_OWN')");
     }
 }
