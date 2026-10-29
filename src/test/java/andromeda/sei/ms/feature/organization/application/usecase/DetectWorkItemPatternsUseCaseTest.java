@@ -350,4 +350,92 @@ class DetectWorkItemPatternsUseCaseTest {
 
         verify(sample).recentBranches(ORG, NOW.minus(Duration.ofDays(90)), 5000);
     }
+
+    // ---- threshold boundaries (kill mutations on the limits) -------------------------------------
+
+    /** total branches: {@code ab} resolved AB#, {@code numeric} numeric of which {@code existingNumeric} exist, rest junk. */
+    private List<String> mix(int total, int ab, int numeric, int existingNumeric) {
+        List<String> list = new ArrayList<>();
+        IntStream.range(0, ab).forEach(i -> {
+            list.add("feature/AB#" + (100 + i) + "-x");
+            existing.add(String.valueOf(100 + i));
+        });
+        IntStream.range(0, numeric).forEach(i -> {
+            list.add("feature/" + (3000 + i) + "-y");
+            if (i < existingNumeric) existing.add(String.valueOf(3000 + i));
+        });
+        while (list.size() < total) list.add("feature/alpha-beta-" + list.size() + "-z");
+        return list;
+    }
+
+    private WorkItemPatterns runMix(int total, int ab, int numeric, int existingNumeric) {
+        branches(mix(total, ab, numeric, existingNumeric));
+        return useCase.execute(ORG, Trigger.MANUAL);
+    }
+
+    @Test
+    void should_notApply_with19Branches_andApply_with20() {
+        WorkItemPatterns with19 = runMix(19, 0, 19, 19);
+        assertThat(with19.detection().branchesScanned()).isEqualTo(19);
+        assertThat(with19.detection().applied()).isFalse();
+        assertThat(with19.mode()).isEqualTo(Mode.DEFAULT);
+
+        organization.setWorkItemPatterns(WorkItemPatterns.defaults());
+        existing.clear();
+        WorkItemPatterns with20 = runMix(20, 0, 20, 20);
+        assertThat(with20.detection().branchesScanned()).isEqualTo(20);
+        assertThat(with20.detection().applied()).isTrue();
+        assertThat(with20.mode()).isEqualTo(Mode.DETECTED);
+    }
+
+    @Test
+    void should_selectACandidate_withPrecisionExactly80Percent() {
+        WorkItemPatterns result = runMix(100, 0, 100, 80);
+
+        assertThat(candidate(result, "NUMBER").precision()).isEqualTo(0.8);
+        assertThat(presets(result)).containsExactly("AB_HASH", "NUMBER");
+    }
+
+    @Test
+    void should_leaveACandidateOut_withPrecision79Percent() {
+        WorkItemPatterns result = runMix(100, 0, 100, 79);
+
+        assertThat(candidate(result, "NUMBER").precision()).isEqualTo(0.79);
+        assertThat(presets(result)).containsExactly("AB_HASH");
+    }
+
+    @Test
+    void should_selectACandidate_withCoverageGainExactlyFivePoints() {
+        WorkItemPatterns result = runMix(100, 60, 5, 5);
+
+        assertThat(presets(result)).containsExactly("AB_HASH", "NUMBER");
+        assertThat(result.detection().coverage()).isEqualTo(0.65);
+    }
+
+    @Test
+    void should_leaveACandidateOut_withCoverageGainOfFourPoints() {
+        WorkItemPatterns result = runMix(100, 60, 4, 4);
+
+        assertThat(presets(result)).containsExactly("AB_HASH");
+        assertThat(result.detection().coverage()).isEqualTo(0.6);
+    }
+
+    @Test
+    void should_apply_withCoverageExactlyHalf() {
+        WorkItemPatterns result = runMix(100, 50, 0, 0);
+
+        assertThat(result.detection().coverage()).isEqualTo(0.5);
+        assertThat(result.detection().applied()).isTrue();
+        assertThat(result.mode()).isEqualTo(Mode.DETECTED);
+    }
+
+    @Test
+    void should_notApplyAndKeepThePatterns_withCoverage49Percent() {
+        WorkItemPatterns result = runMix(100, 49, 0, 0);
+
+        assertThat(result.detection().coverage()).isEqualTo(0.49);
+        assertThat(result.detection().applied()).isFalse();
+        assertThat(result.mode()).isEqualTo(Mode.DEFAULT);
+        assertThat(result.patterns()).isEqualTo(WorkItemPatterns.defaultEntries());
+    }
 }
