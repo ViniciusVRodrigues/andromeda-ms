@@ -30,6 +30,11 @@ class FakeAgentStore implements AgentDeviceRepository, AgentDeviceAuthorizationR
     }
 
     @Override
+    public boolean existsByOrganizationId(String organizationId) {
+        return devices.values().stream().anyMatch(d -> Objects.equals(d.getOrganizationId(), organizationId));
+    }
+
+    @Override
     public Optional<AgentDevice> findActiveByIdAndOrganizationId(String id, String organizationId) {
         return findByIdAndOrganizationId(id, organizationId).filter(d -> !d.isRevoked());
     }

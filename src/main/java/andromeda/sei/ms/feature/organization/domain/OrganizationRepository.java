@@ -14,6 +14,9 @@ public interface OrganizationRepository {
 
     Organization save(Organization organization);
 
+    /** Organizacoes ativas (sem a lapide das excluidas). Consulta de manutencao de jobs, sem tenant por construcao. */
+    List<Organization> findAllActive();
+
     /**
      * Organizacoes ativas cujo sync agendado venceu no {@code tick}: frequencia diferente de
      * {@code OFF} e {@code lastScheduledSyncAt} ausente ou {@code <= tick - intervalo}.

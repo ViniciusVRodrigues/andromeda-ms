@@ -27,6 +27,12 @@ public class AgentDeviceRepositoryImpl implements AgentDeviceRepository {
     }
 
     @Override
+    public boolean existsByOrganizationId(String organizationId) {
+        return mongoTemplate.exists(Query.query(Criteria.where("organizationId").is(organizationId)),
+                AgentDeviceDocument.class);
+    }
+
+    @Override
     public Optional<AgentDevice> findActiveByIdAndOrganizationId(String id, String organizationId) {
         return mongoRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId).map(mapper::toDomain);
     }

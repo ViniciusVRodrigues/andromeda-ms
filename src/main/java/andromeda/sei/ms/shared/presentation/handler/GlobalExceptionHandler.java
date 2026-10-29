@@ -51,12 +51,6 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
     }
 
-    @ExceptionHandler(andromeda.sei.ms.feature.organization.domain.exception.WorkItemPatternDetectionUnavailableException.class)
-    public ResponseEntity<ErrorResponse> handleWorkItemPatternDetectionUnavailable(
-            andromeda.sei.ms.feature.organization.domain.exception.WorkItemPatternDetectionUnavailableException ex) {
-        return ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED).body(ErrorResponse.from(ex));
-    }
-
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.from(ex));

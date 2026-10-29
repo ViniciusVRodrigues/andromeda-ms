@@ -26,7 +26,9 @@ import java.util.List;
         @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'createdAt': -1}"),
         // Delivery metrics: merged pull requests of a repository set in a window.
         @CompoundIndex(def = "{'organizationId': 1, 'repositoryId': 1, 'status': 1, 'mergedAt': 1}"),
-        @CompoundIndex(def = "{'organizationId': 1, 'provider': 1}")
+        @CompoundIndex(def = "{'organizationId': 1, 'provider': 1}"),
+        // pattern detection (agente-endpoint-v2 6.3): distinct recent branches of the whole organization
+        @CompoundIndex(def = "{'organizationId': 1, 'createdAt': -1}", name = "idx_vcs_pr_org_created")
 })
 @Data
 @Builder

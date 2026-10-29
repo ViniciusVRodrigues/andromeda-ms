@@ -44,6 +44,11 @@ public class OrganizationRepositoryImpl implements OrganizationRepository {
     }
 
     @Override
+    public List<Organization> findAllActive() {
+        return mongoRepository.findAllByActiveTrue().stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public List<Organization> findAllDueForScheduledSync(Instant tick) {
         return Arrays.stream(ScheduledSyncFrequency.values())
                 .flatMap(frequency -> frequency.interval().stream()

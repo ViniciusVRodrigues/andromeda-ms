@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.organization.presentation;
 
 import andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher;
+import andromeda.sei.ms.feature.organization.application.port.WorkItemPatternSampleSource;
+import andromeda.sei.ms.feature.organization.application.port.WorkItemReferenceLookup;
 import andromeda.sei.ms.feature.organization.application.usecase.ConfirmWorkItemPatternsUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.DetectWorkItemPatternsUseCase;
 import andromeda.sei.ms.feature.organization.application.usecase.GetWorkItemPatternsUseCase;
@@ -14,6 +16,7 @@ import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.vcs.application.usecase.GetWorkItemLinkSettingsUseCase;
 import andromeda.sei.ms.feature.vcs.application.usecase.UpdateWorkItemLinkSettingsUseCase;
 import andromeda.sei.ms.feature.vcs.presentation.VcsSettingsController;
+import andromeda.sei.ms.shared.infrastructure.ratelimit.RateLimiter;
 import andromeda.sei.ms.shared.infrastructure.security.AndromedaUserDetails;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
@@ -29,15 +32,18 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -63,10 +69,14 @@ class OrganizationWorkItemPatternsControllerTest {
         when(repository.findById("org-1")).thenReturn(Optional.of(organization));
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
+        WorkItemPatternSampleSource sample = mock(WorkItemPatternSampleSource.class);
+        when(sample.recentBranches(any(), any(), anyInt())).thenReturn(List.of("feature/10-a", "feature/11-b"));
+        WorkItemReferenceLookup lookup = mock(WorkItemReferenceLookup.class);
+        when(lookup.activeTitlesByExternalId(any(), any())).thenReturn(Map.of("10", "Ten"));
         var patterns = new OrganizationWorkItemPatternsController(
                 new GetWorkItemPatternsUseCase(repository), new UpdateWorkItemPatternsUseCase(repository),
                 new ConfirmWorkItemPatternsUseCase(repository), new PreviewWorkItemPatternsUseCase(),
-                new DetectWorkItemPatternsUseCase());
+                new DetectWorkItemPatternsUseCase(repository, sample, lookup), new RateLimiter());
         var legacy = new VcsSettingsController(new GetWorkItemLinkSettingsUseCase(repository),
                 new UpdateWorkItemLinkSettingsUseCase(repository));
         mockMvc = MockMvcBuilders.standaloneSetup(patterns, legacy)
@@ -215,11 +225,27 @@ class OrganizationWorkItemPatternsControllerTest {
     }
 
     @Test
-    void should_answer501WithTheCommonErrorBody_when_detecting() throws Exception {
+    void should_answer200LikeTheGetWithTheDetection_when_detecting() throws Exception {
         mockMvc.perform(post(URL + "/detect"))
-                .andExpect(status().isNotImplemented())
-                .andExpect(jsonPath("$.code").value("WORK_ITEM_PATTERN_DETECTION_UNAVAILABLE"))
-                .andExpect(jsonPath("$.message").exists());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("DEFAULT"))
+                .andExpect(jsonPath("$.defaults[0].preset").value("AB_HASH"))
+                .andExpect(jsonPath("$.detection.branchesScanned").value(2))
+                .andExpect(jsonPath("$.detection.applied").value(false))
+                .andExpect(jsonPath("$.detection.candidates[?(@.preset=='NUMBER')].matchedBranches").value(2))
+                .andExpect(jsonPath("$.detection.candidates[?(@.preset=='NUMBER')].resolvedBranches").value(1));
+
+        mockMvc.perform(get(URL)).andExpect(jsonPath("$.detection.branchesScanned").value(2));
+    }
+
+    @Test
+    void should_answer429WithRetryAfter_when_detectingTwiceWithinTenMinutes() throws Exception {
+        mockMvc.perform(post(URL + "/detect")).andExpect(status().isOk());
+
+        mockMvc.perform(post(URL + "/detect"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.code").value("WORK_ITEM_PATTERN_DETECTION_RATE_LIMITED"));
     }
 
     @Test

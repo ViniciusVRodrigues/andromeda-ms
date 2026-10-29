@@ -9,6 +9,9 @@ public interface AgentDeviceRepository {
 
     AgentDevice save(AgentDevice device);
 
+    /** True when the organization already has any device, revoked ones included. */
+    boolean existsByOrganizationId(String organizationId);
+
     /** Active device by id in the organization (any user). */
     Optional<AgentDevice> findActiveByIdAndOrganizationId(String id, String organizationId);
 
