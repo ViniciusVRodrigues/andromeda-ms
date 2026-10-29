@@ -58,6 +58,36 @@ public final class AgentWire {
             String oldestPendingDay) {
     }
 
+    /** Response of {@code POST /agent/v1/usage}. */
+    public record UsageUploadResponse(String batchId, int accepted, int duplicate, int rejected,
+                                      java.util.List<UsageRowResponse> results) {
+    }
+
+    /** One row of the upload response; absent fields are omitted. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record UsageRowResponse(String key, String status, String allocation, String workItemId,
+                                   String taskRef, String reason, String field, Boolean retryable) {
+    }
+
+    public record ReconcileTokens(long input, long output, long cacheRead, long cacheWrite, long thinking) {
+    }
+
+    public record ReconcileDay(java.time.LocalDate day, int rows, ReconcileTokens tokens, String keysDigest) {
+    }
+
+    public record ReconcileResponse(String deviceId, java.util.List<ReconcileDay> days) {
+    }
+
+    public record KeysResponse(java.time.LocalDate day, java.util.List<String> keys) {
+    }
+
+    public record TaskResponse(String workItemId, String ref, String externalId, String title, String type,
+                               String sprintName) {
+    }
+
+    public record TasksResponse(java.util.List<TaskResponse> items) {
+    }
+
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record VersionUnsupportedResponse(String code, String message, String minVersion) {
     }

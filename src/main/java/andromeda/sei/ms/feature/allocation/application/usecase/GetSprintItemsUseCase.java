@@ -56,7 +56,8 @@ public class GetSprintItemsUseCase {
                         item.getResolvedType() != null ? item.getResolvedType().name() : null,
                         item.getExternalId(),
                         scope.effectiveComplexity(item),
-                        scope.taskEffort(item)));
+                        scope.taskEffort(item),
+                        item.getSource() == null ? null : item.getSource().name()));
             }
         }
         return results;

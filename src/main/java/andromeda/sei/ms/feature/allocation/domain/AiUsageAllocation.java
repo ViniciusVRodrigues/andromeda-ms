@@ -7,7 +7,14 @@ import java.util.List;
 public class AiUsageAllocation {
 
     public enum Status { UNALLOCATED, PENDING_VALIDATION, VALIDATED }
-    public enum AssignedBy { AUTO, MANUAL }
+    public enum AssignedBy { AUTO, MANUAL, AGENT }
+
+    /** How the local agent got to the task of an {@code AGENT} allocation (the strongest among its rows). */
+    public enum ResolvedBy { MARK, BRANCH, SINGLE_ACTIVE }
+
+    /** Provenance of an {@code AGENT} allocation: distinct repositories and branches of its rows. */
+    public record AgentInfo(ResolvedBy resolvedBy, List<String> repositories, List<String> branches) {}
+
 
     /** Where an automatic suggestion came from; absent (legacy) is read as {@link #IN_PROGRESS}. */
     public enum SuggestionSource { AZURE_ACTIVITY, IN_PROGRESS }
@@ -25,6 +32,8 @@ public class AiUsageAllocation {
     private Instant createdAt;
     private Instant updatedAt;
     private SuggestionSource suggestionSource;
+    /** Only on {@code AGENT} allocations; null on every other. */
+    private AgentInfo agent;
 
     public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
                               List<String> aiUsageIds, List<AllocationSplit> splits,
@@ -93,6 +102,11 @@ public class AiUsageAllocation {
     /** Raw stored value; {@code null} on allocations created before the field existed. */
     public SuggestionSource getSuggestionSource() { return suggestionSource; }
     public void setSuggestionSource(SuggestionSource suggestionSource) { this.suggestionSource = suggestionSource; }
+
+    public AgentInfo getAgent() { return agent; }
+    public void setAgent(AgentInfo agent) { this.agent = agent; }
+
+    public boolean isAgent() { return assignedBy == AssignedBy.AGENT; }
 
     /** The source, with an absent value read as {@link SuggestionSource#IN_PROGRESS}. */
     public SuggestionSource suggestionSourceOrDefault() {

@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.organization.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.agent.infrastructure.persistence.AgentDeviceAuthorizationDocument;
 import andromeda.sei.ms.feature.agent.infrastructure.persistence.AgentDeviceDocument;
+import andromeda.sei.ms.feature.agent.infrastructure.persistence.AgentUploadBatchDocument;
 import andromeda.sei.ms.feature.aiusage.infrastructure.persistence.AiUsageDocument;
 import andromeda.sei.ms.feature.allocation.infrastructure.persistence.AiUsageAllocationDocument;
 import andromeda.sei.ms.feature.auth.infrastructure.persistence.OAuthLinkTicketDocument;
@@ -70,6 +71,7 @@ public class MongoOrganizationDataPurger implements OrganizationDataPurger {
     private static final Class<?>[] DOCUMENTS = {
             AgentDeviceAuthorizationDocument.class,
             AgentDeviceDocument.class,
+            AgentUploadBatchDocument.class,
             VcsReviewEventDocument.class,
             VcsPullRequestDocument.class,
             VcsCommitDocument.class,

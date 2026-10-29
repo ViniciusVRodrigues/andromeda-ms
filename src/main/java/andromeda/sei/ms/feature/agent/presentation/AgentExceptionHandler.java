@@ -1,6 +1,9 @@
 package andromeda.sei.ms.feature.agent.presentation;
 
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInvalidException;
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchTooLargeException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentDeviceInfoInvalidException;
+import andromeda.sei.ms.feature.agent.domain.exception.AgentRequestInvalidException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentPairingConflictException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentVersionUnsupportedException;
 import andromeda.sei.ms.shared.presentation.dto.ErrorResponse;
@@ -29,6 +32,18 @@ public class AgentExceptionHandler {
 
     @ExceptionHandler(AgentDeviceInfoInvalidException.class)
     public ResponseEntity<ErrorResponse> invalidDevice(AgentDeviceInfoInvalidException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(e));
+    }
+
+    @ExceptionHandler(AgentBatchTooLargeException.class)
+    public ResponseEntity<Map<String, Object>> tooLarge(AgentBatchTooLargeException e) {
+        Map<String, Object> body = base(e.getCode(), e.getMessage());
+        body.put("maxRows", e.getMaxRows());
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(body);
+    }
+
+    @ExceptionHandler({AgentBatchInvalidException.class, AgentRequestInvalidException.class})
+    public ResponseEntity<ErrorResponse> invalidRequest(andromeda.sei.ms.shared.domain.exception.DomainException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(e));
     }
 

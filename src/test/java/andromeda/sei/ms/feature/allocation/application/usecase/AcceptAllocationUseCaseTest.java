@@ -155,4 +155,16 @@ class AcceptAllocationUseCaseTest {
                 Instant.now(), Instant.now(), null,
                 null, null, true, 1L, Instant.now(), null, null, null, null, null, null, null, null);
     }
+
+    @Test
+    void should_rejectAcceptingAgentAllocation() {
+        AiUsageAllocation agent = new AiUsageAllocation(ALLOCATION_ID, ORG_ID, USER_ID, LocalDate.now(),
+                List.of("usage-1"), List.of(), AiUsageAllocation.Status.VALIDATED,
+                AiUsageAllocation.AssignedBy.AGENT, true, 0L, Instant.now(), Instant.now());
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(agent));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID))
+                .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException.class);
+        verify(allocationRepository, never()).save(any());
+    }
 }

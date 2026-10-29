@@ -28,6 +28,7 @@ public class GetAllocationHistoryUseCase {
                                         s.getWorkItemId(), s.getWorkItemTitle(), s.getPercentage()))
                                 .toList(),
                         allocation.getAssignedBy(),
+                        allocation.getAgent(),
                         allocation.getUpdatedAt()));
     }
 }

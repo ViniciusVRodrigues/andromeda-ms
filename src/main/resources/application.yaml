@@ -63,6 +63,11 @@ andromeda:
     refresh-grace: PT2M
     device-code-ttl: PT10M
     poll-interval: 5
+    max-rows-per-batch: 500
+    uploads-per-minute: 60
+    batch-replay-ttl: P7D
+    max-row-age: P90D
+    accept-estimated: false
   telemetry:
     enabled: ${TELEMETRY_ENABLED:true}  # chave de desligar a coleta de uso (usage_events); lastLoginAt grava sempre
 

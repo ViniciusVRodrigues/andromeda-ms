@@ -23,7 +23,11 @@ import java.time.LocalDate;
                 unique = true,
                 name = "uq_ai_usage_natural_key"
         ),
-        @CompoundIndex(def = "{'organizationId':1,'userId':1,'allocationId':1}", name = "idx_ai_usage_allocation")
+        @CompoundIndex(def = "{'organizationId':1,'userId':1,'allocationId':1}", name = "idx_ai_usage_allocation"),
+        @CompoundIndex(def = "{'organizationId':1,'deviceId':1,'agentKey':1}", unique = true,
+                name = "uq_ai_usage_agent_key", partialFilter = "{'agentKey': {$type: 'string'}}"),
+        @CompoundIndex(def = "{'organizationId':1,'deviceId':1,'day':1}", name = "idx_ai_usage_agent_day",
+                partialFilter = "{'deviceId': {$type: 'string'}}")
 })
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data
@@ -64,4 +68,27 @@ public class AiUsageDocument {
 
     private Instant createdAt;
     private Instant updatedAt;
+
+    // Local agent rows only (agente-endpoint-v2); all null/zero on AIEF rows.
+    private String source;
+    private String agentKey;
+    private boolean branchApproximate;
+    private String deviceId;
+    private String tool;
+    private String sessionHash;
+    private Instant bucketStart;
+    private long cacheReadTokens;
+    private long cacheWriteTokens;
+    private long thinkingTokens;
+    private String origin;
+    private String repository;
+    private String branch;
+    private String taskRef;
+    private String attributionMethod;
+    private String attributionSource;
+    private String workItemId;
+    private String projectId;
+    private String agentVersion;
+    private String batchId;
+    private String supersededBy;
 }

@@ -75,7 +75,7 @@ public class AutoAssignAllocationUseCase {
         }
 
         List<AiUsageAllocation> existing = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
-        if (existing.stream().anyMatch(a -> a.getStatus() == AiUsageAllocation.Status.VALIDATED)) {
+        if (existing.stream().anyMatch(a -> a.getStatus() == AiUsageAllocation.Status.VALIDATED && !a.isAgent())) {
             log.debug("AutoAssign: day={} of user={} is already validated — skipping", day, userId);
             return;
         }

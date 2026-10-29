@@ -83,6 +83,11 @@ public class AgentDeviceRepositoryImpl implements AgentDeviceRepository {
     }
 
     @Override
+    public void updateTimezone(String deviceId, String organizationId, String timezone) {
+        updateActive(deviceId, organizationId, new Update().set("timezone", timezone));
+    }
+
+    @Override
     public void touchUpload(String deviceId, String organizationId, Instant uploadAt) {
         updateActive(deviceId, organizationId, new Update().set("lastUploadAt", uploadAt));
     }

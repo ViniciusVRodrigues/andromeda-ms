@@ -221,7 +221,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     @Override
     public List<AIUsage> findUnallocatedByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day) {
-        return mongoRepository.findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNull(
+        return mongoRepository.findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNullAndActiveTrue(
                         organizationId, userId, day)
                 .stream().map(mapper::toDomain).toList();
     }

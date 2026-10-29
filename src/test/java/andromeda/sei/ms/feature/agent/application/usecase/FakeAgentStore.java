@@ -79,6 +79,11 @@ class FakeAgentStore implements AgentDeviceRepository, AgentDeviceAuthorizationR
     }
 
     @Override
+    public void updateTimezone(String deviceId, String organizationId, String timezone) {
+        devices.get(deviceId).setTimezone(timezone);
+    }
+
+    @Override
     public void touchUpload(String deviceId, String organizationId, Instant uploadAt) {
         touchUploadCalls++;
         devices.get(deviceId).setLastUploadAt(uploadAt);

@@ -39,6 +39,16 @@ public class AiUsageAllocationDocument {
     private AiUsageAllocation.Status status;
     private AiUsageAllocation.AssignedBy assignedBy;
     private AiUsageAllocation.SuggestionSource suggestionSource;
+    private AgentInfoDocument agent;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AgentInfoDocument {
+        private AiUsageAllocation.ResolvedBy resolvedBy;
+        private List<String> repositories;
+        private List<String> branches;
+    }
 
     @lombok.Builder.Default
     private boolean active = true;

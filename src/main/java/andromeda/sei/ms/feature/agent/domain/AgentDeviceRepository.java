@@ -30,6 +30,9 @@ public interface AgentDeviceRepository {
     void recordHeartbeat(String deviceId, String organizationId, Instant seenAt, String agentVersion,
                          Integer pendingRows, String timezone);
 
+    /** Sets the timezone the agent reported (the person travelled). */
+    void updateTimezone(String deviceId, String organizationId, String timezone);
+
     void touchUpload(String deviceId, String organizationId, Instant uploadAt);
 
     void setActiveTask(String deviceId, String organizationId, AgentDevice.ActiveTask task);

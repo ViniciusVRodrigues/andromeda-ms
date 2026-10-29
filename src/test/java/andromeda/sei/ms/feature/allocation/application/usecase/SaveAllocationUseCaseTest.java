@@ -150,4 +150,37 @@ class SaveAllocationUseCaseTest {
         verify(allocationRepository, never()).deleteByOrganizationIdAndUserIdAndDay(any(), any(), any());
         verify(allocationRepository, never()).save(any());
     }
+
+    @Test
+    void should_notDeleteNorRelinkAgentAllocation_when_savingTheDay() {
+        AiUsageAllocation agent = agentAllocation("alloc-agent", DAY, ORG, USER, List.of("ua1"));
+        AiUsageAllocation previous = new AiUsageAllocation("alloc-old", ORG, USER, DAY, List.of("u1"),
+                List.of(), AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(ORG, USER, List.of(DAY)))
+                .thenReturn(List.of(usage("u1"), usage("ua1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(agent, previous));
+        when(allocationRepository.save(any())).thenAnswer(inv -> {
+            AiUsageAllocation a = inv.getArgument(0);
+            a.setId("alloc-new");
+            return a;
+        });
+
+        useCase.execute(ORG, USER, DAY, List.of(entry("wi-1", "0.6"), entry("wi-2", "0.4")));
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getAiUsageIds()).containsExactly("u1");
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(List.of("u1"), "alloc-new");
+        verify(allocationRepository, never()).deleteById(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(List.of("ua1"), null);
+    }
+
+    private static AiUsageAllocation agentAllocation(String id, java.time.LocalDate day, String org, String user, List<String> usageIds) {
+        Instant t = Instant.now();
+        AiUsageAllocation a = new AiUsageAllocation(id, org, user, day, usageIds,
+                List.of(new AllocationSplit("wi-agent", "Task", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT, true, 0L, t, t);
+        a.setAgent(new AiUsageAllocation.AgentInfo(AiUsageAllocation.ResolvedBy.MARK, List.of("org/repo"), List.of("feat/AB#1")));
+        return a;
+    }
 }

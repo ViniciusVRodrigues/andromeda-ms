@@ -10,7 +10,7 @@ public interface AiUsageMongoRepository extends MongoRepository<AiUsageDocument,
     List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayInAndActiveTrue(
             String organizationId, String userId, List<LocalDate> days);
 
-    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNull(
+    List<AiUsageDocument> findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNullAndActiveTrue(
             String organizationId, String userId, LocalDate day);
 
     List<AiUsageDocument> findByOrganizationIdAndUserIdAndAllocationIdIsNullAndActiveTrue(

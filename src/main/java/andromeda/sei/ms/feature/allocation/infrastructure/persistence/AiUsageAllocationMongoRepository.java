@@ -15,11 +15,14 @@ public interface AiUsageAllocationMongoRepository extends MongoRepository<AiUsag
     List<AiUsageAllocationDocument> findByOrganizationIdAndUserIdAndStatusIn(
             String organizationId, String userId, List<AiUsageAllocation.Status> statuses);
 
-    boolean existsByOrganizationIdAndUserIdAndDayAndStatus(
-            String organizationId, String userId, LocalDate day, AiUsageAllocation.Status status);
+    /** A validated day for the per-day flows: AGENT allocations do not count (agente-endpoint-v2). */
+    boolean existsByOrganizationIdAndUserIdAndDayAndStatusAndAssignedByNot(
+            String organizationId, String userId, LocalDate day, AiUsageAllocation.Status status,
+            AiUsageAllocation.AssignedBy assignedBy);
 
-    void deleteByOrganizationIdAndUserIdAndDay(
-            String organizationId, String userId, LocalDate day);
+    /** Deletes the day's allocations except those of the given {@code assignedBy} (documents without it match). */
+    void deleteByOrganizationIdAndUserIdAndDayAndAssignedByNot(
+            String organizationId, String userId, LocalDate day, AiUsageAllocation.AssignedBy assignedBy);
 
     List<AiUsageAllocationDocument> findByOrganizationIdAndUserIdAndStatus(
             String organizationId, String userId, AiUsageAllocation.Status status);

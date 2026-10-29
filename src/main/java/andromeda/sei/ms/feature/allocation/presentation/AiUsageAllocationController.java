@@ -177,7 +177,7 @@ public class AiUsageAllocationController {
                         h.splits().stream()
                                 .map(s -> new SplitResponse(s.workItemId(), s.workItemTitle(), s.percentage()))
                                 .toList(),
-                        h.assignedBy(), h.updatedAt()));
+                        h.assignedBy(), h.agent(), h.updatedAt()));
         return ResponseEntity.ok(response);
     }
 
