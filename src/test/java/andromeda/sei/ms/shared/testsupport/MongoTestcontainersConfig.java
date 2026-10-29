@@ -39,7 +39,12 @@ public class MongoTestcontainersConfig {
         return MONGO.getReplicaSetUrl("andromeda");
     }
 
-    @Bean
+    /**
+     * {@code destroyMethod = ""}: o container e estatico e compartilhado pela JVM inteira. Sem isso o Spring
+     * chama {@code close()} ao tirar um contexto do cache (limite de 32 contextos) e os contextos seguintes
+     * falham com "MongoDBContainer should be started first".
+     */
+    @Bean(destroyMethod = "")
     @ServiceConnection
     MongoDBContainer mongoDBContainer() {
         return MONGO;
