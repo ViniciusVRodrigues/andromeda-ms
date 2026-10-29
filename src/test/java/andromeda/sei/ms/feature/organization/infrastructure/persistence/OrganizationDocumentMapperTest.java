@@ -88,4 +88,23 @@ class OrganizationDocumentMapperTest {
         assertThat(back.getMetricSettings().getRemediationRules().getBranchPrefixes()).containsExactly("fix/prod-");
         assertThat(back.getMetricSettings().getRemediationRules().getRevertCountsAsRemediation()).isTrue();
     }
+
+    @Test
+    void should_readDefaultAgentSettings_when_documentHasNone() {
+        Organization organization = mapper.toDomain(OrganizationDocument.builder().id("org-1").active(true).build());
+
+        assertThat(organization.getAgentSettings().usingDefaults()).isTrue();
+        assertThat(mapper.toDocument(organization).getAgentSettings()).isNull();
+    }
+
+    @Test
+    void should_roundTripAgentBranchPatterns() {
+        OrganizationDocument doc = OrganizationDocument.builder().id("org-1").active(true)
+                .agentSettings(new AgentSettingsDocument(java.util.List.of("^wi-([0-9]+)"))).build();
+
+        Organization organization = mapper.toDomain(doc);
+
+        assertThat(organization.getAgentSettings().branchPatterns()).containsExactly("^wi-([0-9]+)");
+        assertThat(mapper.toDocument(organization).getAgentSettings().getBranchPatterns()).containsExactly("^wi-([0-9]+)");
+    }
 }

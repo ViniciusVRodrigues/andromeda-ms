@@ -122,6 +122,7 @@ class PurgeOrganizationDataIntegrationTest {
         assertThat(tombstone.getLastScheduledSyncAt()).isNull();
         assertThat(tombstone.getMetricSettings()).isNull();
         assertThat(tombstone.getVcsSettings()).isNull();
+        assertThat(tombstone.getAgentSettings()).isNull();
 
         OrganizationDocument other = mongoRepository.findById(KEPT).orElseThrow();
         assertThat(other.getPurgedAt()).isNull();
@@ -223,6 +224,7 @@ class PurgeOrganizationDataIntegrationTest {
                 .createdAt(Instant.parse("2026-01-01T00:00:00Z"))
                 .updatedAt(Instant.parse("2026-01-01T00:00:00Z"))
                 .syncSettings(new SyncSettingsDocument(ScheduledSyncFrequency.DAILY, 90))
+                .agentSettings(new AgentSettingsDocument(List.of("wi-([0-9]+)")))
                 .build());
     }
 

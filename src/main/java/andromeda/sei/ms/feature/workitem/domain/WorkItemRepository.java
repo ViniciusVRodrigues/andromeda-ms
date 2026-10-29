@@ -18,6 +18,9 @@ public interface WorkItemRepository {
 
     List<WorkItem> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 
+    /** Active items of the organization with this external id, whatever the source (at most one per source). */
+    List<WorkItem> findAllActiveByOrganizationIdAndExternalId(String organizationId, String externalId);
+
     void updateMetrics(String id, Double cycleTimeHours, Double leadTimeHours);
 
     void updateAiRatios(String id, Double tokensPerPoint, Double tokensPerHour);

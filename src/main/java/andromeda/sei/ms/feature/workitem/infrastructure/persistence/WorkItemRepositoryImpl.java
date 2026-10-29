@@ -218,6 +218,13 @@ public class WorkItemRepositoryImpl implements WorkItemRepository {
     }
 
     @Override
+    public List<WorkItem> findAllActiveByOrganizationIdAndExternalId(String organizationId, String externalId) {
+        if (externalId == null || externalId.isBlank()) return List.of();
+        return mongoRepository.findAllByOrganizationIdAndExternalIdAndActiveTrue(organizationId, externalId)
+                .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public List<WorkItem> findAllByOrganizationIdAndExternalIdInAndSource(
             String organizationId, List<String> externalIds, WorkItem.Source source) {
         if (externalIds == null || externalIds.isEmpty()) return List.of();

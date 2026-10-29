@@ -39,6 +39,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.from(ex));
     }
 
+    /** 422 with every rejected branch pattern: {@code errors[{index, code, message}]} next to the usual code/message. */
+    @ExceptionHandler(andromeda.sei.ms.feature.organization.domain.exception.AgentBranchPatternInvalidException.class)
+    public ResponseEntity<java.util.Map<String, Object>> handleAgentBranchPatternInvalid(
+            andromeda.sei.ms.feature.organization.domain.exception.AgentBranchPatternInvalidException ex) {
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("code", ex.getCode());
+        body.put("message", ex.getMessage());
+        body.put("errors", ex.getErrors());
+        body.put("timestamp", java.time.Instant.now());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(body);
+    }
+
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<ErrorResponse> handleBusinessRule(BusinessRuleException ex) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(ErrorResponse.from(ex));

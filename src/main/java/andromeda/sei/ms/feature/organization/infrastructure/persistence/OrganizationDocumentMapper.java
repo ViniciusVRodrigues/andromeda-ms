@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.organization.domain.MetricSettings;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.RemediationRules;
 import andromeda.sei.ms.feature.organization.domain.SyncSettings;
+import andromeda.sei.ms.feature.organization.domain.AgentSettings;
 import andromeda.sei.ms.feature.organization.domain.VcsSettings;
 import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,8 @@ public class OrganizationDocumentMapper {
         organization.setPurgedAt(doc.getPurgedAt());
         organization.setMetricSettings(toMetricSettings(doc.getMetricSettings()));
         organization.setVcsSettings(toVcsSettings(doc.getVcsSettings()));
+        organization.setAgentSettings(doc.getAgentSettings() == null ? AgentSettings.defaults()
+                : new AgentSettings(doc.getAgentSettings().getBranchPatterns()));
         return organization;
     }
 
@@ -114,6 +117,8 @@ public class OrganizationDocumentMapper {
                 .purgedAt(org.getPurgedAt())
                 .metricSettings(toMetricSettingsDocument(org.getMetricSettings()))
                 .vcsSettings(toVcsSettingsDocument(org.getVcsSettings()))
+                .agentSettings(org.getAgentSettings().branchPatterns() == null ? null
+                        : new AgentSettingsDocument(org.getAgentSettings().branchPatterns()))
                 .createdAt(org.getCreatedAt())
                 .updatedAt(org.getUpdatedAt());
 

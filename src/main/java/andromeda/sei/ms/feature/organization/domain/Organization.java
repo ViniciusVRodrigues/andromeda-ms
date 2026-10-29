@@ -29,6 +29,7 @@ public class Organization {
     private Instant purgedAt;
     private MetricSettings metricSettings = MetricSettings.defaults();
     private VcsSettings vcsSettings = VcsSettings.defaults();
+    private AgentSettings agentSettings = AgentSettings.defaults();
 
     public Organization(String id, String name, String slug, String sector, String country,
                         List<String> seniorities, List<AiPriceEntry> aiPrices,
@@ -111,6 +112,12 @@ public class Organization {
     public VcsSettings getVcsSettings() { return vcsSettings; }
     public void setVcsSettings(VcsSettings vcsSettings) {
         this.vcsSettings = vcsSettings != null ? vcsSettings : VcsSettings.defaults();
+    }
+
+    /** Nunca nulo: documentos sem a configuracao leem os padroes de branch default. */
+    public AgentSettings getAgentSettings() { return agentSettings; }
+    public void setAgentSettings(AgentSettings agentSettings) {
+        this.agentSettings = agentSettings != null ? agentSettings : AgentSettings.defaults();
     }
 
     /** Lapide: quando a exclusao foi pedida; nulo em organizacao viva. */
