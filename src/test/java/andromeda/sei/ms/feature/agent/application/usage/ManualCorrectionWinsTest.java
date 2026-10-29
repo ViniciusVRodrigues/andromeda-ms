@@ -90,6 +90,11 @@ class ManualCorrectionWinsTest {
         }
 
         @Override
+        public List<AIUsage> findActiveRowsOfAllocation(String o, String u, String allocationId) {
+            return List.of();
+        }
+
+        @Override
         public List<AIUsage> findActiveAgentRowsSince(String o, String u, Instant since) {
             return usages.byKey.values().stream().filter(AIUsage::isActive).toList();
         }
