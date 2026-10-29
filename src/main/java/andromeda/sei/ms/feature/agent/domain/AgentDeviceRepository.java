@@ -38,5 +38,11 @@ public interface AgentDeviceRepository {
 
     void touchUpload(String deviceId, String organizationId, Instant uploadAt);
 
+    /** Records a "sync now" request only when none is pending (atomic). Returns true when it wrote. */
+    boolean requestSync(String deviceId, String organizationId, Instant at, String by);
+
+    /** Clears the pending request only if it is still {@code requestedAt}; sets {@code syncServedAt}. */
+    void clearServedSync(String deviceId, String organizationId, Instant requestedAt, Instant servedAt);
+
     void setActiveTask(String deviceId, String organizationId, AgentDevice.ActiveTask task);
 }

@@ -20,6 +20,7 @@ class FakeAgentStore implements AgentDeviceRepository, AgentDeviceAuthorizationR
     final Map<String, AgentDeviceAuthorization> authorizations = new LinkedHashMap<>();
     int touchSeenCalls;
     int touchUploadCalls;
+    int clearServedCalls;
     private int seq;
 
     @Override
@@ -97,6 +98,27 @@ class FakeAgentStore implements AgentDeviceRepository, AgentDeviceAuthorizationR
     @Override
     public void setActiveTask(String deviceId, String organizationId, AgentDevice.ActiveTask task) {
         devices.get(deviceId).setActiveTask(task);
+    }
+
+    @Override
+    public boolean requestSync(String deviceId, String organizationId, Instant at, String by) {
+        AgentDevice d = devices.get(deviceId);
+        if (d == null || d.isRevoked() || !Objects.equals(d.getOrganizationId(), organizationId)
+                || d.getSyncRequestedAt() != null) return false;
+        d.setSyncRequestedAt(at);
+        d.setSyncRequestedBy(by);
+        return true;
+    }
+
+    @Override
+    public void clearServedSync(String deviceId, String organizationId, Instant requestedAt, Instant servedAt) {
+        clearServedCalls++;
+        AgentDevice d = devices.get(deviceId);
+        if (d == null || d.isRevoked() || !Objects.equals(d.getOrganizationId(), organizationId)
+                || !requestedAt.equals(d.getSyncRequestedAt())) return;
+        d.setSyncRequestedAt(null);
+        d.setSyncRequestedBy(null);
+        d.setSyncServedAt(servedAt);
     }
 
     @Override

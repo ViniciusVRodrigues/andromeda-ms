@@ -30,8 +30,8 @@ public class AgentHeartbeatController {
     @PreAuthorize("hasAuthority('AGENT_USAGE_WRITE')")
     public HeartbeatOutput heartbeat(@AuthenticationPrincipal AgentPrincipal principal,
                                      @Valid @RequestBody(required = false) HeartbeatRequest body) {
-        HeartbeatInput in = body == null ? new HeartbeatInput(null, null, null)
-                : new HeartbeatInput(body.agentVersion(), body.timezone(), body.pendingRows());
+        HeartbeatInput in = body == null ? new HeartbeatInput(null, null, null, null)
+                : new HeartbeatInput(body.agentVersion(), body.timezone(), body.pendingRows(), body.syncServed());
         return recordHeartbeat.execute(principal, in);
     }
 }

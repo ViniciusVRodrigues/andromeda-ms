@@ -35,6 +35,9 @@ public class AgentDocumentMapper {
         AgentDeviceDocument.ActiveTaskDocument t = d.getActiveTask();
         a.setActiveTask(t == null ? null : new AgentDevice.ActiveTask(t.getWorkItemId(), t.getTaskRef(),
                 t.getTitle(), t.getSince(), t.getRepository(), t.getDay()));
+        a.setSyncRequestedAt(d.getSyncRequestedAt());
+        a.setSyncRequestedBy(d.getSyncRequestedBy());
+        a.setSyncServedAt(d.getSyncServedAt());
         a.setRevokedAt(d.getRevokedAt());
         a.setRevokedBy(d.getRevokedBy());
         a.setActive(d.isActive());
@@ -72,6 +75,9 @@ public class AgentDocumentMapper {
                 .pendingRows(a.getPendingRows())
                 .activeTask(t == null ? null : new AgentDeviceDocument.ActiveTaskDocument(t.workItemId(),
                         t.taskRef(), t.title(), t.since(), t.repository(), t.day()))
+                .syncRequestedAt(a.getSyncRequestedAt())
+                .syncRequestedBy(a.getSyncRequestedBy())
+                .syncServedAt(a.getSyncServedAt())
                 .revokedAt(a.getRevokedAt())
                 .revokedBy(a.getRevokedBy())
                 .active(a.isActive())

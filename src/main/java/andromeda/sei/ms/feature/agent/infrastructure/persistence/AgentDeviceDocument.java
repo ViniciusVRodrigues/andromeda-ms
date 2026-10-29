@@ -62,6 +62,10 @@ public class AgentDeviceDocument {
     private Integer pendingRows;
     private ActiveTaskDocument activeTask;
 
+    private Instant syncRequestedAt;
+    private String syncRequestedBy;
+    private Instant syncServedAt;
+
     private Instant revokedAt;
     private String revokedBy;
 

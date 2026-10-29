@@ -99,6 +99,25 @@ public class AgentDeviceRepositoryImpl implements AgentDeviceRepository {
     }
 
     @Override
+    public boolean requestSync(String deviceId, String organizationId, Instant at, String by) {
+        Query query = Query.query(Criteria.where("_id").is(deviceId)
+                .and("organizationId").is(organizationId).and("active").is(true)
+                .and("syncRequestedAt").isNull());
+        Update update = new Update().set("syncRequestedAt", at).set("syncRequestedBy", by).inc("version", 0L);
+        return mongoTemplate.updateFirst(query, update, AgentDeviceDocument.class).getModifiedCount() > 0;
+    }
+
+    @Override
+    public void clearServedSync(String deviceId, String organizationId, Instant requestedAt, Instant servedAt) {
+        Query query = Query.query(Criteria.where("_id").is(deviceId)
+                .and("organizationId").is(organizationId).and("active").is(true)
+                .and("syncRequestedAt").is(requestedAt));
+        Update update = new Update().unset("syncRequestedAt").unset("syncRequestedBy")
+                .set("syncServedAt", servedAt).inc("version", 0L);
+        mongoTemplate.updateFirst(query, update, AgentDeviceDocument.class);
+    }
+
+    @Override
     public void setActiveTask(String deviceId, String organizationId, AgentDevice.ActiveTask task) {
         Update update = new Update();
         if (task == null) {

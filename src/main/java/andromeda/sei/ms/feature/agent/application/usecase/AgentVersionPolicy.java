@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 @Component
 public class AgentVersionPolicy {
 
+    /** First agent version that serves the "sync now" request. */
+    public static final String SYNC_NOW_MIN_VERSION = "0.3.0";
+
     public static final String OK = "OK";
     public static final String OUTDATED = "OUTDATED";
     public static final String UNSUPPORTED = "UNSUPPORTED";

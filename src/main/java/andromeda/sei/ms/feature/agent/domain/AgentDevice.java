@@ -39,6 +39,12 @@ public class AgentDevice {
     private Integer pendingRows;
     private ActiveTask activeTask;
 
+    /** Pending "sync now" request made by a person (absent = none). */
+    private Instant syncRequestedAt;
+    private String syncRequestedBy;
+    /** When the agent last confirmed having served a request. */
+    private Instant syncServedAt;
+
     private Instant revokedAt;
     private String revokedBy;
 
@@ -147,6 +153,12 @@ public class AgentDevice {
     public void setPendingRows(Integer pendingRows) { this.pendingRows = pendingRows; }
     public ActiveTask getActiveTask() { return activeTask; }
     public void setActiveTask(ActiveTask activeTask) { this.activeTask = activeTask; }
+    public Instant getSyncRequestedAt() { return syncRequestedAt; }
+    public void setSyncRequestedAt(Instant v) { this.syncRequestedAt = v; }
+    public String getSyncRequestedBy() { return syncRequestedBy; }
+    public void setSyncRequestedBy(String v) { this.syncRequestedBy = v; }
+    public Instant getSyncServedAt() { return syncServedAt; }
+    public void setSyncServedAt(Instant v) { this.syncServedAt = v; }
     public Instant getRevokedAt() { return revokedAt; }
     public void setRevokedAt(Instant revokedAt) { this.revokedAt = revokedAt; }
     public String getRevokedBy() { return revokedBy; }

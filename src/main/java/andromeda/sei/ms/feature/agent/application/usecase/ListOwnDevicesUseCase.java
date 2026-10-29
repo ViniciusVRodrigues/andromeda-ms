@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.DeviceOutput;
 import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.OsOutput;
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceRepository;
+import andromeda.sei.ms.feature.agent.domain.SemVer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -68,6 +69,7 @@ public class ListOwnDevicesUseCase {
         return new DeviceOutput(d.getId(), d.getMachineName(), os, d.getAgentVersion(), versionStatus,
                 d.getPairedAt(), d.getLastSeenAt(), d.getLastUploadAt(), status, days,
                 !AgentVersionPolicy.OK.equals(versionStatus), versionPolicy.minVersion(),
-                DeviceOutputs.activeTask(d), d.getRevokedAt());
+                DeviceOutputs.activeTask(d), d.getRevokedAt(), d.getSyncRequestedAt(), d.getSyncServedAt(),
+                !d.isRevoked() && SemVer.isAtLeast(d.getAgentVersion(), AgentVersionPolicy.SYNC_NOW_MIN_VERSION));
     }
 }

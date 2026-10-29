@@ -153,4 +153,49 @@ class AgentRepositoriesMongoTest {
                 .isEqualTo(NOW.plusSeconds(20));
         assertThat(devices.findByIdAndOrganizationId(saved.getId(), "org-2")).isEmpty();
     }
+
+    @Test
+    void should_requestSyncOnlyWhenNonePendingAndOnlyInTheOwnOrganization() {
+        AgentDevice d = devices.save(device("a1", "r1"));
+        Instant t1 = NOW.plusSeconds(10);
+        assertThat(devices.requestSync(d.getId(), "org-2", t1, "user-1")).isFalse();
+        assertThat(devices.findByIdAndOrganizationId(d.getId(), "org-1").orElseThrow().getSyncRequestedAt()).isNull();
+        assertThat(devices.requestSync(d.getId(), "org-1", t1, "user-1")).isTrue();
+        assertThat(devices.requestSync(d.getId(), "org-1", t1.plusSeconds(5), "user-2")).isFalse();
+        AgentDevice stored = devices.findByIdAndOrganizationId(d.getId(), "org-1").orElseThrow();
+        assertThat(stored.getSyncRequestedAt()).isEqualTo(t1);
+        assertThat(stored.getSyncRequestedBy()).isEqualTo("user-1");
+        assertThat(stored.getVersion()).isEqualTo(d.getVersion());
+    }
+
+    @Test
+    void should_notRequestSyncOnARevokedDevice() {
+        AgentDevice d = devices.save(device("a1", "r1"));
+        d.revoke("user-1", NOW);
+        devices.save(d);
+        assertThat(devices.requestSync(d.getId(), "org-1", NOW.plusSeconds(1), "user-1")).isFalse();
+    }
+
+    @Test
+    void should_clearServedSyncOnlyWhenTheRequestMatchesAndInTheOwnOrganization() {
+        AgentDevice d = devices.save(device("a1", "r1"));
+        Instant t1 = NOW.plusSeconds(10);
+        devices.requestSync(d.getId(), "org-1", t1, "user-1");
+
+        devices.clearServedSync(d.getId(), "org-2", t1, NOW.plusSeconds(20));
+        assertThat(devices.findByIdAndOrganizationId(d.getId(), "org-1").orElseThrow().getSyncRequestedAt())
+                .isEqualTo(t1);
+
+        devices.clearServedSync(d.getId(), "org-1", t1.minusSeconds(1), NOW.plusSeconds(20));
+        AgentDevice kept = devices.findByIdAndOrganizationId(d.getId(), "org-1").orElseThrow();
+        assertThat(kept.getSyncRequestedAt()).isEqualTo(t1);
+        assertThat(kept.getSyncServedAt()).isNull();
+
+        devices.clearServedSync(d.getId(), "org-1", t1, NOW.plusSeconds(20));
+        AgentDevice cleared = devices.findByIdAndOrganizationId(d.getId(), "org-1").orElseThrow();
+        assertThat(cleared.getSyncRequestedAt()).isNull();
+        assertThat(cleared.getSyncRequestedBy()).isNull();
+        assertThat(cleared.getSyncServedAt()).isEqualTo(NOW.plusSeconds(20));
+        assertThat(devices.requestSync(d.getId(), "org-1", NOW.plusSeconds(30), "user-1")).isTrue();
+    }
 }
