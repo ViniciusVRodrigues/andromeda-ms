@@ -54,7 +54,26 @@ public record WorkItemPatterns(boolean enabled, Mode mode, List<Entry> patterns,
 
     public WorkItemPatterns {
         mode = mode == null ? Mode.DEFAULT : mode;
-        patterns = patterns == null || patterns.isEmpty() ? defaultEntries() : List.copyOf(patterns);
+        patterns = patterns == null || patterns.isEmpty() ? defaultEntries() : ordered(patterns);
+    }
+
+    /**
+     * Evaluation order (design 5.3): by specificity, stable (ties keep the given order):
+     * {AB_HASH, PREFIX} (same rank, sent order: no existing link changes), JIRA_KEY, CUSTOM, NUMBER. Applied on every construction, so writing and
+     * reading always agree. NUMBER last: {@code feat/PROJ-88_foo} gives PROJ-88, not 88.
+     */
+    private static List<Entry> ordered(List<Entry> entries) {
+        return entries.stream().sorted(java.util.Comparator.comparingInt(e -> rank(e.preset()))).toList();
+    }
+
+    private static int rank(String preset) {
+        if (preset == null) return 2;
+        return switch (preset) {
+            case "AB_HASH", "PREFIX" -> 0;
+            case "JIRA_KEY" -> 1;
+            case "NUMBER" -> 3;
+            default -> 2;
+        };
     }
 
     public static List<Entry> defaultEntries() {

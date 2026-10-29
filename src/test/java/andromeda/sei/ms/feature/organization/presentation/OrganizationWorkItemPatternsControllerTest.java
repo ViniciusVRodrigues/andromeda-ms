@@ -112,10 +112,10 @@ class OrganizationWorkItemPatternsControllerTest {
                 .andExpect(jsonPath("$.mode").value("CUSTOM"))
                 .andExpect(jsonPath("$.patterns[0].preset").value("PREFIX"))
                 .andExpect(jsonPath("$.patterns[0].alsoInText").value(true))
-                .andExpect(jsonPath("$.patterns[1].preset").value("NUMBER"))
-                .andExpect(jsonPath("$.patterns[1].alsoInText").value(false))
-                .andExpect(jsonPath("$.patterns[2].preset").value("CUSTOM"))
-                .andExpect(jsonPath("$.patterns[2].alsoInText").value(true));
+                .andExpect(jsonPath("$.patterns[1].preset").value("CUSTOM"))
+                .andExpect(jsonPath("$.patterns[1].alsoInText").value(true))
+                .andExpect(jsonPath("$.patterns[2].preset").value("NUMBER"))
+                .andExpect(jsonPath("$.patterns[2].alsoInText").value(false));
 
         WorkItemPatterns stored = organization.getWorkItemPatterns();
         assertThat(stored.mode()).isEqualTo(WorkItemPatterns.Mode.CUSTOM);
