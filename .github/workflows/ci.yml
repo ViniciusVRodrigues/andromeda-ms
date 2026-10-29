@@ -7,7 +7,7 @@ on:
 jobs:
   test-and-build:
     name: Test & Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
           restore-keys: gradle-
 
       - name: Docker version (diagnóstico)
-        run: docker version
+        run: uname -r && docker version
 
       - name: Mongo probe (diagnóstico)
         run: docker run -d --name probe mongo:8.0 --replSet rs && sleep 10 && docker ps -a && docker logs probe 2>&1 | tail -5 && docker context ls && env | grep -i -E "docker|testcontainers" || true; ls -la ~/.testcontainers.properties ~/.docker 2>&1 || true
