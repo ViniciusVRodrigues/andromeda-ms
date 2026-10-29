@@ -52,7 +52,8 @@ public class OrganizationPresentationMapper {
     public OrganizationResponse toResponse(CreateOrganizationOutput output) {
         List<AiPriceEntryResponse> aiPrices = output.aiPrices() == null ? null :
                 output.aiPrices().stream()
-                        .map(e -> new AiPriceEntryResponse(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput()))
+                        .map(e -> new AiPriceEntryResponse(e.getModel(), e.getPricePerKInput(), e.getPricePerKOutput(),
+                                e.getPricePerKCacheRead(), e.getPricePerKCacheWrite()))
                         .toList();
         return new OrganizationResponse(output.id(), output.name(), output.slug(),
                 output.sector(), output.country(), output.seniorities(), aiPrices,

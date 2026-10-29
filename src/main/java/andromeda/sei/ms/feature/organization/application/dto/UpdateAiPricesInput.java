@@ -5,5 +5,6 @@ import java.util.List;
 
 public record UpdateAiPricesInput(List<AiPriceEntryInput> entries) {
 
-    public record AiPriceEntryInput(String model, BigDecimal pricePerKInput, BigDecimal pricePerKOutput) {}
+    public record AiPriceEntryInput(String model, BigDecimal pricePerKInput, BigDecimal pricePerKOutput,
+                                  BigDecimal pricePerKCacheRead, BigDecimal pricePerKCacheWrite) {}
 }
