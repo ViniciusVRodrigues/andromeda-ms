@@ -38,10 +38,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     /**
      * Connector routes are authenticated by the token in the path; the {@code Authorization} header
      * there belongs to the person's GitHub (AIEF extension) and must never be read or validated here.
+     * {@code /agent/} carries the opaque token of a paired device (AgentTokenAuthFilter): it is not a JWT.
      */
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/connector/");
+        String uri = request.getRequestURI();
+        return uri.startsWith("/connector/") || uri.startsWith("/agent/");
     }
 
     @Override

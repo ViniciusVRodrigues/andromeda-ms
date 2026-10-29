@@ -689,4 +689,34 @@ class AutoAssignAllocationUseCaseTest {
         wi.setResolvedType(type);
         return wi;
     }
+
+    @Test
+    void should_suggestForUnallocatedRows_when_dayHasOnlyAgentAllocation() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(agentAllocation("alloc-agent", DAY, ORG, USER, List.of("ua1"))));
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint("sprint-1")));
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(workItem("wi-1", "Fix")));
+        when(allocationRepository.save(any())).thenReturn(savedAllocation("alloc-1", List.of("usage-1")));
+
+        useCase.execute(ORG, USER, DAY);
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getAiUsageIds()).containsExactly("usage-1");
+        assertThat(captor.getValue().getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.AUTO);
+        verify(allocationRepository, never()).deleteById("alloc-agent");
+    }
+
+    private static AiUsageAllocation agentAllocation(String id, java.time.LocalDate day, String org, String user, List<String> usageIds) {
+        Instant t = Instant.now();
+        AiUsageAllocation a = new AiUsageAllocation(id, org, user, day, usageIds,
+                List.of(new AllocationSplit("wi-agent", "Task", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT, true, 0L, t, t);
+        a.setAgent(new AiUsageAllocation.AgentInfo(AiUsageAllocation.ResolvedBy.MARK, List.of("org/repo"), List.of("feat/AB#1")));
+        return a;
+    }
 }

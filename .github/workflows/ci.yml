@@ -7,7 +7,9 @@ on:
 jobs:
   test-and-build:
     name: Test & Build
-    runs-on: ubuntu-latest
+    # ubuntu-22.04 (kernel 6.8): o ubuntu-24.04 de 2026-10-25 tem kernel 6.19+, onde o MongoDB 8.0
+    # não sobe (SERVER-121912) e todos os testes com Testcontainers falham. Voltar quando houver kernel 7.0.14+.
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +30,7 @@ jobs:
           restore-keys: gradle-
 
       - name: Run tests
-        run: ./gradlew check
+        run: uname -r && ./gradlew check
 
       - name: Build JAR
         run: ./gradlew build -x test

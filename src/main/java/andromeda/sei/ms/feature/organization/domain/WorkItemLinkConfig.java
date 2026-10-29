@@ -42,6 +42,11 @@ public class WorkItemLinkConfig {
         return config == null ? defaults() : config;
     }
 
+    /** The prefixes as stored, even when disabled (used to read the legacy configuration as patterns). */
+    public List<String> rawPrefixes() {
+        return prefixes;
+    }
+
     public boolean isEnabled() {
         return enabled;
     }

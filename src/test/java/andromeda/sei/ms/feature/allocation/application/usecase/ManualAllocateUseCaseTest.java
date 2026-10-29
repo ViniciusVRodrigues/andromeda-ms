@@ -281,4 +281,37 @@ class ManualAllocateUseCaseTest {
         verify(allocationRepository, never()).deleteById(any());
         verify(allocationRepository, never()).save(any());
     }
+
+    @Test
+    void should_allocateTheDay_when_onlyAnAgentAllocationIsValidated() {
+        AiUsageAllocation agent = new AiUsageAllocation("alloc-agent", ORG_ID, USER_ID, DAY, List.of("ua1"),
+                List.of(), AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT,
+                true, 0L, Instant.now(), Instant.now());
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(agent));
+        AIUsage usage = mockAiUsage("usage-9");
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(usage));
+        when(allocationRepository.save(any())).thenAnswer(inv -> {
+            AiUsageAllocation a = inv.getArgument(0);
+            a.setId("alloc-new");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        verify(allocationRepository, never()).deleteById("alloc-agent");
+        verify(allocationRepository).save(any());
+    }
+
+    @Test
+    void should_rejectUpdatingAgentAllocationById() {
+        AiUsageAllocation agent = new AiUsageAllocation(ALLOCATION_ID, ORG_ID, USER_ID, DAY, List.of("ua1"),
+                List.of(), AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT,
+                true, 0L, Instant.now(), Instant.now());
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(agent));
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID, null, validSplits))
+                .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException.class);
+        verify(allocationRepository, never()).save(any());
+    }
 }

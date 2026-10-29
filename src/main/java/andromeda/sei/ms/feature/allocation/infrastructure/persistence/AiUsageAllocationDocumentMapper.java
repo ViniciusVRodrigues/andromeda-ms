@@ -15,7 +15,7 @@ public class AiUsageAllocationDocumentMapper {
                         .map(s -> new AllocationSplit(s.getWorkItemId(), s.getWorkItemTitle(), s.getPercentage()))
                         .toList();
 
-        return new AiUsageAllocation(
+        AiUsageAllocation allocation = new AiUsageAllocation(
                 doc.getId(),
                 doc.getOrganizationId(),
                 doc.getUserId(),
@@ -30,6 +30,13 @@ public class AiUsageAllocationDocumentMapper {
                 doc.getUpdatedAt(),
                 doc.getSuggestionSource()
         );
+        if (doc.getAgent() != null) {
+            allocation.setAgent(new AiUsageAllocation.AgentInfo(doc.getAgent().getResolvedBy(),
+                    doc.getAgent().getRepositories() == null ? List.of() : doc.getAgent().getRepositories(),
+                    doc.getAgent().getBranches() == null ? List.of() : doc.getAgent().getBranches()));
+        }
+        allocation.setMovedFromAgent(doc.isMovedFromAgent());
+        return allocation;
     }
 
     public AiUsageAllocationDocument toDocument(AiUsageAllocation allocation) {
@@ -52,6 +59,10 @@ public class AiUsageAllocationDocumentMapper {
                 .status(allocation.getStatus())
                 .assignedBy(allocation.getAssignedBy())
                 .suggestionSource(allocation.getSuggestionSource())
+                .agent(allocation.getAgent() == null ? null : new AiUsageAllocationDocument.AgentInfoDocument(
+                        allocation.getAgent().resolvedBy(), allocation.getAgent().repositories(),
+                        allocation.getAgent().branches()))
+                .movedFromAgent(allocation.isMovedFromAgent())
                 .active(allocation.isActive())
                 .version(allocation.getVersion())
                 .createdAt(allocation.getCreatedAt())

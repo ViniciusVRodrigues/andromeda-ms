@@ -89,7 +89,7 @@ public class ManualAllocateUseCase {
     private void createNewAllocation(String organizationId, String userId,
                                      LocalDate day, List<AllocationSplit> splits) {
         List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
-        if (ofTheDay.stream().anyMatch(a -> a.getStatus() == AiUsageAllocation.Status.VALIDATED)) {
+        if (ofTheDay.stream().anyMatch(a -> a.closesTheDay())) {
             throw new AllocationAlreadyValidatedException(day.toString());
         }
 

@@ -53,12 +53,22 @@ public class SaveAllocationUseCase {
                 .map(e -> new AllocationSplit(e.workItemId(), e.workItemTitle(),
                         e.percentage().setScale(PERCENTAGE_SCALE, RoundingMode.HALF_UP)))
                 .toList();
+        // Rows already allocated by the agent (AGENT allocations) are outside the per-day flow: never
+        // swept into this allocation, never unlinked, and the AGENT allocation itself is never deleted.
+        List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
+        Set<String> agentUsageIds = ofTheDay.stream()
+                .filter(AiUsageAllocation::isAgent)
+                .filter(a -> a.getAiUsageIds() != null)
+                .flatMap(a -> a.getAiUsageIds().stream())
+                .collect(Collectors.toSet());
         List<String> dayUsageIds = aiUsageRepository
                 .findByOrganizationIdAndUserIdAndDayIn(organizationId, userId, List.of(day)).stream()
                 .map(AIUsage::getId)
                 .filter(Objects::nonNull)
+                .filter(id -> !agentUsageIds.contains(id))
                 .toList();
-        Set<String> previouslyReferenced = allocationRepository.findByOrgUserAndDay(organizationId, userId, day).stream()
+        Set<String> previouslyReferenced = ofTheDay.stream()
+                .filter(a -> !a.isAgent())
                 .filter(a -> a.getAiUsageIds() != null)
                 .flatMap(a -> a.getAiUsageIds().stream())
                 .collect(Collectors.toSet());

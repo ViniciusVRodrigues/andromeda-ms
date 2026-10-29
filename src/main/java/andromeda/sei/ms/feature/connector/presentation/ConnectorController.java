@@ -81,9 +81,10 @@ public class ConnectorController {
                 ))
                 .toList();
 
-        upsertAIUsageUseCase.execute(usageEntries, organizationId, userId);
-        log.info("connector upload: org={} entries={} ms={}", orgSlug, usageEntries.size(), elapsedMs(startedAt));
-        return ResponseEntity.ok(Map.of("uploaded", usageEntries.size()));
+        int ignored = upsertAIUsageUseCase.execute(usageEntries, organizationId, userId);
+        log.info("connector upload: org={} entries={} ignored={} ms={}", orgSlug, usageEntries.size(), ignored,
+                elapsedMs(startedAt));
+        return ResponseEntity.ok(Map.of("uploaded", usageEntries.size() - ignored, "ignored", ignored));
     }
 
     @Operation(summary = "Fluency score sink (feature removed; body is validated as JSON, size-capped and discarded)")

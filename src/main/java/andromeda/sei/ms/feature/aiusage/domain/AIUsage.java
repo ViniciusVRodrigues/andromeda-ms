@@ -29,6 +29,30 @@ public class AIUsage {
     private Instant createdAt;
     private Instant updatedAt;
 
+    // Local agent rows only (agente-endpoint-v2); all null/zero on AIEF rows.
+    private String source;
+    private String agentKey;
+    private boolean branchApproximate;
+    private String deviceId;
+    private String tool;
+    private String sessionHash;
+    private Instant bucketStart;
+    private long cacheReadTokens;
+    private long cacheWriteTokens;
+    private long thinkingTokens;
+    private String origin;
+    private String repository;
+    private String branch;
+    private String taskRef;
+    private String attributionMethod;
+    private String attributionSource;
+    private String workItemId;
+    private String projectId;
+    private String agentVersion;
+    private String batchId;
+    private String supersededBy;
+    private boolean possibleDuplicate;
+
     public AIUsage(String id, String organizationId, String userId, String gitHubLogin,
                    String datasetId, LocalDate day, String model,
                    String workspaceId, String workspaceName,
@@ -127,4 +151,52 @@ public class AIUsage {
 
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+
+    // --- local agent fields ---
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
+    public boolean isBranchApproximate() { return branchApproximate; }
+    public void setBranchApproximate(boolean branchApproximate) { this.branchApproximate = branchApproximate; }
+    public String getAgentKey() { return agentKey; }
+    public void setAgentKey(String agentKey) { this.agentKey = agentKey; }
+    public String getDeviceId() { return deviceId; }
+    public void setDeviceId(String deviceId) { this.deviceId = deviceId; }
+    public String getTool() { return tool; }
+    public void setTool(String tool) { this.tool = tool; }
+    public String getSessionHash() { return sessionHash; }
+    public void setSessionHash(String sessionHash) { this.sessionHash = sessionHash; }
+    public Instant getBucketStart() { return bucketStart; }
+    public void setBucketStart(Instant bucketStart) { this.bucketStart = bucketStart; }
+    public long getCacheReadTokens() { return cacheReadTokens; }
+    public void setCacheReadTokens(long cacheReadTokens) { this.cacheReadTokens = cacheReadTokens; }
+    public long getCacheWriteTokens() { return cacheWriteTokens; }
+    public void setCacheWriteTokens(long cacheWriteTokens) { this.cacheWriteTokens = cacheWriteTokens; }
+    public long getThinkingTokens() { return thinkingTokens; }
+    public void setThinkingTokens(long thinkingTokens) { this.thinkingTokens = thinkingTokens; }
+    public String getOrigin() { return origin; }
+    public void setOrigin(String origin) { this.origin = origin; }
+    public String getRepository() { return repository; }
+    public void setRepository(String repository) { this.repository = repository; }
+    public String getBranch() { return branch; }
+    public void setBranch(String branch) { this.branch = branch; }
+    public String getTaskRef() { return taskRef; }
+    public void setTaskRef(String taskRef) { this.taskRef = taskRef; }
+    public String getAttributionMethod() { return attributionMethod; }
+    public void setAttributionMethod(String attributionMethod) { this.attributionMethod = attributionMethod; }
+    public String getAttributionSource() { return attributionSource; }
+    public void setAttributionSource(String attributionSource) { this.attributionSource = attributionSource; }
+    public String getWorkItemId() { return workItemId; }
+    public void setWorkItemId(String workItemId) { this.workItemId = workItemId; }
+    public String getProjectId() { return projectId; }
+    public void setProjectId(String projectId) { this.projectId = projectId; }
+    public String getAgentVersion() { return agentVersion; }
+    public void setAgentVersion(String agentVersion) { this.agentVersion = agentVersion; }
+    public String getBatchId() { return batchId; }
+    public void setBatchId(String batchId) { this.batchId = batchId; }
+    public boolean isPossibleDuplicate() { return possibleDuplicate; }
+    public void setPossibleDuplicate(boolean possibleDuplicate) { this.possibleDuplicate = possibleDuplicate; }
+    public String getSupersededBy() { return supersededBy; }
+    public void setSupersededBy(String supersededBy) { this.supersededBy = supersededBy; }
+
+    public boolean isAgentRow() { return agentKey != null; }
 }

@@ -10,6 +10,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -38,7 +39,7 @@ public class AiConnectorIntegrationDataWiper implements IntegrationDataWiper {
 
     @Override
     public Set<String> collections() {
-        return Set.of("ai_usage_allocations", "ai_usages");
+        return Set.of("ai_usage_allocations", "ai_usages", "agent_upload_batches");
     }
 
     @Override
@@ -49,9 +50,25 @@ public class AiConnectorIntegrationDataWiper implements IntegrationDataWiper {
                 mongoTemplate.remove(query(organizationId, scope), "ai_usage_allocations").getDeletedCount());
         removidos.put("ai_usages",
                 mongoTemplate.remove(query(organizationId, scope), "ai_usages").getDeletedCount());
+        // The stored upload responses go with the usage: a resend of the same batchId would otherwise
+        // answer the old response without writing the rows again. Devices stay (clearing usage does
+        // not unpair the machine; the person revokes the device for that).
+        removidos.put("agent_upload_batches",
+                mongoTemplate.remove(batchesQuery(organizationId, scope), "agent_upload_batches").getDeletedCount());
 
         log.info("Wipe conector IA concluido: org={} scope={} removidos={}", organizationId, scope, removidos);
         return removidos;
+    }
+
+    private Query batchesQuery(String organizationId, WipeScope scope) {
+        Criteria c = Criteria.where("organizationId").is(organizationId);
+        if (scope.userId() != null) {
+            List<String> deviceIds = mongoTemplate.find(Query.query(Criteria.where("organizationId").is(organizationId)
+                            .and("userId").is(scope.userId())), org.bson.Document.class, "agent_devices").stream()
+                    .map(d -> String.valueOf(d.get("_id"))).toList();
+            c = c.and("deviceId").in(deviceIds);
+        }
+        return Query.query(c);
     }
 
     private Query query(String organizationId, WipeScope scope) {

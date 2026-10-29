@@ -33,7 +33,7 @@ import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLog;
 import andromeda.sei.ms.feature.integration.domain.IntegrationSyncLogRepository;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
-import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.project.domain.Project;
 import andromeda.sei.ms.feature.project.domain.ProjectRepository;
 import andromeda.sei.ms.feature.provideraccount.domain.Provider;
@@ -207,9 +207,9 @@ public class GetIntegrationsDashboardV2UseCase {
     }
 
     private WorkItemLink workItemLink(String orgId) {
-        WorkItemLinkConfig config = WorkItemLinkConfig.orDefaults(organizationRepository.findById(orgId)
-                .map(Organization::getVcsSettings).map(v -> v.workItemLink()).orElse(null));
-        return new WorkItemLink(config.isEnabled(), config.getPrefixes());
+        WorkItemPatterns patterns = organizationRepository.findById(orgId)
+                .map(Organization::getWorkItemPatterns).orElseGet(WorkItemPatterns::defaults);
+        return new WorkItemLink(patterns.enabled(), patterns.legacyPrefixes());
     }
 
     private static LastError lastError(String code, String message) {

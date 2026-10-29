@@ -48,6 +48,9 @@ public class OrganizationDocument {
     /** Ausente em documentos anteriores a vcs-core-refactor; a migracao copia o de github_configs. */
     private VcsSettingsDocument vcsSettings;
 
+    /** Ausente em documentos anteriores a agente-endpoint-v2; o mapper le o fallback em vcsSettings.workItemLink. */
+    private WorkItemPatternsDocument workItemPatterns;
+
     @Version
     private Long version;
 

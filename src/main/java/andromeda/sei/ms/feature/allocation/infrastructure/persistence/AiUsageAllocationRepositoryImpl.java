@@ -65,8 +65,11 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     @Override
     public boolean existsValidatedByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day) {
-        return mongoRepository.existsByOrganizationIdAndUserIdAndDayAndStatus(
-                organizationId, userId, day, AiUsageAllocation.Status.VALIDATED);
+        // AGENT allocations and the manual corrections moved from them (movedFromAgent) do not close the day
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and(USER_ID).is(userId)
+                .and(DAY).is(day).and("status").is(AiUsageAllocation.Status.VALIDATED)
+                .and("assignedBy").ne(AiUsageAllocation.AssignedBy.AGENT).and("movedFromAgent").ne(true));
+        return mongoTemplate.exists(query, AiUsageAllocationDocument.class);
     }
 
     @Override
@@ -83,7 +86,18 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     @Override
     public void deleteByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day) {
-        mongoRepository.deleteByOrganizationIdAndUserIdAndDay(organizationId, userId, day);
+        mongoRepository.deleteByOrganizationIdAndUserIdAndDayAndAssignedByNot(
+                organizationId, userId, day, AiUsageAllocation.AssignedBy.AGENT);
+    }
+
+    @Override
+    public java.util.Set<LocalDate> findAgentDays(String organizationId, String userId, LocalDate from, LocalDate to) {
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and(USER_ID).is(userId)
+                .and("assignedBy").is(AiUsageAllocation.AssignedBy.AGENT).and(ACTIVE).is(true)
+                .and(DAY).gte(from).lte(to));
+        query.fields().include(DAY);
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream()
+                .map(AiUsageAllocationDocument::getDay).collect(java.util.stream.Collectors.toSet());
     }
 
     @Override

@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.organization.domain.MetricSettings;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.RemediationRules;
 import andromeda.sei.ms.feature.organization.domain.SyncSettings;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.organization.domain.VcsSettings;
 import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
 import org.springframework.stereotype.Component;
@@ -41,7 +42,55 @@ public class OrganizationDocumentMapper {
         organization.setPurgedAt(doc.getPurgedAt());
         organization.setMetricSettings(toMetricSettings(doc.getMetricSettings()));
         organization.setVcsSettings(toVcsSettings(doc.getVcsSettings()));
+        organization.setWorkItemPatterns(toWorkItemPatterns(doc));
         return organization;
+    }
+
+    /**
+     * Stored patterns, or (design 14.3) the legacy {@code vcsSettings.workItemLink} read as patterns,
+     * or the default. No migration job: the first save writes {@code workItemPatterns}.
+     */
+    private WorkItemPatterns toWorkItemPatterns(OrganizationDocument doc) {
+        WorkItemPatternsDocument stored = doc.getWorkItemPatterns();
+        if (stored == null) {
+            VcsSettingsDocument.WorkItemLinkDocument link = doc.getVcsSettings() == null ? null
+                    : doc.getVcsSettings().getWorkItemLink();
+            return link == null ? WorkItemPatterns.defaults()
+                    : WorkItemPatterns.fromLegacy(new WorkItemLinkConfig(link.isEnabled(), link.getPrefixes()));
+        }
+        WorkItemPatterns.Mode mode;
+        try {
+            mode = stored.getMode() == null ? WorkItemPatterns.Mode.DEFAULT : WorkItemPatterns.Mode.valueOf(stored.getMode());
+        } catch (IllegalArgumentException e) {
+            mode = WorkItemPatterns.Mode.CUSTOM;
+        }
+        List<WorkItemPatterns.Entry> entries = stored.getPatterns() == null ? null : stored.getPatterns().stream()
+                .map(e -> WorkItemPatterns.Entry.of(e.getRegex(), e.isAlsoInText())).toList();
+        WorkItemPatternsDocument.DetectionDocument d = stored.getDetection();
+        WorkItemPatterns.Detection detection = d == null ? null : new WorkItemPatterns.Detection(
+                d.getRanAt(), d.getBranchesScanned(), d.getCoverage(), d.isApplied(),
+                d.getCandidates() == null ? null : d.getCandidates().stream().map(c -> new WorkItemPatterns.Candidate(
+                        c.getRegex(), c.getPreset(), c.getCoverage(), c.getPrecision(), c.getMatchedBranches(),
+                        c.getResolvedBranches(), c.getExamples() == null ? null : c.getExamples().stream()
+                                .map(x -> new WorkItemPatterns.Example(x.getBranch(), x.getWorkItemNumber(), x.getTitle()))
+                                .toList())).toList());
+        return new WorkItemPatterns(stored.isEnabled(), mode, entries, stored.getConfirmedBy(), stored.getConfirmedAt(),
+                stored.getUpdatedBy(), stored.getUpdatedAt(), detection);
+    }
+
+    /** Null for "never configured": keeps the legacy fallback reachable and avoids freezing the defaults. */
+    private WorkItemPatternsDocument toWorkItemPatternsDocument(WorkItemPatterns p) {
+        if (p == null || p.isUntouchedDefault()) return null;
+        WorkItemPatternsDocument.DetectionDocument detection = p.detection() == null ? null
+                : new WorkItemPatternsDocument.DetectionDocument(p.detection().ranAt(), p.detection().branchesScanned(),
+                p.detection().coverage(), p.detection().applied(), p.detection().candidates().stream()
+                .map(c -> new WorkItemPatternsDocument.CandidateDocument(c.regex(), c.preset(), c.coverage(),
+                        c.precision(), c.matchedBranches(), c.resolvedBranches(), c.examples().stream()
+                        .map(x -> new WorkItemPatternsDocument.ExampleDocument(x.branch(), x.workItemNumber(), x.title()))
+                        .toList())).toList());
+        return new WorkItemPatternsDocument(p.enabled(), p.mode().name(), p.patterns().stream()
+                .map(e -> new WorkItemPatternsDocument.EntryDocument(e.regex(), e.preset(), e.alsoInText())).toList(),
+                p.confirmedBy(), p.confirmedAt(), p.updatedBy(), p.updatedAt(), detection);
     }
 
     /** Sem subdocumento (ou sem workItemLink): "nunca configurado", o dominio le os defaults. */
@@ -114,6 +163,7 @@ public class OrganizationDocumentMapper {
                 .purgedAt(org.getPurgedAt())
                 .metricSettings(toMetricSettingsDocument(org.getMetricSettings()))
                 .vcsSettings(toVcsSettingsDocument(org.getVcsSettings()))
+                .workItemPatterns(toWorkItemPatternsDocument(org.getWorkItemPatterns()))
                 .createdAt(org.getCreatedAt())
                 .updatedAt(org.getUpdatedAt());
 

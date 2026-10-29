@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.vcs.application.usecase;
 
+import andromeda.sei.ms.feature.agent.domain.attribution.BranchPatternMatcher;
 import andromeda.sei.ms.feature.organization.domain.Organization;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.feature.organization.domain.VcsSettings;
 import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
@@ -60,11 +62,26 @@ class WorkItemLinkSettingsUseCasesTest {
     }
 
     @Test
-    void should_returnMigratedPrefixes() {
-        organization.setVcsSettings(new VcsSettings(new WorkItemLinkConfig(true, List.of("AB#", "WI-"))));
+    void should_returnPrefixesOfTheNewModel() {
+        organization.setWorkItemPatterns(new WorkItemPatterns(true, WorkItemPatterns.Mode.CUSTOM, List.of(
+                WorkItemPatterns.fromPrefix("AB#"), WorkItemPatterns.fromPrefix("WI-"),
+                WorkItemPatterns.Entry.of(BranchPatternMatcher.NUMBER_REGEX, false)),
+                null, null, null, null, null));
         when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
 
         assertThat(getUseCase.execute().prefixes()).containsExactly("AB#", "WI-");
+    }
+
+    @Test
+    void should_returnNoPrefixes_when_disabled() {
+        organization.setWorkItemPatterns(new WorkItemPatterns(false, WorkItemPatterns.Mode.CUSTOM, null,
+                null, null, null, null, null));
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+
+        WorkItemLinkSettingsOutput output = getUseCase.execute();
+
+        assertThat(output.enabled()).isFalse();
+        assertThat(output.prefixes()).isEmpty();
     }
 
     @Test
@@ -76,7 +93,34 @@ class WorkItemLinkSettingsUseCasesTest {
                 new WorkItemLinkSettingsInput(true, Arrays.asList(" WI- ", "", null, "AB#")));
 
         assertThat(output.prefixes()).containsExactly("WI-", "AB#");
-        assertThat(organization.getVcsSettings().workItemLink()).isNotNull();
+        WorkItemPatterns stored = organization.getWorkItemPatterns();
+        assertThat(stored.mode()).isEqualTo(WorkItemPatterns.Mode.CUSTOM);
+        assertThat(stored.patterns()).extracting(WorkItemPatterns.Entry::preset).containsExactly("PREFIX", "AB_HASH");
+        assertThat(stored.regexes().get(0)).isEqualTo(BranchPatternMatcher.prefixRegex("WI-"));
+    }
+
+    @Test
+    void should_notWriteTheFormerVcsSettingsLink_whenSavingThroughTheLegacyRoute() {
+        WorkItemLinkConfig former = new WorkItemLinkConfig(true, List.of("OLD-"));
+        organization.setVcsSettings(new VcsSettings(former));
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+        when(organizationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        updateUseCase.execute(new WorkItemLinkSettingsInput(true, List.of("WI-")));
+
+        assertThat(organization.getVcsSettings().workItemLink()).isSameAs(former);
+        assertThat(organization.getWorkItemPatterns().legacyPrefixes()).containsExactly("WI-");
+    }
+
+    @Test
+    void should_fallBackToTheDefaultPattern_when_enabledWithoutPrefixes() {
+        when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
+        when(organizationRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        WorkItemLinkSettingsOutput output = updateUseCase.execute(new WorkItemLinkSettingsInput(true, List.of()));
+
+        assertThat(output.prefixes()).containsExactly("AB#");
+        assertThat(organization.getWorkItemPatterns().mode()).isEqualTo(WorkItemPatterns.Mode.CUSTOM);
     }
 
     @Test

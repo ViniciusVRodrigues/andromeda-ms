@@ -99,6 +99,21 @@ class WorkItemRepositoryImplTest {
         assertThat(reloaded.get().getParentExternalId()).isEqualTo("parent-ext-2");
     }
 
+    @Test
+    void findAllActiveByOrganizationIdAndExternalId_shouldFilterByOrgAndActive() {
+        repository.save(workItem("77"));
+        WorkItem inactive = workItem("78");
+        inactive.setActive(false);
+        repository.save(inactive);
+        WorkItem otherOrg = workItem("77");
+        otherOrg.setOrganizationId("org-2");
+        repository.save(otherOrg);
+
+        assertThat(repository.findAllActiveByOrganizationIdAndExternalId(ORG_ID, "77")).hasSize(1);
+        assertThat(repository.findAllActiveByOrganizationIdAndExternalId(ORG_ID, "78")).isEmpty();
+        assertThat(repository.findAllActiveByOrganizationIdAndExternalId(ORG_ID, "99")).isEmpty();
+    }
+
     private WorkItem workItem(String externalId) {
         return workItem(externalId, null);
     }

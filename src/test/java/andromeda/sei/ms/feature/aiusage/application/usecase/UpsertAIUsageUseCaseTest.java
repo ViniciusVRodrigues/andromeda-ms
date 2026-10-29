@@ -34,7 +34,8 @@ class UpsertAIUsageUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new UpsertAIUsageUseCase(aiUsageRepository, autoAssign, new CalculateAiCostUseCase(), organizationRepository);
+        useCase = new UpsertAIUsageUseCase(aiUsageRepository, autoAssign, new CalculateAiCostUseCase(), organizationRepository,
+                (o, u, d, e, m) -> andromeda.sei.ms.feature.aiusage.domain.AiefCoexistence.Verdict.STORE);
         when(organizationRepository.findById("org-1")).thenReturn(Optional.of(organization));
     }
 

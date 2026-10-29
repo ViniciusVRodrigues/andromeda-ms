@@ -49,6 +49,10 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	// Mensagem e causas completas no log do CI (o formato curto esconde o erro do Testcontainers).
+	testLogging {
+		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+	}
 }
 
 // Carrega .env como variáveis de ambiente no bootRun (nunca commitar .env)

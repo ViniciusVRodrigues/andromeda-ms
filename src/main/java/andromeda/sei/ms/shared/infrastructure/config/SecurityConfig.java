@@ -1,5 +1,6 @@
 package andromeda.sei.ms.shared.infrastructure.config;
 
+import andromeda.sei.ms.feature.agent.infrastructure.security.AgentTokenAuthFilter;
 import andromeda.sei.ms.feature.connector.infrastructure.security.ConnectorTokenAuthFilter;
 import andromeda.sei.ms.shared.infrastructure.security.AzureOAuth2SuccessHandler;
 import andromeda.sei.ms.shared.infrastructure.security.CompositeOAuth2SuccessHandler;
@@ -41,6 +42,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ConnectorTokenAuthFilter connectorTokenAuthFilter;
+    private final AgentTokenAuthFilter agentTokenAuthFilter;
     private final GitHubOAuth2SuccessHandler gitHubOAuth2SuccessHandler;
     private final AzureOAuth2SuccessHandler azureOAuth2SuccessHandler;
     private final OAuth2FailureHandler oauth2FailureHandler;
@@ -73,7 +75,9 @@ public class SecurityConfig {
             "/swagger-ui.html",
             "/api/v1/auth/oauth2/authorization/*", // popup do OAuth: o ticket de uso unico autoriza
             "/api/v1/auth/oauth2/callback/*",      // retorno do provedor
-            "/connector/*/health"       // connector health — public, no auth
+            "/connector/*/health",      // connector health — public, no auth
+            "/agent/v1/device/code",    // pareamento do agente local (RFC 8628) — sem credencial, com rate limit por IP
+            "/agent/v1/device/token"    // troca do device_code e refresh — sem credencial, com rate limit por IP
     };
 
     // Connector endpoints authenticated by ConnectorTokenAuthFilter — not by JWT
@@ -110,6 +114,7 @@ public class SecurityConfig {
                 .addFilterBefore(new OAuthTicketAuthorizationFilter(consumeOAuthLinkTicketUseCase, frontendUrl,
                         oauthCookieSecure), OAuth2AuthorizationRequestRedirectFilter.class)
                 .addFilterBefore(connectorTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(agentTokenAuthFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
@@ -130,6 +135,13 @@ public class SecurityConfig {
             ConnectorTokenAuthFilter filter) {
         FilterRegistrationBean<ConnectorTokenAuthFilter> bean = new FilterRegistrationBean<>(filter);
         bean.setEnabled(false); // runs only inside the Spring Security filter chain, not as a standalone servlet filter
+        return bean;
+    }
+
+    @Bean
+    public FilterRegistrationBean<AgentTokenAuthFilter> agentTokenFilterRegistration(AgentTokenAuthFilter filter) {
+        FilterRegistrationBean<AgentTokenAuthFilter> bean = new FilterRegistrationBean<>(filter);
+        bean.setEnabled(false); // only inside the Spring Security chain, like the connector filter
         return bean;
     }
 

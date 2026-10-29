@@ -66,12 +66,15 @@ class AiConnectorIntegrationDataWiperTest {
         wiper.wipe(ORG, WipeScope.forUser("user-1"));
 
         List<Query> queries = remocoes();
-        assertThat(queries).hasSize(2);
-        for (Query q : queries) {
+        assertThat(queries).hasSize(3);
+        // uso e alocacoes: filtro por usuario; as respostas guardadas dos lotes so tem o dispositivo,
+        // entao o filtro e pelos dispositivos do usuario (nunca a organizacao inteira)
+        for (Query q : queries.subList(0, 2)) {
             assertThat(q.getQueryObject().get("userId"))
                     .as("sem filtro de usuario o wipe individual apagaria o uso de IA da org inteira: %s", q)
                     .isEqualTo("user-1");
         }
+        assertThat(queries.get(2).getQueryObject().get("deviceId")).isNotNull();
     }
 
     /** Escopo ALL: sem userId no filtro, para alcancar a organizacao inteira. */
@@ -81,17 +84,19 @@ class AiConnectorIntegrationDataWiperTest {
 
         for (Query q : remocoes()) {
             assertThat(q.getQueryObject().get("userId")).isNull();
+            assertThat(q.getQueryObject().get("deviceId")).isNull();
         }
     }
 
     @Test
-    void deve_apagar_as_duas_colecoes() {
+    void deve_apagar_o_uso_as_alocacoes_e_as_respostas_guardadas_dos_lotes_mas_nao_os_dispositivos() {
         wiper.wipe(ORG, WipeScope.wholeIntegration());
 
         ArgumentCaptor<String> colecoes = ArgumentCaptor.forClass(String.class);
         verify(mongoTemplate, atLeastOnce()).remove(any(Query.class), colecoes.capture());
 
         assertThat(colecoes.getAllValues())
-                .containsExactlyInAnyOrder("ai_usages", "ai_usage_allocations");
+                .containsExactlyInAnyOrder("ai_usages", "ai_usage_allocations", "agent_upload_batches")
+                .doesNotContain("agent_devices");
     }
 }

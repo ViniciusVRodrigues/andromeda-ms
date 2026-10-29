@@ -62,6 +62,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 .set("interactions", usage.getInteractions())
                 .set("uploadedAt", usage.getUploadedAt())
                 .set("active", true)
+                .set("possibleDuplicate", usage.isPossibleDuplicate())
                 .set("updatedAt", now)
                 .setOnInsert("createdAt", now)
                 .setOnInsert("allocationId", null);
@@ -221,7 +222,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     @Override
     public List<AIUsage> findUnallocatedByOrganizationIdAndUserIdAndDay(
             String organizationId, String userId, LocalDate day) {
-        return mongoRepository.findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNull(
+        return mongoRepository.findByOrganizationIdAndUserIdAndDayAndAllocationIdIsNullAndActiveTrue(
                         organizationId, userId, day)
                 .stream().map(mapper::toDomain).toList();
     }

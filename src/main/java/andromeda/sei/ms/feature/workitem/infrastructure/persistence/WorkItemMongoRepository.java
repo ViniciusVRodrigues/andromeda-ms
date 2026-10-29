@@ -19,6 +19,8 @@ public interface WorkItemMongoRepository extends MongoRepository<WorkItemDocumen
 
     List<WorkItemDocument> findAllByOrganizationIdAndProjectId(String organizationId, String projectId);
 
+    List<WorkItemDocument> findAllByOrganizationIdAndExternalIdAndActiveTrue(String organizationId, String externalId);
+
     List<WorkItemDocument> findByOrganizationIdAndAssigneeUserIdAndSprintId(
             String organizationId, String assigneeUserId, String sprintId);
 

@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.vcs.application;
 
 import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -10,7 +11,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class WorkItemReferenceExtractorTest {
 
-    private static final WorkItemLinkConfig DEFAULTS = WorkItemLinkConfig.defaults();
+    private static final WorkItemPatterns DEFAULTS = WorkItemPatterns.defaults();
+
+    /** The prefixes read as patterns (design 14.3), as the migrated organizations get them. */
+    private static WorkItemPatterns legacy(boolean enabled, String... prefixes) {
+        return WorkItemPatterns.fromLegacy(new WorkItemLinkConfig(enabled, List.of(prefixes)));
+    }
 
     @Test
     void shouldExtractFromBranch() {
@@ -75,7 +81,7 @@ class WorkItemReferenceExtractorTest {
 
     @Test
     void shouldReturnEmpty_when_extractionIsDisabled() {
-        WorkItemLinkConfig disabled = new WorkItemLinkConfig(false, List.of("AB#"));
+        WorkItemPatterns disabled = legacy(false, "AB#");
 
         Optional<String> id = WorkItemReferenceExtractor.extract(
                 disabled, "feature/AB#123-add-repos-tab", null, null);
@@ -85,7 +91,7 @@ class WorkItemReferenceExtractorTest {
 
     @Test
     void shouldHonourCustomPrefix() {
-        WorkItemLinkConfig custom = new WorkItemLinkConfig(true, List.of("WI-"));
+        WorkItemPatterns custom = legacy(true, "WI-");
 
         assertThat(WorkItemReferenceExtractor.extract(custom, "feature/WI-42-x", null, null))
                 .contains("42");
@@ -95,7 +101,7 @@ class WorkItemReferenceExtractorTest {
 
     @Test
     void shouldMatchAnyConfiguredPrefix_when_teamIsMigratingConventions() {
-        WorkItemLinkConfig both = new WorkItemLinkConfig(true, List.of("AB#", "WI-"));
+        WorkItemPatterns both = legacy(true, "AB#", "WI-");
 
         assertThat(WorkItemReferenceExtractor.extract(both, "feature/WI-5-x", null, null))
                 .contains("5");
@@ -131,7 +137,7 @@ class WorkItemReferenceExtractorTest {
      */
     @Test
     void shouldTreatPrefixLiterally_when_itCarriesRegexMetacharacters() {
-        WorkItemLinkConfig bracketed = new WorkItemLinkConfig(true, List.of("[WI]"));
+        WorkItemPatterns bracketed = legacy(true, "[WI]");
 
         assertThat(WorkItemReferenceExtractor.extract(bracketed, "feature/[WI]31-x", null, null))
                 .contains("31");

@@ -7,7 +7,7 @@ import andromeda.sei.ms.feature.integration.domain.SyncStatus;
 import andromeda.sei.ms.feature.integration.domain.SyncTrigger;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
-import andromeda.sei.ms.feature.organization.domain.WorkItemLinkConfig;
+import andromeda.sei.ms.feature.organization.domain.WorkItemPatterns;
 import andromeda.sei.ms.feature.vcs.application.VcsIntegrations;
 import andromeda.sei.ms.feature.vcs.application.port.VcsAuthorResolver;
 import andromeda.sei.ms.feature.vcs.application.port.VcsCredentials;
@@ -100,7 +100,7 @@ public class SyncRepositoryUseCase {
 
         VcsRepository repository = refreshRepository(credentials, client, binding);
         VcsRepositoryContentSync.Context context = new VcsRepositoryContentSync.Context(
-                credentials, client, authors, repository, workItemLinkConfig(orgId), binding);
+                credentials, client, authors, repository, workItemPatterns(orgId), binding);
 
         int commits = contentSync.syncCommits(context, lastSyncAt != null ? lastSyncAt : backfillFrom);
         List<VcsPullRequest> pullRequests = contentSync.syncPullRequests(context, lastSyncAt, backfillFrom);
@@ -213,11 +213,10 @@ public class SyncRepositoryUseCase {
                 .orElse(pending);
     }
 
-    private WorkItemLinkConfig workItemLinkConfig(String organizationId) {
+    private WorkItemPatterns workItemPatterns(String organizationId) {
         return organizationRepository.findById(organizationId)
-                .map(Organization::getVcsSettings)
-                .map(settings -> settings.effectiveWorkItemLink())
-                .orElseGet(WorkItemLinkConfig::defaults);
+                .map(Organization::getWorkItemPatterns)
+                .orElseGet(WorkItemPatterns::defaults);
     }
 
     private void finish(IntegrationSyncLog syncLog, Instant startedAt, SyncStatus status, int processed, int failed) {
