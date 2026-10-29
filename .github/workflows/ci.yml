@@ -32,6 +32,12 @@ jobs:
 
       - name: Run tests
         run: ./gradlew check
+        env:
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+
+      - name: Containers (diagnóstico)
+        if: failure()
+        run: docker ps -a && for c in $(docker ps -aq); do echo "== $c"; docker logs --tail 30 $c 2>&1; done
 
       - name: Build JAR
         run: ./gradlew build -x test
