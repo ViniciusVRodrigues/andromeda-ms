@@ -52,7 +52,6 @@ tasks.withType<Test> {
 	// Mensagem e causas completas no log do CI (o formato curto esconde o erro do Testcontainers).
 	testLogging {
 		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-		showStandardStreams = System.getenv("CI") != null && System.getenv("TC_DIAG") != null
 	}
 }
 

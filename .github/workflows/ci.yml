@@ -7,6 +7,8 @@ on:
 jobs:
   test-and-build:
     name: Test & Build
+    # ubuntu-22.04 (kernel 6.8): o ubuntu-24.04 de 2026-10-25 tem kernel 6.19+, onde o MongoDB 8.0
+    # não sobe (SERVER-121912) e todos os testes com Testcontainers falham. Voltar quando houver kernel 7.0.14+.
     runs-on: ubuntu-22.04
 
     steps:
@@ -27,20 +29,8 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: Docker version (diagnóstico)
-        run: uname -r && docker version
-
-      - name: Mongo probe (diagnóstico)
-        run: docker run -d --name probe mongo:8.0 --replSet rs && sleep 10 && docker ps -a && docker logs probe 2>&1 | tail -5 && docker context ls && env | grep -i -E "docker|testcontainers" || true; ls -la ~/.testcontainers.properties ~/.docker 2>&1 || true
-
       - name: Run tests
-        run: ./gradlew check
-        env:
-          TC_DIAG: "1"
-
-      - name: Containers (diagnóstico)
-        if: failure()
-        run: docker ps -a && for c in $(docker ps -aq); do echo "== $c"; docker logs --tail 30 $c 2>&1; done
+        run: uname -r && ./gradlew check
 
       - name: Build JAR
         run: ./gradlew build -x test

@@ -27,27 +27,7 @@ public class MongoTestcontainersConfig {
     private static final MongoDBContainer MONGO = new MongoDBContainer(DockerImageName.parse(MONGO_IMAGE));
 
     static {
-        // DIAGNOSTICO TEMPORARIO (CI do #52): remover depois
-        try {
-            MONGO.start();
-        } catch (RuntimeException e) {
-            System.err.println("[tc-diag] start falhou: " + e);
-            e.printStackTrace();
-        }
-        System.err.println("[tc-diag] containerId=" + MONGO.getContainerId());
-        try {
-            System.err.println("[tc-diag] isRunning=" + MONGO.isRunning());
-            System.err.println("[tc-diag] inspect=" + org.testcontainers.DockerClientFactory.instance().client()
-                    .inspectContainerCmd(MONGO.getContainerId()).exec().getState());
-        } catch (Throwable t) {
-            System.err.println("[tc-diag] inspect falhou: " + t);
-            t.printStackTrace();
-        }
-        try {
-            System.err.println("[tc-diag] logs=" + MONGO.getLogs());
-        } catch (Throwable t) {
-            System.err.println("[tc-diag] logs falhou: " + t);
-        }
+        MONGO.start();
     }
 
     /**
@@ -59,12 +39,7 @@ public class MongoTestcontainersConfig {
         return MONGO.getReplicaSetUrl("andromeda");
     }
 
-    /**
-     * {@code destroyMethod = ""}: o container e estatico e compartilhado pela JVM inteira. Sem isso o Spring
-     * chama {@code close()} ao tirar um contexto do cache (limite de 32 contextos) e os contextos seguintes
-     * falham com "MongoDBContainer should be started first".
-     */
-    @Bean(destroyMethod = "")
+    @Bean
     @ServiceConnection
     MongoDBContainer mongoDBContainer() {
         return MONGO;

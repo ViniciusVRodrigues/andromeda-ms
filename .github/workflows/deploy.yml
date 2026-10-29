@@ -10,7 +10,8 @@ env:
 jobs:
   test-build-deploy:
     name: Test → Build → Deploy
-    runs-on: ubuntu-latest
+    # ubuntu-22.04: mesmo motivo do ci.yml (MongoDB 8.0 não sobe no kernel 6.19+, SERVER-121912).
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       packages: write
