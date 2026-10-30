@@ -192,7 +192,7 @@ public class GetTeamDashboardV2UseCase {
                 Percentiles.of(summary.doneUnits().stream().map(WorkItem::getLeadTimeHours).toList()),
                 cost,
                 ReviewMetricsPolicy.aggregate(created, ctx.now()).timeToFirstReview(),
-                (int) ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getMergedAt())).count(),
+                (int) ctx.vcs().pullRequests().stream().filter(pr -> window.contains(pr.getMergedAtIfMerged())).count(),
                 f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.itemsWithComplexity(),
                 AiRatios.per(cost, f.complexityDelivered()), AiRatios.per(cost, f.effortLogged()));
         return new TeamSprint(stats, aiCost, hasUsage, summary, items);
@@ -299,7 +299,7 @@ public class GetTeamDashboardV2UseCase {
                 (int) units.stream().filter(wi -> wi.getResolvedStatus() == WorkItem.ResolvedStatus.IN_PROGRESS).count(),
                 Percentiles.of(done.stream().map(WorkItem::getCycleTimeHours).toList()),
                 attributed(person, mine.stream().filter(pr -> window.contains(pr.getCreatedAt())).count()),
-                attributed(person, mine.stream().filter(pr -> window.contains(pr.getMergedAt())).count()),
+                attributed(person, mine.stream().filter(pr -> window.contains(pr.getMergedAtIfMerged())).count()),
                 attributed(person, ctx.vcs().reviews().stream().filter(e -> userId.equals(e.getActorUserId())).count()),
                 peopleDirectory.aiConnected(ctx.orgId(), userId) ? current.aiCost().allocatedOf(userId) : null,
                 f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
@@ -330,14 +330,14 @@ public class GetTeamDashboardV2UseCase {
         Map<String, Long> commitsByRepo = ctx.vcs().commits().stream().filter(c -> c.getRepositoryId() != null)
                 .collect(Collectors.groupingBy(VcsCommit::getRepositoryId, Collectors.counting()));
         return listProjectRepositories.execute(ctx.projectId(), ctx.window().startDay(),
-                        ctx.window().lastElapsedDay(ctx.today())).stream()
+                        ctx.window().lastElapsedDay(ctx.today()), ctx.now()).stream()
                 .map(repo -> repoHealth(ctx, repo, commitsByRepo.getOrDefault(repo.repositoryId(), 0L).intValue()))
                 .toList();
     }
 
     private RepoHealth repoHealth(Context ctx, ProjectRepositoryOutput repo, int commits) {
         int merged = (int) ctx.vcs().pullRequests().stream()
-                .filter(pr -> repo.repositoryId().equals(pr.getRepositoryId()) && ctx.window().contains(pr.getMergedAt()))
+                .filter(pr -> repo.repositoryId().equals(pr.getRepositoryId()) && ctx.window().contains(pr.getMergedAtIfMerged()))
                 .count();
         return new RepoHealth(repo.repositoryId(), repo.displayName(),
                 repo.provider() != null ? repo.provider().name() : null, repo.openPrCount(), repo.stalePrCount(), merged,

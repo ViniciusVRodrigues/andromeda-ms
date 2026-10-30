@@ -52,7 +52,6 @@ import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 import andromeda.sei.ms.shared.infrastructure.security.TenantContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -96,9 +95,8 @@ import static org.mockito.Mockito.when;
  * 2026-09-24..2026-10-07. The 30-day period is [2026-09-16, 2026-10-15], the previous one
  * [2026-08-17, 2026-09-15] (half-open instants: [from 00:00Z, last+1 00:00Z)).
  *
- * <p>Divergences found by this suite are marked {@code @Disabled("VCS1 divergência: ...")}; production
- * is not changed here. Cases about behavior that is deliberate are plain assertions of the current
- * behavior with a comment.
+ * <p>The divergences VCS1 found were fixed in VCS2-VCS6 and their cases are active. Cases about behavior
+ * that is deliberate are plain assertions of the current behavior with a comment.
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -766,7 +764,6 @@ class VcsMetricParityV2Test {
      * Fixture: e3 is A commenting on A's own PR p1. Reference: A gave 2 reviews (e6 on p3, e7 on p6);
      * dashboard: 3. Cause: GetTeamDashboardV2UseCase.java:303 (the filter is only actorUserId).
      */
-    @Disabled("VCS1 divergência: Equipe contabiliza o comentário do autor no próprio PR em reviewsGiven (membro A: 3 em vez de 2)")
     @Test
     void should_notCountSelfReviews_inTeamMemberReviewsGiven_v2() {
         load();
@@ -780,7 +777,6 @@ class VcsMetricParityV2Test {
      * Divergence 1 (individual): same cause, {@code reviewsGiven()} of the Individual dashboard
      * (GetIndividualDashboardV2UseCase.java:286-292) counts e3, the self comment on p1.
      */
-    @Disabled("VCS1 divergência: Individual contabiliza o comentário do autor no próprio PR em reviewsGiven (A: total 3 e commented 2, esperado 2 e 1)")
     @Test
     void should_notCountSelfReviews_inIndividualReviewsGiven_v2() {
         load();
@@ -804,7 +800,6 @@ class VcsMetricParityV2Test {
      * and Team/Individual through ProjectVcsActivity), OrganizationDashboardData.java:310 and
      * DeliveryMetricsService.java:79).
      */
-    @Disabled("VCS1 divergência: PR com mergedAt e status CLOSED entra em prsMerged e nos deploys dos dashboards (mergedAt != null), mas não no repositório (status MERGED)")
     @Test
     void should_notCountAClosedPullRequestWithMergedAt_asMerged_v2() {
         prs.add(new Pr("p9", A, PullRequestStatus.CLOSED, "2026-10-09T08:00:00").merged("2026-10-11T08:00:00")
@@ -852,7 +847,6 @@ class VcsMetricParityV2Test {
      * as the project dashboard of PROJECT_2 says); dashboard: 2.
      * Cause: StalePullRequestPolicy.java:49 (putIfAbsent), used by OrganizationDashboardData (chosenBranches).
      */
-    @Disabled("VCS1 divergência: repo ligado a dois projetos usa as branches do primeiro vínculo na Organização (stale de Bootes: 2 em vez de 1)")
     @Test
     void should_useTheBranchesOfEachProjectBinding_inTheOrganizationPortfolio_v2() {
         secondBindingBranches = List.of("main", "release");
@@ -885,7 +879,6 @@ class VcsMetricParityV2Test {
      * (p4); card: 2. Cause: ListProjectRepositoriesUseCase.java:53 (Instant.now()) read by
      * GetTeamDashboardV2UseCase.java:329-346.
      */
-    @Disabled("VCS1 divergência: o card de repositório da Equipe usa Instant.now() em vez do relógio do dashboard (stale 2 no card, 1 no KPI)")
     @Test
     void should_useTheSameInstant_inTheTeamKpiAndTheRepositoryCard_v2() {
         prs.add(new Pr("p20", B, PullRequestStatus.OPEN, "2026-10-14T13:00:00"));
@@ -925,7 +918,6 @@ class VcsMetricParityV2Test {
      * Fixture: p5, B, OPEN draft. Reference: B has 1 open PR (p4); dashboard: 2.
      * Cause: GetIndividualDashboardV2UseCase.java:188.
      */
-    @Disabled("VCS1 divergência: prsOpen do Individual conta rascunhos (B: 2 em vez de 1); Equipe, Projeto e Organização também contam status OPEN")
     @Test
     void should_notCountDrafts_inIndividualOpenPullRequests_v2() {
         prs.add(new Pr("p5", B, PullRequestStatus.OPEN, "2026-10-11T10:00:00").draft());

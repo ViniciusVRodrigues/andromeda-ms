@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.vcs.application.port.VcsReadPort;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommit;
 import andromeda.sei.ms.feature.vcs.domain.VcsCommitRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsPullRequest;
+import andromeda.sei.ms.feature.vcs.domain.ReviewMetricsPolicy;
 import andromeda.sei.ms.feature.vcs.domain.StalePullRequestPolicy;
 import andromeda.sei.ms.feature.vcs.domain.VcsRepository;
 import andromeda.sei.ms.feature.vcs.domain.VcsReviewEvent;
@@ -97,8 +98,13 @@ public class ProjectVcsActivity {
                 .map(VcsPullRequest::getId)
                 .toList();
         if (candidates.isEmpty()) return List.of();
+        Map<String, VcsPullRequest> byId = pullRequests.stream().filter(pr -> pr.getId() != null)
+                .collect(Collectors.toMap(VcsPullRequest::getId, pr -> pr, (a, b) -> a));
+        // A comment of the author on their own pull request is not a review given (same rule as the SLA).
         return vcsReadPort.reviewEvents(organizationId, candidates).stream()
                 .filter(e -> !e.isBot() && !e.isDeleted())
+                .filter(e -> byId.get(e.getPullRequestId()) == null
+                        || !ReviewMetricsPolicy.isAuthor(byId.get(e.getPullRequestId()), e))
                 .filter(e -> e.getOccurredAt() != null && !e.getOccurredAt().isBefore(from) && e.getOccurredAt().isBefore(to))
                 .toList();
     }

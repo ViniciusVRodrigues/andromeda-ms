@@ -185,7 +185,7 @@ public class GetIndividualDashboardV2UseCase {
                 units.size(), dev.cycleTime(), dev.leadTime(), prs.merged(), prs.review(),
                 hasUsage ? dev.sprintCostUsd() : null, hasUsage ? dev.aiSprintSummary().totalTokens() : null,
                 DashboardV2Views.isCurrent(ctx.sprint())
-                        ? (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN).count()
+                        ? (int) ctx.myPrs().stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN && !pr.isDraft()).count()
                         : null,
                 f.complexityPlanned(), f.complexityDelivered(), f.effortLogged(), f.avgTokensPerPoint(),
                 f.avgTokensPerHour(), f.unitsWithoutComplexity());
@@ -213,7 +213,7 @@ public class GetIndividualDashboardV2UseCase {
 
     /** Merged in the window, and the review rule over the person's pull requests created in it. */
     private PrStats prStats(Context ctx, SprintWindow window) {
-        int merged = (int) ctx.myPrs().stream().filter(pr -> window.contains(pr.getMergedAt())).count();
+        int merged = (int) ctx.myPrs().stream().filter(pr -> window.contains(pr.getMergedAtIfMerged())).count();
         List<VcsPullRequest> created = ctx.myPrs().stream().filter(pr -> window.contains(pr.getCreatedAt())).toList();
         return new PrStats(merged, ReviewMetricsPolicy.aggregate(created, ctx.now()).timeToFirstReview());
     }
@@ -274,7 +274,7 @@ public class GetIndividualDashboardV2UseCase {
         Map<String, String> repoNames = ctx.vcs().repositoryNames();
         Map<String, String> titles = DashboardV2Views.titlesByExternalId(activeUnits(dev));
         return ctx.myPrs().stream()
-                .filter(pr -> ctx.window().contains(pr.getCreatedAt()) || ctx.window().contains(pr.getMergedAt())
+                .filter(pr -> ctx.window().contains(pr.getCreatedAt()) || ctx.window().contains(pr.getMergedAtIfMerged())
                         || ctx.window().contains(pr.getClosedAt())
                         || (current && pr.getStatus() == PullRequestStatus.OPEN))
                 .sorted(Comparator.comparing((VcsPullRequest pr) -> pr.getStatus() == PullRequestStatus.OPEN ? 0 : 1)

@@ -49,8 +49,12 @@ public class ListProjectRepositoriesUseCase {
     private final DeliveryMetricsService deliveryMetricsService;
 
     public List<ProjectRepositoryOutput> execute(String projectId, LocalDate startDate, LocalDate endDate) {
+        return execute(projectId, startDate, endDate, Instant.now());
+    }
+
+    /** {@code now}: the reference instant for "stalled", so a dashboard and its repository cards agree. */
+    public List<ProjectRepositoryOutput> execute(String projectId, LocalDate startDate, LocalDate endDate, Instant now) {
         String orgId = TenantContextHolder.get();
-        Instant now = Instant.now();
         LocalDate lastDay = endDate != null ? endDate : LocalDate.now(ZoneOffset.UTC);
         LocalDate firstDay = startDate != null ? startDate : lastDay.minusDays(DEFAULT_WINDOW_DAYS - 1L);
         Window window = new Window(firstDay.atStartOfDay(ZoneOffset.UTC).toInstant(),
@@ -75,7 +79,7 @@ public class ListProjectRepositoriesUseCase {
                 : defaultBranches(repo));
         long staleCount = open.stream().filter(pr -> StalePullRequestPolicy.isStale(pr, now, chosenBranches)).count();
 
-        List<VcsPullRequest> mergedInWindow = all.stream().filter(pr -> window.contains(pr.getMergedAt())).toList();
+        List<VcsPullRequest> mergedInWindow = all.stream().filter(pr -> window.contains(pr.getMergedAtIfMerged())).toList();
         List<VcsPullRequest> createdInWindow = all.stream().filter(pr -> window.contains(pr.getCreatedAt())).toList();
 
         DurationStat prCycleTime = Percentiles.of(mergedInWindow.stream().map(VcsPullRequest::getCycleTimeHours).toList());

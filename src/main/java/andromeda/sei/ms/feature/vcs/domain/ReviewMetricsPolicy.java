@@ -104,7 +104,8 @@ public final class ReviewMetricsPolicy {
         return login != null && login.endsWith(BOT_LOGIN_SUFFIX);
     }
 
-    private static boolean isAuthor(VcsPullRequest pr, VcsReviewEvent event) {
+    /** Whether the event was made by the pull request's author (a self comment is not a review). */
+    public static boolean isAuthor(VcsPullRequest pr, VcsReviewEvent event) {
         String authorLogin = pr.getAuthorLogin();
         if (authorLogin != null && authorLogin.equalsIgnoreCase(event.getActorLogin())) return true;
         if (pr.getAuthorExternalId() != null && pr.getAuthorExternalId().equals(event.getActorExternalId())) {

@@ -77,7 +77,7 @@ public class DeliveryMetricsService {
     private List<MergedChange> toChanges(String organizationId, Map<String, VcsRepository> repoById,
                                          List<VcsPullRequest> pullRequests) {
         List<VcsPullRequest> merged = pullRequests.stream()
-                .filter(pr -> pr.getMergedAt() != null && pr.getId() != null && pr.isActive())
+                .filter(pr -> pr.getMergedAtIfMerged() != null && pr.getId() != null && pr.isActive())
                 .toList();
         Set<String> bugExternalIds = bugExternalIds(organizationId, merged);
         Map<String, VcsRepoBinding> bindingByRepo = new HashMap<>();
@@ -140,6 +140,6 @@ public class DeliveryMetricsService {
                 && bugExternalIds.contains(pr.getLinkedWorkItemExternalId());
         return new MergedChange(pr.getId(), pr.getTitle(), pr.getSourceBranch(), pr.getBaseBranch(),
                 productionBranch(repo, binding), linkedToBug,
-                pr.getCreatedAt(), pr.getEarliestCommitAt(), pr.getMergedAt());
+                pr.getCreatedAt(), pr.getEarliestCommitAt(), pr.getMergedAtIfMerged());
     }
 }

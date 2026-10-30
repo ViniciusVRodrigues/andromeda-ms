@@ -134,7 +134,7 @@ public class GetProjectQualityV2UseCase {
     }
 
     private DeliveryMetrics remediation(String orgId, ProjectVcsActivity.Snapshot vcs, DayRange range) {
-        List<VcsPullRequest> merged = filter(vcs.pullRequests(), pr -> range.contains(pr.getMergedAt()));
+        List<VcsPullRequest> merged = filter(vcs.pullRequests(), pr -> range.contains(pr.getMergedAtIfMerged()));
         return deliveryMetricsService.calculate(orgId,
                 deliveryMetricsService.mergedChangesFrom(orgId, vcs.repositories(), merged), List.of(),
                 range.from(), range.to());
