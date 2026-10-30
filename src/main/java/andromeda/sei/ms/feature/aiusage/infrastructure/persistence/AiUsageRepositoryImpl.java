@@ -47,13 +47,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
     @Override
     public void upsert(AIUsage usage) {
         Instant now = Instant.now();
-        Query query = Query.query(Criteria.where("organizationId").is(usage.getOrganizationId())
-                .and("userId").is(usage.getUserId())
-                .and("datasetId").is(usage.getDatasetId())
-                .and("day").is(usage.getDay())
-                .and("model").is(usage.getModel())
-                .and("workspaceId").is(usage.getWorkspaceId())
-                .and("machineId").is(usage.getMachineId()));
+        Query query = Query.query(naturalKey(usage));
 
         Update update = new Update()
                 .set("gitHubLogin", usage.getGitHubLogin())
@@ -64,13 +58,27 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 .set("outputTokens", usage.getOutputTokens())
                 .set("interactions", usage.getInteractions())
                 .set("uploadedAt", usage.getUploadedAt())
-                .set("active", true)
                 .set("possibleDuplicate", usage.isPossibleDuplicate())
                 .set("updatedAt", now)
+                .setOnInsert("active", true)
                 .setOnInsert("createdAt", now)
                 .setOnInsert("allocationId", null);
 
         mongoTemplate.upsert(query, update, AiUsageDocument.class);
+
+        // A re-upload revives an inactive row, except one the agent turned off (extensao-fora-dos-totais).
+        Query revive = Query.query(naturalKey(usage).and("active").is(false).and("supersededBy").ne("AGENT"));
+        mongoTemplate.updateFirst(revive, new Update().set("active", true).set("updatedAt", now), AiUsageDocument.class);
+    }
+
+    private static Criteria naturalKey(AIUsage usage) {
+        return Criteria.where("organizationId").is(usage.getOrganizationId())
+                .and("userId").is(usage.getUserId())
+                .and("datasetId").is(usage.getDatasetId())
+                .and("day").is(usage.getDay())
+                .and("model").is(usage.getModel())
+                .and("workspaceId").is(usage.getWorkspaceId())
+                .and("machineId").is(usage.getMachineId());
     }
 
     @Override
