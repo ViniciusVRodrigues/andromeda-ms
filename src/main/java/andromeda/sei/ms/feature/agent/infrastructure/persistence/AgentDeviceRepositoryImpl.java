@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.agent.domain.AgentDeviceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.schema.JsonSchemaObject;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
@@ -44,17 +45,26 @@ public class AgentDeviceRepositoryImpl implements AgentDeviceRepository {
 
     @Override
     public Optional<AgentDevice> findByAccessTokenHash(String accessTokenHash) {
-        return mongoRepository.findByAccessTokenHash(accessTokenHash).map(mapper::toDomain);
+        return Optional.ofNullable(mongoTemplate.findOne(byTokenHash("accessTokenHash", accessTokenHash), AgentDeviceDocument.class))
+                .map(mapper::toDomain);
     }
 
     @Override
     public Optional<AgentDevice> findByRefreshTokenHash(String refreshTokenHash) {
-        return mongoRepository.findByRefreshTokenHash(refreshTokenHash).map(mapper::toDomain);
+        return Optional.ofNullable(mongoTemplate.findOne(byTokenHash("refreshTokenHash", refreshTokenHash), AgentDeviceDocument.class))
+                .map(mapper::toDomain);
     }
 
     @Override
     public Optional<AgentDevice> findByPreviousRefreshHash(String previousRefreshHash) {
-        return mongoRepository.findByPreviousRefreshHash(previousRefreshHash).map(mapper::toDomain);
+        return Optional.ofNullable(mongoTemplate.findOne(byTokenHash("previousRefreshHash", previousRefreshHash), AgentDeviceDocument.class))
+                .map(mapper::toDomain);
+    }
+
+    // The token-hash indexes are partial ({<field>: {$type: 'string'}}): the planner only picks one when
+    // the query repeats that filter; a derived findBy<Hash> walks the collection (agt12).
+    static Query byTokenHash(String field, String hash) {
+        return Query.query(Criteria.where(field).in(hash).type(JsonSchemaObject.Type.stringType()));
     }
 
     @Override
