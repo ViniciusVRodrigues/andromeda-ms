@@ -9,8 +9,10 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,31 +22,60 @@ public class AgentUploadBatchRepositoryImpl implements AgentUploadBatchRepositor
 
     private final MongoTemplate mongoTemplate;
 
+    private static Criteria key(String organizationId, String deviceId, String batchId) {
+        return Criteria.where("organizationId").is(organizationId).and("deviceId").is(deviceId)
+                .and("batchId").is(batchId);
+    }
+
     @Override
     public Optional<AgentUploadBatch> find(String organizationId, String deviceId, String batchId) {
-        Query query = new Query(Criteria.where("organizationId").is(organizationId)
-                .and("deviceId").is(deviceId).and("batchId").is(batchId));
-        return Optional.ofNullable(mongoTemplate.findOne(query, AgentUploadBatchDocument.class)).map(this::toDomain);
+        return Optional.ofNullable(mongoTemplate.findOne(new Query(key(organizationId, deviceId, batchId)),
+                AgentUploadBatchDocument.class)).map(this::toDomain);
     }
 
     @Override
-    public void save(AgentUploadBatch batch) {
+    public Claim claim(String organizationId, String deviceId, String batchId, Instant now, Instant staleBefore,
+                       Instant expiresAt) {
+        AgentUploadBatchDocument d = new AgentUploadBatchDocument();
+        d.setOrganizationId(organizationId);
+        d.setDeviceId(deviceId);
+        d.setBatchId(batchId);
+        d.setClaimedAt(now);
+        d.setExpiresAt(expiresAt);
+        d.setCreatedAt(now);
+        d.setUpdatedAt(now);
         try {
-            mongoTemplate.insert(toDocument(batch));
-        } catch (DuplicateKeyException ignored) {
-            // two requests of the same batch raced: the first stored response stands
+            mongoTemplate.insert(d);
+            return new Claim.Owned(now);
+        } catch (DuplicateKeyException taken) {
+            // the unique key holds the batch: processed, running, or a claim left by a stopped server
         }
+        Query stale = new Query(key(organizationId, deviceId, batchId).and("response").isNull()
+                .and("claimedAt").lt(staleBefore));
+        Update takeOver = new Update().set("claimedAt", now).set("updatedAt", now).inc("version", 0L);
+        if (mongoTemplate.updateFirst(stale, takeOver, AgentUploadBatchDocument.class).getModifiedCount() > 0) {
+            return new Claim.Owned(now);
+        }
+        return find(organizationId, deviceId, batchId)
+                .<Claim>map(b -> b.getResponse() != null ? new Claim.Done(b.getResponse()) : new Claim.Running())
+                .orElseGet(Claim.Running::new);
     }
 
-    private AgentUploadBatchDocument toDocument(AgentUploadBatch b) {
-        AgentUploadBatchDocument d = new AgentUploadBatchDocument();
-        d.setOrganizationId(b.getOrganizationId());
-        d.setDeviceId(b.getDeviceId());
-        d.setBatchId(b.getBatchId());
-        d.setExpiresAt(b.getExpiresAt());
-        d.setCreatedAt(b.getCreatedAt());
-        d.setUpdatedAt(b.getCreatedAt());
-        UsageUploadResult r = b.getResponse();
+    @Override
+    public void complete(String organizationId, String deviceId, String batchId, UsageUploadResult response) {
+        Query query = new Query(key(organizationId, deviceId, batchId).and("response").isNull());
+        Update update = new Update().set("response", toDocument(response)).set("updatedAt", Instant.now())
+                .inc("version", 0L);
+        mongoTemplate.updateFirst(query, update, AgentUploadBatchDocument.class);
+    }
+
+    @Override
+    public void release(String organizationId, String deviceId, String batchId, Instant claimedAt) {
+        mongoTemplate.remove(new Query(key(organizationId, deviceId, batchId).and("response").isNull()
+                .and("claimedAt").is(claimedAt)), AgentUploadBatchDocument.class);
+    }
+
+    private static AgentUploadBatchDocument.ResponseDocument toDocument(UsageUploadResult r) {
         AgentUploadBatchDocument.ResponseDocument rd = new AgentUploadBatchDocument.ResponseDocument();
         rd.setBatchId(r.batchId());
         rd.setAccepted(r.accepted());
@@ -62,20 +93,23 @@ public class AgentUploadBatchRepositoryImpl implements AgentUploadBatchRepositor
             x.setRetryable(row.retryable());
             return x;
         }).toList());
-        d.setResponse(rd);
-        return d;
+        return rd;
     }
 
     private AgentUploadBatch toDomain(AgentUploadBatchDocument d) {
         AgentUploadBatchDocument.ResponseDocument rd = d.getResponse();
-        List<RowResult> rows = rd.getResults() == null ? List.of() : rd.getResults().stream()
-                .map(x -> new RowResult(x.getKey(), UsageUploadResult.Status.valueOf(x.getStatus()),
-                        x.getAllocation() == null ? null : UsageUploadResult.Allocation.valueOf(x.getAllocation()),
-                        x.getWorkItemId(), x.getTaskRef(), x.getReason(), x.getField(), x.getRetryable()))
-                .toList();
+        UsageUploadResult response = null;
+        if (rd != null) {
+            List<RowResult> rows = rd.getResults() == null ? List.of() : rd.getResults().stream()
+                    .map(x -> new RowResult(x.getKey(), UsageUploadResult.Status.valueOf(x.getStatus()),
+                            x.getAllocation() == null ? null : UsageUploadResult.Allocation.valueOf(x.getAllocation()),
+                            x.getWorkItemId(), x.getTaskRef(), x.getReason(), x.getField(), x.getRetryable()))
+                    .toList();
+            response = new UsageUploadResult(rd.getBatchId(), rd.getAccepted(), rd.getDuplicate(), rd.getRejected(),
+                    rows);
+        }
         AgentUploadBatch b = new AgentUploadBatch(d.getOrganizationId(), d.getDeviceId(), d.getBatchId(),
-                new UsageUploadResult(rd.getBatchId(), rd.getAccepted(), rd.getDuplicate(), rd.getRejected(), rows),
-                d.getCreatedAt(), d.getExpiresAt());
+                response, d.getCreatedAt(), d.getExpiresAt());
         b.setId(d.getId());
         b.setVersion(d.getVersion());
         return b;

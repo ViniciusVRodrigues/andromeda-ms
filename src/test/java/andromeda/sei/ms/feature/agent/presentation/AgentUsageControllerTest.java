@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.agent.domain.UsageUploadResult;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Allocation;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.RowResult;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Status;
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInProgressException;
 import andromeda.sei.ms.shared.infrastructure.ratelimit.RateLimiter;
 import andromeda.sei.ms.shared.presentation.handler.GlobalExceptionHandler;
 import org.junit.jupiter.api.AfterEach;
@@ -112,6 +113,16 @@ class AgentUsageControllerTest {
         String second = mvc.perform(post("/agent/v1/usage").contentType(MediaType.APPLICATION_JSON).content(body(BATCH, ROW)))
                 .andReturn().getResponse().getContentAsString();
         assertThat(second).isEqualTo(first);
+    }
+
+    @Test
+    void should_answer409WithRetryAfter_when_theSameBatchIsStillInProgress() throws Exception {
+        when(ingest.execute(eq(PRINCIPAL), any())).thenThrow(new AgentBatchInProgressException(30));
+
+        mvc.perform(post("/agent/v1/usage").contentType(MediaType.APPLICATION_JSON).content(body(BATCH, ROW)))
+                .andExpect(status().isConflict())
+                .andExpect(header().string("Retry-After", "30"))
+                .andExpect(jsonPath("$.code").value("AGENT_BATCH_IN_PROGRESS"));
     }
 
     @Test

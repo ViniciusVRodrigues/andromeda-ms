@@ -27,7 +27,9 @@ public class AgentUploadBatchDocument {
     private String deviceId;
     private String batchId;
     private boolean active = true;
+    /** Null while the batch is in progress (claimed at {@code claimedAt}, agt10). */
     private ResponseDocument response;
+    private Instant claimedAt;
 
     @Indexed(name = "ttl_agent_upload_batch_expires", expireAfter = "0s")
     private Instant expiresAt;
