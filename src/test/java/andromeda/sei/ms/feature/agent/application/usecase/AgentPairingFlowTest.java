@@ -115,6 +115,44 @@ class AgentPairingFlowTest {
     }
 
     @Test
+    void should_keepFiftyPendingAuthorizationsFromTheSameIpPendingWhenEachPollsOnTime() {
+        java.util.List<String> codes = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            codes.add(ask().deviceCode());
+        }
+        for (String code : codes) {
+            assertOAuth(() -> exchange.execute(code), "authorization_pending");
+        }
+        for (int step = 0; step < 12; step++) {
+            clock.advance(Duration.ofSeconds(5));
+            for (String code : codes) {
+                assertOAuth(() -> exchange.execute(code), "authorization_pending");
+            }
+        }
+        assertThat(store.authorizations.values()).allSatisfy(a -> assertThat(a.getIntervalSeconds()).isEqualTo(5));
+    }
+
+    @Test
+    void should_slowDownOnlyTheAuthorizationPolledTooFastWithoutChangingTheOthers() {
+        java.util.List<String> codes = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            codes.add(ask().deviceCode());
+        }
+        for (String code : codes) {
+            assertOAuth(() -> exchange.execute(code), "authorization_pending");
+        }
+        clock.advance(Duration.ofSeconds(2));
+        String fast = codes.get(0);
+        assertOAuth(() -> exchange.execute(fast), "slow_down");
+        clock.advance(Duration.ofSeconds(3));
+        for (String code : codes.subList(1, codes.size())) {
+            assertOAuth(() -> exchange.execute(code), "authorization_pending");
+        }
+        assertThat(store.authorizations.values().stream().filter(a -> a.getIntervalSeconds() == 10).count()).isEqualTo(1);
+        assertThat(store.authorizations.values().stream().filter(a -> a.getIntervalSeconds() == 5).count()).isEqualTo(49);
+    }
+
+    @Test
     void should_exchangeOnceAfterApproval() {
         DeviceCodeOutput out = ask();
         ApprovedDeviceOutput approved = approve.execute(ORG, USER, out.userCode().toLowerCase());

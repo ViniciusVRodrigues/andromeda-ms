@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.TokenPairOutput;
 import andromeda.sei.ms.feature.agent.application.usecase.ExchangeDeviceTokenUseCase;
 import andromeda.sei.ms.feature.agent.application.usecase.RefreshAgentTokenUseCase;
 import andromeda.sei.ms.feature.agent.application.usecase.RequestDeviceCodeUseCase;
+import andromeda.sei.ms.feature.agent.domain.AgentCodes;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentOAuthException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentRateLimitedException;
 import andromeda.sei.ms.feature.agent.presentation.dto.AgentWire.DeviceCodeRequest;
@@ -18,6 +19,7 @@ import andromeda.sei.ms.shared.infrastructure.web.ClientIpResolver;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -39,9 +41,7 @@ import java.time.Duration;
 @RequestMapping("/agent/v1/device")
 public class AgentDeviceAuthController {
 
-    static final int CODE_LIMIT = 10;
     static final Duration CODE_WINDOW = Duration.ofMinutes(10);
-    static final int TOKEN_LIMIT = 60;
     static final Duration TOKEN_WINDOW = Duration.ofMinutes(1);
 
     private final RequestDeviceCodeUseCase requestDeviceCode;
@@ -50,25 +50,44 @@ public class AgentDeviceAuthController {
     private final RateLimiter rateLimiter;
     private final ClientIpResolver clientIpResolver;
     private final String frontendUrl;
+    private final int codePerIp;
+    private final int tokenPerIp;
+    private final int tokenPerCredential;
 
+    /** Defaults, for tests. */
+    AgentDeviceAuthController(RequestDeviceCodeUseCase requestDeviceCode,
+                              ExchangeDeviceTokenUseCase exchangeDeviceToken,
+                              RefreshAgentTokenUseCase refreshAgentToken,
+                              RateLimiter rateLimiter, ClientIpResolver clientIpResolver, String frontendUrl) {
+        this(requestDeviceCode, exchangeDeviceToken, refreshAgentToken, rateLimiter, clientIpResolver, frontendUrl,
+                100, 1200, 30);
+    }
+
+    @Autowired
     public AgentDeviceAuthController(RequestDeviceCodeUseCase requestDeviceCode,
                                      ExchangeDeviceTokenUseCase exchangeDeviceToken,
                                      RefreshAgentTokenUseCase refreshAgentToken,
                                      RateLimiter rateLimiter, ClientIpResolver clientIpResolver,
-                                     @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl) {
+                                     @Value("${app.frontend-url:http://localhost:5173}") String frontendUrl,
+                                     @Value("${andromeda.agent.rate-limit.code-per-ip:100}") int codePerIp,
+                                     @Value("${andromeda.agent.rate-limit.token-per-ip:1200}") int tokenPerIp,
+                                     @Value("${andromeda.agent.rate-limit.token-per-credential:30}") int tokenPerCredential) {
         this.requestDeviceCode = requestDeviceCode;
         this.exchangeDeviceToken = exchangeDeviceToken;
         this.refreshAgentToken = refreshAgentToken;
         this.rateLimiter = rateLimiter;
         this.clientIpResolver = clientIpResolver;
         this.frontendUrl = frontendUrl;
+        this.codePerIp = codePerIp;
+        this.tokenPerIp = tokenPerIp;
+        this.tokenPerCredential = tokenPerCredential;
     }
 
     @PostMapping("/code")
     public DeviceCodeResponse code(@Valid @RequestBody DeviceCodeRequest body, HttpServletRequest request) {
         String ip = clientIpResolver.resolve(request);
         String key = "agent-code:" + ip;
-        if (!rateLimiter.tryAcquire(key, CODE_LIMIT, CODE_WINDOW)) {
+        if (!rateLimiter.tryAcquire(key, codePerIp, CODE_WINDOW)) {
             throw new AgentRateLimitedException(rateLimiter.retryAfterSeconds(key, CODE_WINDOW));
         }
         DeviceCodeOutput out = requestDeviceCode.execute(new DeviceCodeInput(body.agentVersion(), body.machineName(),
@@ -97,8 +116,15 @@ public class AgentDeviceAuthController {
 
     private ResponseEntity<TokenResponse> handle(DeviceTokenRequest body, HttpServletRequest request) {
         String key = "agent-token:" + clientIpResolver.resolve(request);
-        if (!rateLimiter.tryAcquire(key, TOKEN_LIMIT, TOKEN_WINDOW)) {
+        if (!rateLimiter.tryAcquire(key, tokenPerIp, TOKEN_WINDOW)) {
             throw new AgentRateLimitedException(rateLimiter.retryAfterSeconds(key, TOKEN_WINDOW));
+        }
+        String credential = credentialOf(body);
+        if (!blank(credential)) {
+            String credKey = "agent-token-cred:" + AgentCodes.sha256(credential);
+            if (!rateLimiter.tryAcquire(credKey, tokenPerCredential, TOKEN_WINDOW)) {
+                throw new AgentRateLimitedException(rateLimiter.retryAfterSeconds(credKey, TOKEN_WINDOW));
+            }
         }
         String grant = body.grantType();
         if (blank(grant)) {
@@ -123,6 +149,18 @@ public class AgentDeviceAuthController {
         TokenResponse res = new TokenResponse(out.accessToken(), "Bearer", out.expiresInSeconds(),
                 out.refreshToken(), out.scope(), out.deviceId(), out.organizationSlug());
         return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store").body(res);
+    }
+
+    private static String credentialOf(DeviceTokenRequest body) {
+        String grant = body.grantType();
+        if (grant == null) {
+            return null;
+        }
+        return switch (grant) {
+            case "urn:ietf:params:oauth:grant-type:device_code", "device_code" -> body.deviceCode();
+            case "refresh_token" -> body.refreshToken();
+            default -> null;
+        };
     }
 
     private static boolean blank(String s) {

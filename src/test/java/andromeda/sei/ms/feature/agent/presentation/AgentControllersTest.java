@@ -68,9 +68,9 @@ class AgentControllersTest {
     }
 
     @Test
-    void should_answer429WithRetryAfterOnTheEleventhCodeRequestFromTheSameIp() throws Exception {
+    void should_answer429WithRetryAfterOnThe101stCodeRequestFromTheSameIp() throws Exception {
         when(requestCode.execute(any())).thenReturn(new DeviceCodeOutput("adc_x", "BCDF-GHJK", 600, 5));
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 100; i++) {
             mvc.perform(post("/agent/v1/device/code").contentType(MediaType.APPLICATION_JSON).content(CODE_BODY))
                     .andExpect(status().isOk());
         }
@@ -78,6 +78,100 @@ class AgentControllersTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(header().exists("Retry-After"))
                 .andExpect(jsonPath("$.code").value("AGENT_RATE_LIMITED"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions poll(String json) throws Exception {
+        return mvc.perform(post("/agent/v1/device/token").contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    private static String devJson(String code) {
+        return "{\"grant_type\":\"device_code\",\"device_code\":\"" + code + "\"}";
+    }
+
+    @Test
+    void should_letFiftyAgentsBehindTheSameNatPollTwelveTimesEach() throws Exception {
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("authorization_pending", "Aguardando"));
+        for (int poll = 0; poll < 12; poll++) {
+            for (int agent = 0; agent < 50; agent++) {
+                poll(devJson("adc_" + agent)).andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.error").value("authorization_pending"));
+            }
+        }
+    }
+
+    @Test
+    void should_limitTheSameDeviceCodeAt30PerMinuteWithoutBlockingOthersOfTheSameIp() throws Exception {
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("authorization_pending", "Aguardando"));
+        for (int i = 0; i < 30; i++) {
+            poll(devJson("adc_0")).andExpect(status().isBadRequest());
+        }
+        poll(devJson("adc_0")).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After"))
+                .andExpect(jsonPath("$.code").value("AGENT_RATE_LIMITED"));
+        poll(devJson("adc_1")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("authorization_pending"));
+    }
+
+    @Test
+    void should_answer429OnThe1201stRequestOfTheIpWithInventedCredentials() throws Exception {
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("invalid_grant", "desconhecido"));
+        for (int i = 0; i < 1200; i++) {
+            poll(devJson("adc_fake_" + i)).andExpect(status().isBadRequest());
+        }
+        poll(devJson("adc_fake_1200")).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After"));
+    }
+
+    @Test
+    void should_countRefreshTokensByTheirOwnCredential() throws Exception {
+        when(refresh.execute(any())).thenReturn(new TokenPairOutput("adt_b", "adr_s", 3600, "s", "dev-1", "acme"));
+        String json = "{\"grant_type\":\"refresh_token\",\"refresh_token\":\"adr_r\"}";
+        for (int i = 0; i < 30; i++) {
+            poll(json).andExpect(status().isOk());
+        }
+        poll(json).andExpect(status().isTooManyRequests()).andExpect(header().exists("Retry-After"));
+        poll("{\"grant_type\":\"refresh_token\",\"refresh_token\":\"adr_other\"}").andExpect(status().isOk());
+    }
+
+    @Test
+    void should_countRequestsWithoutCredentialOnlyAgainstTheIp() throws Exception {
+        for (int i = 0; i < 100; i++) {
+            poll("{}").andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("invalid_request"));
+        }
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("authorization_pending", "Aguardando"));
+        poll(devJson("adc_0")).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("authorization_pending"));
+    }
+
+    @Test
+    void should_neverPutTheRawCredentialInTheRateLimitKey() throws Exception {
+        RateLimiter spy = org.mockito.Mockito.spy(new RateLimiter());
+        AgentDeviceAuthController controller = new AgentDeviceAuthController(requestCode, exchange, refresh, spy,
+                new ClientIpResolver(), "https://app.example.com/", 100, 1200, 30);
+        MockMvc local = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new AgentExceptionHandler(), new GlobalExceptionHandler()).build();
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("authorization_pending", "Aguardando"));
+        local.perform(post("/agent/v1/device/token").contentType(MediaType.APPLICATION_JSON)
+                .content(devJson("adc_secret_value")));
+        org.mockito.ArgumentCaptor<String> keys = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.Mockito.verify(spy, org.mockito.Mockito.atLeastOnce())
+                .tryAcquire(keys.capture(), org.mockito.ArgumentMatchers.anyInt(), any());
+        assertThat(keys.getAllValues()).noneMatch(k -> k.contains("adc_secret_value"))
+                .anyMatch(k -> k.equals("agent-token-cred:"
+                        + andromeda.sei.ms.feature.agent.domain.AgentCodes.sha256("adc_secret_value")));
+    }
+
+    @Test
+    void should_honourConfiguredLimits() throws Exception {
+        AgentDeviceAuthController controller = new AgentDeviceAuthController(requestCode, exchange, refresh,
+                new RateLimiter(), new ClientIpResolver(), "https://app.example.com/", 2, 3, 2);
+        MockMvc local = MockMvcBuilders.standaloneSetup(controller)
+                .setControllerAdvice(new AgentExceptionHandler(), new GlobalExceptionHandler()).build();
+        when(exchange.execute(any())).thenThrow(new AgentOAuthException("authorization_pending", "Aguardando"));
+        for (int i = 0; i < 3; i++) {
+            local.perform(post("/agent/v1/device/token").contentType(MediaType.APPLICATION_JSON)
+                    .content(devJson("adc_" + i))).andExpect(status().isBadRequest());
+        }
+        local.perform(post("/agent/v1/device/token").contentType(MediaType.APPLICATION_JSON)
+                .content(devJson("adc_9"))).andExpect(status().isTooManyRequests());
     }
 
     @Test
