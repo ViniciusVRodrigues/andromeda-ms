@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.agent.presentation;
 
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInProgressException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInvalidException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchTooLargeException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentDeviceInfoInvalidException;
@@ -9,6 +10,7 @@ import andromeda.sei.ms.feature.agent.domain.exception.AgentVersionUnsupportedEx
 import andromeda.sei.ms.shared.presentation.dto.ErrorResponse;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -45,6 +47,14 @@ public class AgentExceptionHandler {
     @ExceptionHandler({AgentBatchInvalidException.class, AgentRequestInvalidException.class})
     public ResponseEntity<ErrorResponse> invalidRequest(andromeda.sei.ms.shared.domain.exception.DomainException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.from(e));
+    }
+
+    /** The agent defers the batch and resends the same batchId after {@code Retry-After} (agt10). */
+    @ExceptionHandler(AgentBatchInProgressException.class)
+    public ResponseEntity<ErrorResponse> batchInProgress(AgentBatchInProgressException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(e.getRetryAfterSeconds()))
+                .body(ErrorResponse.from(e));
     }
 
     @ExceptionHandler(AgentPairingConflictException.class)

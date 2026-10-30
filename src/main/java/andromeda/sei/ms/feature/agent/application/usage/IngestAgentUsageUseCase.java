@@ -12,10 +12,12 @@ import andromeda.sei.ms.feature.agent.domain.AgentDeviceRepository;
 import andromeda.sei.ms.feature.agent.domain.AgentPrincipal;
 import andromeda.sei.ms.feature.agent.domain.AgentUploadBatch;
 import andromeda.sei.ms.feature.agent.domain.AgentUploadBatchRepository;
+import andromeda.sei.ms.feature.agent.domain.AgentUploadBatchRepository.Claim;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Allocation;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.RowResult;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Status;
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInProgressException;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentTokenInvalidException;
 import andromeda.sei.ms.feature.aiusage.application.usecase.CalculateAiCostUseCase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
@@ -71,6 +73,8 @@ public class IngestAgentUsageUseCase {
     private static final Pattern TOOL = Pattern.compile("[a-z0-9._-]{1,40}");
     private static final Pattern SESSION_HASH = Pattern.compile("[0-9a-fA-F]{16,64}");
     private static final Set<String> ORIGINS = Set.of("real", "estimado");
+    private static final Duration IN_PROGRESS_POLL = Duration.ofMillis(250);
+    private static final long IN_PROGRESS_RETRY_AFTER_SECONDS = 30;
     private static final Set<String> METHODS = Set.of("explicit", "branch", "single-active", "none");
 
     private final AgentDeviceRepository devices;
@@ -84,6 +88,8 @@ public class IngestAgentUsageUseCase {
     private final OrganizationRepository organizations;
     private final Duration maxRowAge;
     private final Duration batchReplayTtl;
+    private final Duration batchClaimLease;
+    private final Duration batchInProgressWait;
     private final boolean acceptEstimated;
     private final Clock clock;
 
@@ -96,9 +102,12 @@ public class IngestAgentUsageUseCase {
                                    OrganizationRepository organizations,
                                    @Value("${andromeda.agent.max-row-age:P90D}") Duration maxRowAge,
                                    @Value("${andromeda.agent.batch-replay-ttl:P7D}") Duration batchReplayTtl,
-                                   @Value("${andromeda.agent.accept-estimated:false}") boolean acceptEstimated) {
+                                   @Value("${andromeda.agent.accept-estimated:false}") boolean acceptEstimated,
+                                   @Value("${andromeda.agent.batch-claim-lease:PT10M}") Duration batchClaimLease,
+                                   @Value("${andromeda.agent.batch-in-progress-wait:PT5S}") Duration batchInProgressWait) {
         this(devices, batches, usages, resolveTask, dispositionPolicy, registerAllocation, autoAssign,
-                costCalculator, organizations, maxRowAge, batchReplayTtl, acceptEstimated, Clock.systemUTC());
+                costCalculator, organizations, maxRowAge, batchReplayTtl, acceptEstimated, Clock.systemUTC(),
+                batchClaimLease, batchInProgressWait);
     }
 
     IngestAgentUsageUseCase(AgentDeviceRepository devices, AgentUploadBatchRepository batches,
@@ -108,6 +117,19 @@ public class IngestAgentUsageUseCase {
                             AutoAssignAllocationUseCase autoAssign, CalculateAiCostUseCase costCalculator,
                             OrganizationRepository organizations, Duration maxRowAge, Duration batchReplayTtl,
                             boolean acceptEstimated, Clock clock) {
+        this(devices, batches, usages, resolveTask, dispositionPolicy, registerAllocation, autoAssign,
+                costCalculator, organizations, maxRowAge, batchReplayTtl, acceptEstimated, clock,
+                Duration.ofMinutes(10), Duration.ZERO);
+    }
+
+    IngestAgentUsageUseCase(AgentDeviceRepository devices, AgentUploadBatchRepository batches,
+                            AgentAIUsageRepository usages, ResolveAgentTaskUseCase resolveTask,
+                            AgentRowDispositionPolicy dispositionPolicy,
+                            RegisterAgentAllocationUseCase registerAllocation,
+                            AutoAssignAllocationUseCase autoAssign, CalculateAiCostUseCase costCalculator,
+                            OrganizationRepository organizations, Duration maxRowAge, Duration batchReplayTtl,
+                            boolean acceptEstimated, Clock clock, Duration batchClaimLease,
+                            Duration batchInProgressWait) {
         this.devices = devices;
         this.batches = batches;
         this.usages = usages;
@@ -121,6 +143,8 @@ public class IngestAgentUsageUseCase {
         this.batchReplayTtl = batchReplayTtl;
         this.acceptEstimated = acceptEstimated;
         this.clock = clock;
+        this.batchClaimLease = batchClaimLease;
+        this.batchInProgressWait = batchInProgressWait;
     }
 
     /** A row that passed validation, with the values the server derived. */
@@ -137,11 +161,49 @@ public class IngestAgentUsageUseCase {
         String org = principal.organizationId();
         String deviceId = principal.deviceId();
 
-        Optional<AgentUploadBatch> replay = batches.find(org, deviceId, in.batchId());
-        if (replay.isPresent()) {
-            return replay.get().getResponse();
+        // The batch is claimed before any row is touched: a resend while this request still runs (the
+        // agent gave up at 30 s) waits for or is told to come back for this response, never reprocesses.
+        Instant claimedAt = clock.instant().truncatedTo(ChronoUnit.MILLIS);
+        Claim claim = batches.claim(org, deviceId, in.batchId(), claimedAt, claimedAt.minus(batchClaimLease),
+                claimedAt.plus(batchReplayTtl));
+        if (claim instanceof Claim.Done done) {
+            return done.response();
         }
+        if (claim instanceof Claim.Running) {
+            return awaitRunning(org, deviceId, in.batchId());
+        }
+        try {
+            UsageUploadResult response = ingest(principal, in);
+            batches.complete(org, deviceId, in.batchId(), response);
+            return response;
+        } catch (RuntimeException e) {
+            batches.release(org, deviceId, in.batchId(), claimedAt);
+            throw e;
+        }
+    }
 
+    /** Waits up to {@code batch-in-progress-wait} for the request that owns the batch; then 409. */
+    private UsageUploadResult awaitRunning(String org, String deviceId, String batchId) {
+        long polls = batchInProgressWait.toMillis() / IN_PROGRESS_POLL.toMillis();
+        for (long i = 0; i < polls; i++) {
+            try {
+                Thread.sleep(IN_PROGRESS_POLL);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+            Optional<UsageUploadResult> done = batches.find(org, deviceId, batchId)
+                    .map(AgentUploadBatch::getResponse);
+            if (done.isPresent()) {
+                return done.get();
+            }
+        }
+        throw new AgentBatchInProgressException(IN_PROGRESS_RETRY_AFTER_SECONDS);
+    }
+
+    private UsageUploadResult ingest(AgentPrincipal principal, UsageBatchInput in) {
+        String org = principal.organizationId();
+        String deviceId = principal.deviceId();
         AgentDevice device = devices.findActiveByIdAndOrganizationId(deviceId, org)
                 .orElseThrow(AgentTokenInvalidException::new);
         Instant now = clock.instant();
@@ -187,10 +249,7 @@ public class IngestAgentUsageUseCase {
         if (accepted + duplicate > 0) {
             devices.touchUpload(deviceId, org, now);
         }
-        UsageUploadResult response = new UsageUploadResult(in.batchId(), accepted, duplicate, rejected,
-                List.of(results));
-        batches.save(new AgentUploadBatch(org, deviceId, in.batchId(), response, now, now.plus(batchReplayTtl)));
-        return response;
+        return new UsageUploadResult(in.batchId(), accepted, duplicate, rejected, List.of(results));
     }
 
     // ---- validation -------------------------------------------------------------------------

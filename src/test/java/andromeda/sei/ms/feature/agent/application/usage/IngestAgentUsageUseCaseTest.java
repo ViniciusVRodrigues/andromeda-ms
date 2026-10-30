@@ -11,6 +11,7 @@ import andromeda.sei.ms.feature.agent.domain.AgentPrincipal;
 import andromeda.sei.ms.feature.agent.domain.AgentUploadBatch;
 import andromeda.sei.ms.feature.agent.domain.AgentUploadBatchRepository;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult;
+import andromeda.sei.ms.feature.agent.domain.exception.AgentBatchInProgressException;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Allocation;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.RowResult;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult.Status;
@@ -33,7 +34,6 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,8 +41,11 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -105,6 +108,57 @@ class IngestAgentUsageUseCaseTest {
         assertThat(first.accepted()).isEqualTo(1);
         assertThat(usages.inserts).isEqualTo(1);
         verify(devices, times(1)).touchUpload(eq(DEVICE), eq(ORG), any());
+    }
+
+    @Test
+    void should_answer409WithoutProcessing_when_theSameBatchIsResentWhileTheFirstStillRuns() {
+        batches.runningSince(BATCH, NOW.minusSeconds(5));
+
+        assertThatThrownBy(() -> useCase.execute(principal, batch(row("k1", 100, 200))))
+                .isInstanceOf(AgentBatchInProgressException.class)
+                .satisfies(e -> assertThat(((AgentBatchInProgressException) e).getRetryAfterSeconds()).isEqualTo(30));
+        assertThat(usages.inserts).isZero();
+        verify(devices, never()).touchUpload(any(), any(), any());
+    }
+
+    @Test
+    void should_answerTheFirstRequestsResponse_when_itFinishesWhileTheResendWaits() {
+        UsageUploadResult firstResponse = new UsageUploadResult(BATCH, 1, 0, 0, List.of());
+        batches.runningSince(BATCH, NOW.minusSeconds(5));
+        batches.completesWhileWaiting = firstResponse;
+        useCase = new IngestAgentUsageUseCase(devices, batches, usages, resolveTask, new PairingRowDispositionPolicy(),
+                registerAllocation, autoAssign, new CalculateAiCostUseCase(), organizations, Duration.ofDays(90),
+                Duration.ofDays(7), false, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofMinutes(10),
+                Duration.ofSeconds(1));
+
+        UsageUploadResult second = useCase.execute(principal, batch(row("k1", 100, 200)));
+
+        assertThat(second).isEqualTo(firstResponse);
+        assertThat(usages.inserts).isZero();
+    }
+
+    @Test
+    void should_takeTheBatchOver_when_theFirstClaimIsOlderThanTheLease() {
+        batches.runningSince(BATCH, NOW.minus(Duration.ofMinutes(11)));
+
+        UsageUploadResult result = useCase.execute(principal, batch(row("k1", 100, 200)));
+
+        assertThat(result.accepted()).isEqualTo(1);
+        assertThat(usages.inserts).isEqualTo(1);
+        assertThat(batches.find(ORG, DEVICE, BATCH).orElseThrow().getResponse()).isEqualTo(result);
+    }
+
+    @Test
+    void should_releaseTheClaim_when_processingFails_soTheResendIsProcessed() {
+        doThrow(new IllegalStateException("mongo caiu")).when(devices).touchUpload(eq(DEVICE), eq(ORG), any());
+
+        assertThatThrownBy(() -> useCase.execute(principal, batch(row("k1", 100, 200))))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(batches.releases).isEqualTo(1);
+        assertThat(batches.find(ORG, DEVICE, BATCH)).isEmpty();
+
+        doNothing().when(devices).touchUpload(eq(DEVICE), eq(ORG), any());
+        assertThat(useCase.execute(principal, batch(row("k1", 100, 200))).results()).hasSize(1);
     }
 
     @Test
@@ -572,17 +626,60 @@ class IngestAgentUsageUseCaseTest {
     }
 
     static class InMemoryBatches implements AgentUploadBatchRepository {
-        final Set<String> seen = new HashSet<>();
         final Map<String, AgentUploadBatch> stored = new HashMap<>();
+        final Map<String, Instant> claims = new HashMap<>();
+        /** Response the "other request" stores while this one waits (simulates the first request finishing). */
+        UsageUploadResult completesWhileWaiting;
+        int finds;
+        int releases;
 
         @Override
         public Optional<AgentUploadBatch> find(String organizationId, String deviceId, String batchId) {
-            return Optional.ofNullable(stored.get(organizationId + deviceId + batchId));
+            finds++;
+            String key = organizationId + deviceId + batchId;
+            AgentUploadBatch b = stored.get(key);
+            if (b != null && b.getResponse() == null && completesWhileWaiting != null) {
+                b.setResponse(completesWhileWaiting);
+            }
+            return Optional.ofNullable(b);
         }
 
         @Override
-        public void save(AgentUploadBatch batch) {
-            stored.putIfAbsent(batch.getOrganizationId() + batch.getDeviceId() + batch.getBatchId(), batch);
+        public Claim claim(String organizationId, String deviceId, String batchId, Instant now, Instant staleBefore,
+                           Instant expiresAt) {
+            String key = organizationId + deviceId + batchId;
+            AgentUploadBatch b = stored.get(key);
+            if (b == null || (b.getResponse() == null && claims.get(key).isBefore(staleBefore))) {
+                stored.put(key, new AgentUploadBatch(organizationId, deviceId, batchId, null, now, expiresAt));
+                claims.put(key, now);
+                return new Claim.Owned(now);
+            }
+            return b.getResponse() != null ? new Claim.Done(b.getResponse()) : new Claim.Running();
+        }
+
+        @Override
+        public void complete(String organizationId, String deviceId, String batchId, UsageUploadResult response) {
+            AgentUploadBatch b = stored.get(organizationId + deviceId + batchId);
+            if (b.getResponse() == null) {
+                b.setResponse(response);
+            }
+        }
+
+        @Override
+        public void release(String organizationId, String deviceId, String batchId, Instant claimedAt) {
+            String key = organizationId + deviceId + batchId;
+            if (stored.get(key).getResponse() == null && claimedAt.equals(claims.get(key))) {
+                stored.remove(key);
+                claims.remove(key);
+                releases++;
+            }
+        }
+
+        /** Another request claimed the batch at {@code at} and is still processing it. */
+        void runningSince(String batchId, Instant at) {
+            String key = ORG + DEVICE + batchId;
+            stored.put(key, new AgentUploadBatch(ORG, DEVICE, batchId, null, at, at.plus(Duration.ofDays(7))));
+            claims.put(key, at);
         }
     }
 }

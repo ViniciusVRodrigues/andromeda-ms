@@ -1,6 +1,6 @@
 package andromeda.sei.ms.feature.aiusage.infrastructure.persistence;
 
-import andromeda.sei.ms.feature.agent.domain.AgentUploadBatch;
+import andromeda.sei.ms.feature.agent.domain.AgentUploadBatchRepository.Claim;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult;
 import andromeda.sei.ms.feature.agent.infrastructure.persistence.AgentUploadBatchRepositoryImpl;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
@@ -12,10 +12,10 @@ import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.index.IndexInfo;
 import org.springframework.data.mongodb.core.query.Query;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -112,19 +112,55 @@ class AgentAiUsageRepositoryMongoTest {
     }
 
     @Test
-    void should_replayTheStoredBatch_andKeepTheFirstWhenSavedTwice() {
+    void should_claimTheBatchOnce_andReplayTheFirstStoredResponse() {
         UsageUploadResult first = new UsageUploadResult("b1", 1, 0, 0, List.of(new UsageUploadResult.RowResult(
                 "k1", UsageUploadResult.Status.ACCEPTED, UsageUploadResult.Allocation.QUEUED, null, null, null, null, null)));
-        batches.save(new AgentUploadBatch("org-1", "dev-1", "b1", first, NOW, NOW.plusSeconds(3600)));
-        batches.save(new AgentUploadBatch("org-1", "dev-1", "b1",
-                new UsageUploadResult("b1", 0, 0, 0, List.of()), NOW, NOW.plusSeconds(3600)));
 
-        Optional<AgentUploadBatch> found = batches.find("org-1", "dev-1", "b1");
+        assertThat(claim("b1", NOW)).isEqualTo(new Claim.Owned(NOW));
+        assertThat(claim("b1", NOW.plusSeconds(1))).isInstanceOf(Claim.Running.class);
+        assertThat(batches.find("org-1", "dev-1", "b1").orElseThrow().getResponse()).isNull();
 
-        assertThat(found).isPresent();
-        assertThat(found.get().getResponse()).isEqualTo(first);
+        batches.complete("org-1", "dev-1", "b1", first);
+        batches.complete("org-1", "dev-1", "b1", new UsageUploadResult("b1", 0, 0, 0, List.of()));
+
+        assertThat(claim("b1", NOW.plusSeconds(2))).isEqualTo(new Claim.Done(first));
+        assertThat(batches.find("org-1", "dev-1", "b1").orElseThrow().getResponse()).isEqualTo(first);
         assertThat(batches.find("org-1", "dev-2", "b1")).isEmpty();
         assertThat(mongoTemplate.count(new Query(), "agent_upload_batches")).isEqualTo(1);
+    }
+
+    @Test
+    void should_takeOverAClaimOlderThanTheLease_butNeverAProcessedBatch() {
+        claim("b1", NOW);
+        Instant later = NOW.plus(Duration.ofMinutes(11));
+
+        assertThat(batches.claim("org-1", "dev-1", "b1", later, later.minus(Duration.ofMinutes(10)),
+                later.plusSeconds(3600))).isEqualTo(new Claim.Owned(later));
+
+        batches.complete("org-1", "dev-1", "b1", new UsageUploadResult("b1", 0, 0, 0, List.of()));
+        Instant muchLater = later.plus(Duration.ofHours(1));
+        assertThat(batches.claim("org-1", "dev-1", "b1", muchLater, muchLater.minus(Duration.ofMinutes(10)),
+                muchLater.plusSeconds(3600))).isInstanceOf(Claim.Done.class);
+    }
+
+    @Test
+    void should_releaseOnlyTheOwnUnfinishedClaim() {
+        claim("b1", NOW);
+
+        batches.release("org-1", "dev-1", "b1", NOW.minusSeconds(1));
+        assertThat(batches.find("org-1", "dev-1", "b1")).isPresent();
+
+        batches.release("org-1", "dev-1", "b1", NOW);
+        assertThat(batches.find("org-1", "dev-1", "b1")).isEmpty();
+        assertThat(claim("b1", NOW.plusSeconds(1))).isInstanceOf(Claim.Owned.class);
+
+        batches.complete("org-1", "dev-1", "b1", new UsageUploadResult("b1", 0, 0, 0, List.of()));
+        batches.release("org-1", "dev-1", "b1", NOW.plusSeconds(1));
+        assertThat(batches.find("org-1", "dev-1", "b1").orElseThrow().getResponse()).isNotNull();
+    }
+
+    private Claim claim(String batchId, Instant at) {
+        return batches.claim("org-1", "dev-1", batchId, at, at.minus(Duration.ofMinutes(10)), at.plusSeconds(3600));
     }
 
     @Test

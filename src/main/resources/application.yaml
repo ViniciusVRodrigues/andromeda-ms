@@ -66,6 +66,8 @@ andromeda:
     max-rows-per-batch: 500
     uploads-per-minute: 60
     batch-replay-ttl: P7D
+    batch-claim-lease: PT10M      # lote "em andamento" mais velho que isto (ms parou no meio) é retomado (AGT10)
+    batch-in-progress-wait: PT5S  # o reenvio de um lote em andamento espera isto pela resposta; depois, 409
     max-row-age: P90D
     accept-estimated: false
   telemetry:

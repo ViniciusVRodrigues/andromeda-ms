@@ -5,7 +5,8 @@ import java.time.Instant;
 /**
  * Remembers the response given to a batch, so the same {@code batchId} sent again (lost response,
  * retry) answers the same without reprocessing. Kept by {@code batch-replay-ttl}; the TTL on
- * {@code expiresAt} is, with the purge, the only hard delete.
+ * {@code expiresAt} is, with the purge, the only hard delete. A null response means the batch is
+ * still being processed by the request that claimed it.
  */
 public class AgentUploadBatch {
 
