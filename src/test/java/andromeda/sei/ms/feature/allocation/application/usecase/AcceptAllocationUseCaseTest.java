@@ -70,6 +70,28 @@ class AcceptAllocationUseCaseTest {
         verify(allocationRepository).save(pendingAllocation);
         verify(allocationRepository).updateAllocationIdOnUsageRecords(
                 eq(List.of("usage-1", "usage-2")), eq(ALLOCATION_ID));
+        org.assertj.core.api.Assertions.assertThat(pendingAllocation.getStatus())
+                .isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        org.assertj.core.api.Assertions.assertThat(pendingAllocation.getAssignedBy())
+                .isEqualTo(AiUsageAllocation.AssignedBy.AUTO);
+    }
+
+    @Test
+    void shouldAcceptAnAgentPendingAllocation_keepingAgent_andStampTheAcknowledgement() {
+        pendingAllocation.setAssignedBy(AiUsageAllocation.AssignedBy.AGENT);
+        pendingAllocation.setReviewReasons(List.of(
+                new AiUsageAllocation.ReviewReason(AiUsageAllocation.ReviewCode.ITEM_CLOSED, "wi-1", "AB#1", null)));
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.save(any())).thenReturn(pendingAllocation);
+
+        useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID);
+
+        org.assertj.core.api.Assertions.assertThat(pendingAllocation.getStatus())
+                .isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        org.assertj.core.api.Assertions.assertThat(pendingAllocation.getAssignedBy())
+                .isEqualTo(AiUsageAllocation.AssignedBy.AGENT);
+        org.assertj.core.api.Assertions.assertThat(pendingAllocation.getReviewAcknowledgedAt()).isNotNull();
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(eq(List.of("usage-1", "usage-2")), eq(ALLOCATION_ID));
     }
 
     @Test
@@ -157,7 +179,7 @@ class AcceptAllocationUseCaseTest {
     }
 
     @Test
-    void should_rejectAcceptingAgentAllocation() {
+    void should_rejectAcceptingAnAgentAllocationAlreadyValidated() {
         AiUsageAllocation agent = new AiUsageAllocation(ALLOCATION_ID, ORG_ID, USER_ID, LocalDate.now(),
                 List.of("usage-1"), List.of(), AiUsageAllocation.Status.VALIDATED,
                 AiUsageAllocation.AssignedBy.AGENT, true, 0L, Instant.now(), Instant.now());

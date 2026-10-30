@@ -34,7 +34,13 @@ public class AgentDocumentMapper {
         a.setPendingRows(d.getPendingRows());
         AgentDeviceDocument.ActiveTaskDocument t = d.getActiveTask();
         a.setActiveTask(t == null ? null : new AgentDevice.ActiveTask(t.getWorkItemId(), t.getTaskRef(),
-                t.getTitle(), t.getSince(), t.getRepository(), t.getDay()));
+                t.getTitle(), t.getSince(), t.getRepository(), t.getDay(), t.getBranch()));
+        AgentDeviceDocument.EndedTaskDocument e = d.getLastEndedTask();
+        a.setLastEndedTask(e == null ? null : new AgentDevice.EndedTask(e.getWorkItemId(), e.getRef(), e.getTitle(),
+                e.getRepo(), e.getBranch(), e.getReason(), e.getEndedAt(), e.getNewBranch(), e.getNewRepo()));
+        AgentDeviceDocument.TaskConflictDocument c = d.getTaskConflict();
+        a.setTaskConflict(c == null ? null : new AgentDevice.TaskConflict(c.getTaskRef(), c.getBranch(),
+                c.getBranchRef(), c.getRepo(), c.getAt()));
         a.setSyncRequestedAt(d.getSyncRequestedAt());
         a.setSyncRequestedBy(d.getSyncRequestedBy());
         a.setSyncServedAt(d.getSyncServedAt());
@@ -49,6 +55,8 @@ public class AgentDocumentMapper {
 
     public AgentDeviceDocument toDocument(AgentDevice a) {
         AgentDevice.ActiveTask t = a.getActiveTask();
+        AgentDevice.EndedTask e = a.getLastEndedTask();
+        AgentDevice.TaskConflict c = a.getTaskConflict();
         return AgentDeviceDocument.builder()
                 .id(a.getId())
                 .organizationId(a.getOrganizationId())
@@ -74,7 +82,11 @@ public class AgentDocumentMapper {
                 .lastUploadAt(a.getLastUploadAt())
                 .pendingRows(a.getPendingRows())
                 .activeTask(t == null ? null : new AgentDeviceDocument.ActiveTaskDocument(t.workItemId(),
-                        t.taskRef(), t.title(), t.since(), t.repository(), t.day()))
+                        t.taskRef(), t.title(), t.since(), t.repository(), t.day(), t.branch()))
+                .lastEndedTask(e == null ? null : new AgentDeviceDocument.EndedTaskDocument(e.workItemId(), e.ref(),
+                        e.title(), e.repo(), e.branch(), e.reason(), e.endedAt(), e.newBranch(), e.newRepo()))
+                .taskConflict(c == null ? null : new AgentDeviceDocument.TaskConflictDocument(c.taskRef(),
+                        c.branch(), c.branchRef(), c.repo(), c.at()))
                 .syncRequestedAt(a.getSyncRequestedAt())
                 .syncRequestedBy(a.getSyncRequestedBy())
                 .syncServedAt(a.getSyncServedAt())

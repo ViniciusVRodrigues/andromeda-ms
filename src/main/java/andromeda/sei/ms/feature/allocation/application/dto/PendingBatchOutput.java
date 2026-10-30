@@ -13,5 +13,7 @@ public record PendingBatchOutput(
         int totalInteractions,
         BigDecimal estimatedCostUsd,
         String suggestionAllocationId,
-        List<SplitOutput> suggestion
+        List<String> allocationIds,
+        List<SuggestionItemOutput> suggestion,
+        ReviewOutput review
 ) {}

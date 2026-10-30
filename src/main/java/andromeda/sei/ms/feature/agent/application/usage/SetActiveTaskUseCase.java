@@ -37,7 +37,11 @@ import java.util.Optional;
 @Component
 public class SetActiveTaskUseCase {
 
-    public record Input(String taskRef, Instant since, LocalDate day, String repo) {
+    public record Input(String taskRef, Instant since, LocalDate day, String repo, String branch) {
+
+        public Input(String taskRef, Instant since, LocalDate day, String repo) {
+            this(taskRef, since, day, repo, null);
+        }
     }
 
     public record Output(String workItemId, String ref, String title, int retroactiveRows) {
@@ -85,16 +89,18 @@ public class SetActiveTaskUseCase {
         ResolvedTask task = resolveTask.resolveRef(org, user, in.taskRef().trim())
                 .orElseThrow(AgentTaskNotFoundException::new);
         String repo = in.repo() == null || in.repo().isBlank() ? null : in.repo().trim();
+        String branch = in.branch() == null || in.branch().isBlank() ? null : in.branch().trim();
         Instant since = in.since() == null ? now : in.since();
 
         devices.setActiveTask(device.getId(), org,
-                new AgentDevice.ActiveTask(task.workItemId(), task.ref(), task.title(), since, repo, in.day()));
+                new AgentDevice.ActiveTask(task.workItemId(), task.ref(), task.title(), since, repo, in.day(), branch));
 
-        int retro = retroact(org, user, in.day(), repo, task);
+        int retro = retroact(org, user, in.day(), repo, branch, task);
         return new Output(task.workItemId(), task.ref(), task.title(), retro);
     }
 
-    private int retroact(String org, String user, LocalDate day, String repo, ResolvedTask task) {
+    private int retroact(String org, String user, LocalDate day, String repo, String branch,
+                         ResolvedTask task) {
         List<AIUsage> candidates = usageQueries.findUnallocatedAgentRows(org, user, day);
         if (candidates.isEmpty()) return 0;
         Map<String, AgentDevice> ownDevices = new HashMap<>();
@@ -102,6 +108,8 @@ public class SetActiveTaskUseCase {
 
         List<AIUsage> rows = candidates.stream()
                 .filter(r -> repo == null || sameRepository(repo, r.getRepository()))
+                .filter(r -> branch == null || r.getBranch() == null || r.getBranch().isBlank()
+                        || branch.equals(r.getBranch().trim()))
                 .filter(r -> {
                     AgentDevice owner = ownDevices.get(r.getDeviceId());
                     return owner != null && r.getBucketStart() != null

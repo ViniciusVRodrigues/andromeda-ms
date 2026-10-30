@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.agent.application.usage.SetActiveTaskUseCase;
 import andromeda.sei.ms.feature.agent.domain.AgentPrincipal;
 import andromeda.sei.ms.feature.agent.presentation.dto.AgentWire.ActiveTaskRequest;
 import andromeda.sei.ms.feature.agent.presentation.dto.AgentWire.ActiveTaskResponse;
+import andromeda.sei.ms.feature.agent.presentation.dto.AgentWire.EndActiveTaskRequest;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -36,14 +37,16 @@ public class AgentActiveTaskController {
     public ActiveTaskResponse set(@AuthenticationPrincipal AgentPrincipal principal,
                                   @Valid @RequestBody ActiveTaskRequest body) {
         SetActiveTaskUseCase.Output out = setActiveTask.execute(principal,
-                new SetActiveTaskUseCase.Input(body.taskRef(), body.since(), body.day(), body.repo()));
+                new SetActiveTaskUseCase.Input(body.taskRef(), body.since(), body.day(), body.repo(), body.branch()));
         return new ActiveTaskResponse(out.workItemId(), out.ref(), out.title(), out.retroactiveRows());
     }
 
     @DeleteMapping
     @PreAuthorize("hasAuthority('AGENT_USAGE_WRITE')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void clear(@AuthenticationPrincipal AgentPrincipal principal) {
-        clearActiveTask.execute(principal);
+    public void clear(@AuthenticationPrincipal AgentPrincipal principal,
+                      @Valid @RequestBody(required = false) EndActiveTaskRequest body) {
+        clearActiveTask.execute(principal, body == null ? new ClearActiveTaskUseCase.Input(null, null, null)
+                : new ClearActiveTaskUseCase.Input(body.reason(), body.newBranch(), body.newRepo()));
     }
 }

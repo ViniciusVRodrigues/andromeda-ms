@@ -553,20 +553,20 @@ public class IngestAgentUsageUseCase {
 
     private static TaskKey taskKey(AgentDevice device, UsageBatchInput.Row r, Valid v) {
         return new TaskKey(r.taskRef(), v.branch(), r.repo(),
-                ResolveAgentTaskUseCase.activeTaskApplies(hintOf(device), v.hour(), r.repo()));
+                ResolveAgentTaskUseCase.activeTaskApplies(hintOf(device), v.hour(), r.repo(), v.branch(), v.day()));
     }
 
     private static ActiveTaskHint hintOf(AgentDevice device) {
         return device.getActiveTask() == null ? null
                 : new ActiveTaskHint(device.getActiveTask().taskRef(), device.getActiveTask().since(),
-                device.getActiveTask().repository());
+                device.getActiveTask().repository(), device.getActiveTask().branch(), device.getActiveTask().day());
     }
 
     private AgentAttribution attribute(AgentPrincipal principal, AgentDevice device, UsageBatchInput.Row r, Valid v) {
         ActiveTaskHint hint = hintOf(device);
         try {
             return resolveTask.execute(new AgentTaskQuery(principal.organizationId(), principal.userId(),
-                    r.taskRef(), v.branch(), r.repo(), v.hour(), hint));
+                    r.taskRef(), v.branch(), r.repo(), v.hour(), hint, v.day()));
         } catch (RuntimeException e) {
             log.warn("agent-usage: task resolution failed org={} key={}", principal.organizationId(), r.key(), e);
             return null;
@@ -594,7 +594,7 @@ public class IngestAgentUsageUseCase {
                         first.task().workItemId(), first.task().title(), first.task().projectId(),
                         group.stream().map(c -> c.usage().getId()).toList(), resolvedBy(group),
                         group.stream().map(c -> c.usage().getRepository()).toList(),
-                        group.stream().map(c -> c.usage().getBranch()).toList()));
+                        group.stream().map(c -> c.usage().getBranch()).toList(), overriddenOf(group)));
                 group.forEach(c -> allocated.add(c.index()));
             } catch (RuntimeException e) {
                 log.warn("agent-usage: allocation failed org={} user={} day={}", principal.organizationId(),
@@ -617,6 +617,14 @@ public class IngestAgentUsageUseCase {
                     null, null, null);
         }
         return toSuggest;
+    }
+
+    /** The first ref a branch beat in the group (design 2.1), null when none. */
+    private static String overriddenOf(List<Created> group) {
+        for (Created c : group) {
+            if (c.task() != null && c.task().overriddenTaskRef() != null) return c.task().overriddenTaskRef();
+        }
+        return null;
     }
 
     private static AiUsageAllocation.ResolvedBy resolvedBy(List<Created> group) {

@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.agent.application.usage;
 
 import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.ActiveTaskOutput;
+import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.EndedTaskOutput;
+import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.TaskConflictOutput;
 import andromeda.sei.ms.feature.agent.application.usage.AgentRowDispositionPolicy.Disposition;
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceRepository;
@@ -15,6 +17,7 @@ import java.time.Clock;
 import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -49,7 +52,12 @@ public class GetAgentTodayUseCase {
     }
 
     /** The task each active device of the person has marked ({@code activeTask} is null when none). */
-    public record DeviceTask(String deviceId, String machineName, ActiveTaskOutput activeTask) {
+    public record DeviceTask(String deviceId, String machineName, ActiveTaskOutput activeTask,
+                             EndedTaskOutput lastEndedTask, TaskConflictOutput taskConflict) {
+
+        public DeviceTask(String deviceId, String machineName, ActiveTaskOutput activeTask) {
+            this(deviceId, machineName, activeTask, null, null);
+        }
     }
 
     public record Today(List<ResolvedGroup> resolved, List<UnassignedGroup> unassigned, List<DeviceTask> devices) {
@@ -90,8 +98,21 @@ public class GetAgentTodayUseCase {
             ownDevices.put(d.getId(), d);
             if (!d.isRevoked()) {
                 AgentDevice.ActiveTask t = d.getActiveTask();
+                ZoneId zone = zoneOf(d);
+                LocalDate today = now.atZone(zone).toLocalDate();
+                AgentDevice.EndedTask ended = d.getLastEndedTask();
+                AgentDevice.TaskConflict conflict = d.getTaskConflict();
                 deviceTasks.add(new DeviceTask(d.getId(), d.getMachineName(), t == null ? null
-                        : new ActiveTaskOutput(t.workItemId(), t.taskRef(), t.title(), t.since(), t.repository())));
+                        : new ActiveTaskOutput(t.workItemId(), t.taskRef(), t.title(), t.since(), t.repository(),
+                        t.branch(), t.day()),
+                        ended != null && ended.endedAt() != null && ended.endedAt().atZone(zone).toLocalDate().equals(today)
+                                ? new EndedTaskOutput(ended.workItemId(), ended.ref(), ended.title(), ended.repo(),
+                                ended.branch(), ended.reason(), ended.endedAt(), ended.newBranch(), ended.newRepo())
+                                : null,
+                        conflict != null && conflict.at() != null && conflict.at().atZone(zone).toLocalDate().equals(today)
+                                ? new TaskConflictOutput(conflict.taskRef(), conflict.branch(), conflict.branchRef(),
+                                conflict.repo(), conflict.at())
+                                : null));
             }
         }
         if (rows.isEmpty()) return new Today(List.of(), List.of(), deviceTasks);

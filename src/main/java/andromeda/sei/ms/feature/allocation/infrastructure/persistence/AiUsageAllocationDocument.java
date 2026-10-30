@@ -41,6 +41,19 @@ public class AiUsageAllocationDocument {
     private AiUsageAllocation.SuggestionSource suggestionSource;
     private AgentInfoDocument agent;
     private boolean movedFromAgent;
+    /** Absent on documents written before the field existed; read as empty. */
+    private List<ReviewReasonDocument> reviewReasons;
+    private Instant reviewAcknowledgedAt;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ReviewReasonDocument {
+        private AiUsageAllocation.ReviewCode code;
+        private String workItemId;
+        private String displayId;
+        private Long ratio;
+    }
 
     @Data
     @NoArgsConstructor
@@ -49,6 +62,7 @@ public class AiUsageAllocationDocument {
         private AiUsageAllocation.ResolvedBy resolvedBy;
         private List<String> repositories;
         private List<String> branches;
+        private String overriddenTaskRef;
     }
 
     @lombok.Builder.Default

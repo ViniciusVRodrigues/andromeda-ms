@@ -35,7 +35,8 @@ public class AcceptAllocationUseCase {
         }
 
         allocation.setStatus(AiUsageAllocation.Status.VALIDATED);
-        allocation.setAssignedBy(AiUsageAllocation.AssignedBy.AUTO);
+        // assignedBy stays: an AUTO suggestion stays AUTO, an AGENT one stays AGENT ("suggested and confirmed").
+        if (allocation.hasReviewReasons()) allocation.setReviewAcknowledgedAt(Instant.now());
         allocation.setUpdatedAt(Instant.now());
 
         allocationRepository.save(allocation);

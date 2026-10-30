@@ -711,6 +711,28 @@ class AutoAssignAllocationUseCaseTest {
         verify(allocationRepository, never()).deleteById("alloc-agent");
     }
 
+    @Test
+    void should_notReplaceOrDeleteAnAgentSuggestion_whenAutoAssigningTheRestOfTheDay() {
+        AiUsageAllocation agentPending = agentAllocation("alloc-agent", DAY, ORG, USER, List.of("ua1"));
+        agentPending.setStatus(AiUsageAllocation.Status.PENDING_VALIDATION);
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
+                .thenReturn(List.of(aiUsage("usage-1")));
+        when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(agentPending));
+        when(sprintRepository.findByOrganizationIdAndDay(ORG, DAY)).thenReturn(List.of(sprint("sprint-1")));
+        when(workItemRepository.findByOrganizationIdAndSprintIdAndAssigneeUserIdAndResolvedStatus(
+                ORG, "sprint-1", USER, WorkItem.ResolvedStatus.IN_PROGRESS))
+                .thenReturn(List.of(workItem("wi-1", "Fix")));
+        when(allocationRepository.save(any())).thenReturn(savedAllocation("alloc-1", List.of("usage-1")));
+
+        useCase.execute(ORG, USER, DAY);
+
+        verify(allocationRepository, never()).deleteById("alloc-agent");
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.AUTO);
+        assertThat(captor.getValue().getAiUsageIds()).containsExactly("usage-1");
+    }
+
     private static AiUsageAllocation agentAllocation(String id, java.time.LocalDate day, String org, String user, List<String> usageIds) {
         Instant t = Instant.now();
         AiUsageAllocation a = new AiUsageAllocation(id, org, user, day, usageIds,

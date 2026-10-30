@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.allocation.presentation;
 
 import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryInput;
 import andromeda.sei.ms.feature.allocation.application.usecase.AcceptAllocationUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.ConfirmAllocationDaysUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationCandidatesUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationHistoryUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationBatchesUseCase;
@@ -12,6 +13,8 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationEntryRequest;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationEntryResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationHistoryResponse;
+import andromeda.sei.ms.feature.allocation.presentation.dto.ConfirmAllocationDaysRequest;
+import andromeda.sei.ms.feature.allocation.presentation.dto.ConfirmAllocationDaysResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.ManualAllocationForDayRequest;
 import andromeda.sei.ms.feature.allocation.presentation.dto.ManualAllocationRequest;
 import andromeda.sei.ms.feature.allocation.presentation.dto.PendingAllocationDayResponse;
@@ -57,6 +60,7 @@ public class AiUsageAllocationController {
     private final SaveAllocationUseCase saveAllocation;
     private final GetPendingAllocationBatchesUseCase getPendingAllocationBatches;
     private final AcceptAllocationUseCase acceptAllocation;
+    private final ConfirmAllocationDaysUseCase confirmAllocationDays;
     private final ManualAllocateUseCase manualAllocate;
     private final GetAllocationHistoryUseCase getAllocationHistory;
     private final CurrentUserPermissions currentUserPermissions;
@@ -103,10 +107,18 @@ public class AiUsageAllocationController {
                         b.day(), b.totalInputTokens(), b.totalOutputTokens(),
                         b.totalCacheReadTokens(), b.totalCacheWriteTokens(),
                         b.totalInteractions(), b.estimatedCostUsd(),
-                        b.suggestionAllocationId(),
+                        b.suggestionAllocationId(), b.allocationIds(),
                         b.suggestion().stream()
-                                .map(s -> new SplitResponse(s.workItemId(), s.workItemTitle(), s.percentage()))
-                                .toList()))
+                                .map(s -> new PendingBatchResponse.SuggestionItem(s.workItemId(), s.workItemTitle(),
+                                        s.percentage(), s.displayId(), s.source(),
+                                        s.overriddenMark() == null ? null
+                                                : new PendingBatchResponse.OverriddenMark(s.overriddenMark().displayId())))
+                                .toList(),
+                        new PendingBatchResponse.Review(b.review().state(), b.review().reasons(),
+                                b.review().details().stream()
+                                        .map(d -> new PendingBatchResponse.Detail(d.code(), d.workItemId(),
+                                                d.displayId(), d.ratio()))
+                                        .toList())))
                 .toList();
         return ResponseEntity.ok(response);
     }
@@ -124,6 +136,22 @@ public class AiUsageAllocationController {
         String orgId = TenantContextHolder.get();
         acceptAllocation.execute(orgId, user.getUserId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "Confirm whole days", description = "Validates every pending allocation (agent's and automatic) of 1 to 31 days of the caller, keeping who suggested it; days with review reasons need includeReview")
+    @ApiResponse(responseCode = "200", description = "Days confirmed and days skipped, with the reason")
+    @ApiResponse(responseCode = "400", description = "Days missing, repeated, malformed or more than 31")
+    @PostMapping("/confirm")
+    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    public ResponseEntity<ConfirmAllocationDaysResponse> confirm(
+            @RequestBody @Valid ConfirmAllocationDaysRequest request,
+            @AuthenticationPrincipal AndromedaUserDetails user) {
+        String orgId = TenantContextHolder.get();
+        ConfirmAllocationDaysUseCase.Result result = confirmAllocationDays
+                .execute(orgId, user.getUserId(), request.parsedDays(), request.reviewIncluded());
+        return ResponseEntity.ok(new ConfirmAllocationDaysResponse(result.confirmed(),
+                result.skipped().stream()
+                        .map(s -> new ConfirmAllocationDaysResponse.Skipped(s.day(), s.reason().name())).toList()));
     }
 
     @Operation(summary = "Manually allocate an existing suggestion", description = "Replaces splits on a PENDING_VALIDATION allocation and validates it")

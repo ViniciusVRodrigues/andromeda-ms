@@ -1,6 +1,8 @@
 package andromeda.sei.ms.feature.allocation.application.usecase;
 
-import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
+import andromeda.sei.ms.feature.allocation.application.AgentReviewReasonCalculator;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation.ReviewCode;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation.ReviewReason;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation.ResolvedBy;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -24,8 +26,8 @@ class RegisterAgentAllocationUseCaseTest {
 
     static final LocalDate DAY = LocalDate.of(2026, 10, 29);
     final AiUsageAllocationRepository repo = mock(AiUsageAllocationRepository.class);
-    final CalculateAiRatiosUseCase ratios = mock(CalculateAiRatiosUseCase.class);
-    final RegisterAgentAllocationUseCase useCase = new RegisterAgentAllocationUseCase(repo, ratios);
+    final AgentReviewReasonCalculator reasons = mock(AgentReviewReasonCalculator.class);
+    final RegisterAgentAllocationUseCase useCase = new RegisterAgentAllocationUseCase(repo, reasons);
 
     RegisterAgentAllocationUseCase.Registration reg(String wi, List<String> ids, ResolvedBy by, String branch) {
         return new RegisterAgentAllocationUseCase.Registration("org-1", "user-1", DAY, wi, "T", "proj-1", ids, by,
@@ -33,8 +35,10 @@ class RegisterAgentAllocationUseCaseTest {
     }
 
     @Test
-    void should_createAValidatedAgentAllocationWithAWholeSplit() {
+    void should_createAPendingAgentAllocationWithAWholeSplitAndTheReviewReasons() {
         when(repo.findByOrgUserAndDay("org-1", "user-1", DAY)).thenReturn(List.of());
+        when(reasons.reasonsFor("org-1", "user-1", DAY, "wi-1"))
+                .thenReturn(List.of(new ReviewReason(ReviewCode.ITEM_CLOSED, "wi-1", "AB#1", null)));
         when(repo.save(any())).thenAnswer(i -> {
             AiUsageAllocation a = i.getArgument(0);
             a.setId("alloc-1");
@@ -48,18 +52,18 @@ class RegisterAgentAllocationUseCaseTest {
         verify(repo).save(c.capture());
         AiUsageAllocation a = c.getValue();
         assertThat(a.getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.AGENT);
-        assertThat(a.getStatus()).isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        assertThat(a.getStatus()).isEqualTo(AiUsageAllocation.Status.PENDING_VALIDATION);
+        assertThat(a.getReviewReasons()).extracting(ReviewReason::code).containsExactly(ReviewCode.ITEM_CLOSED);
         assertThat(a.getSplits().get(0).getPercentage()).isEqualByComparingTo("1.0000");
         assertThat(a.getAgent().resolvedBy()).isEqualTo(ResolvedBy.BRANCH);
         verify(repo).updateAllocationIdOnUsageRecords(List.of("u1", "u2"), "alloc-1");
-        verify(ratios).execute("org-1", "proj-1");
     }
 
     @Test
     void should_mergeIntoTheExistingAgentAllocationOfTheSameWorkItem_keepingTheStrongerResolution() {
         AiUsageAllocation existing = new AiUsageAllocation("alloc-1", "org-1", "user-1", DAY, List.of("u1"),
                 List.of(new AllocationSplit("wi-1", "T", new BigDecimal("1.0000"))),
-                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT, true, 0L, Instant.now(), Instant.now());
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.AGENT, true, 0L, Instant.now(), Instant.now());
         existing.setAgent(new AiUsageAllocation.AgentInfo(ResolvedBy.SINGLE_ACTIVE, List.of(), List.of("b1")));
         when(repo.findByOrgUserAndDay("org-1", "user-1", DAY)).thenReturn(List.of(existing));
         when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
@@ -91,11 +95,36 @@ class RegisterAgentAllocationUseCaseTest {
     }
 
     @Test
-    void should_notRecalculateRatios_whenThereIsNoProject() {
-        when(repo.findByOrgUserAndDay(any(), any(), any())).thenReturn(List.of());
-        when(repo.save(any())).thenAnswer(i -> i.getArgument(0));
-        useCase.execute(new RegisterAgentAllocationUseCase.Registration("org-1", "user-1", DAY, "wi-1", "T", null,
-                List.of("u1"), ResolvedBy.MARK, List.of(), List.of()));
-        verify(ratios, never()).execute(any(), any());
+    void should_startANewPendingAllocation_whenUsageArrivesAfterThePersonConfirmed() {
+        AiUsageAllocation confirmed = new AiUsageAllocation("alloc-c", "org-1", "user-1", DAY, List.of("u1"),
+                List.of(new AllocationSplit("wi-1", "T", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.AGENT, true, 0L, Instant.now(), Instant.now());
+        when(repo.findByOrgUserAndDay("org-1", "user-1", DAY)).thenReturn(List.of(confirmed));
+        when(repo.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            a.setId("alloc-new");
+            return a;
+        });
+
+        String id = useCase.execute(reg("wi-1", List.of("u2"), ResolvedBy.BRANCH, "b"));
+
+        assertThat(id).isEqualTo("alloc-new");
+        assertThat(confirmed.getAiUsageIds()).containsExactly("u1");
+        verify(repo).updateAllocationIdOnUsageRecords(List.of("u2"), "alloc-new");
+    }
+
+    @Test
+    void should_ignoreAnInactivePendingAgentAllocation() {
+        AiUsageAllocation inactive = new AiUsageAllocation("alloc-i", "org-1", "user-1", DAY, List.of("u1"),
+                List.of(new AllocationSplit("wi-1", "T", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.AGENT, false, 0L, Instant.now(), Instant.now());
+        when(repo.findByOrgUserAndDay("org-1", "user-1", DAY)).thenReturn(List.of(inactive));
+        when(repo.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            a.setId("alloc-new");
+            return a;
+        });
+
+        assertThat(useCase.execute(reg("wi-1", List.of("u2"), ResolvedBy.BRANCH, "b"))).isEqualTo("alloc-new");
     }
 }

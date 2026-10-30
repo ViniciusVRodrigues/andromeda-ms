@@ -15,13 +15,16 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /**
- * Server-side task resolution of an agent usage row (agente-endpoint-v2, design 5). The first step
- * that resolves wins: the row taskRef; the device active task; the branch matched against the
- * organization work item patterns (only an item of the user's sprint); the single in-progress item of the user in the current sprint of the
+ * Server-side task resolution of an agent usage row (agente-endpoint-v2, design 5; the branch first since
+ * atribuicao-a-prova-de-esquecimento, design 2.1). The first step that resolves wins: the branch matched
+ * against the organization work item patterns (only an item of the user's sprint); the row taskRef; the
+ * device active task (only on the day, repository and branch it was marked); the single in-progress item of the user in the current sprint of the
  * project bound to the row repository. A step that does not resolve (unknown or ambiguous
  * reference, project the user cannot access, no eligible item) falls through to the next.
  *
@@ -46,16 +49,21 @@ public class ResolveAgentTaskUseCase {
         String repositoryProjectId = remoteRepositoryResolver
                 .resolveProjectId(q.organizationId(), q.repository()).orElse(null);
 
-        Optional<WorkItem> item = byTaskRef(q.organizationId(), q.userId(), q.taskRef());
+        Optional<WorkItem> item = byBranch(q);
+        if (item.isPresent()) {
+            AgentAttribution branch = outcome(item.get(), AttributionSource.BRANCH, repositoryProjectId);
+            String overridden = overriddenBy(q, item.get());
+            return overridden == null ? branch : new AgentAttribution(
+                    branch.resolvedTask().withOverridden(overridden), repositoryProjectId, AttributionSource.BRANCH);
+        }
+
+        item = byTaskRef(q.organizationId(), q.userId(), q.taskRef());
         if (item.isPresent()) return outcome(item.get(), AttributionSource.TASK_REF, repositoryProjectId);
 
         if (activeTaskApplies(q)) {
             item = byTaskRef(q.organizationId(), q.userId(), q.activeTask().taskRef());
             if (item.isPresent()) return outcome(item.get(), AttributionSource.ACTIVE_TASK, repositoryProjectId);
         }
-
-        item = byBranch(q);
-        if (item.isPresent()) return outcome(item.get(), AttributionSource.BRANCH, repositoryProjectId);
 
         item = singleActive(q.organizationId(), q.userId(), repositoryProjectId);
         if (item.isPresent()) return outcome(item.get(), AttributionSource.SINGLE_ACTIVE, repositoryProjectId);
@@ -80,6 +88,15 @@ public class ResolveAgentTaskUseCase {
                 .map(i -> toResolved(i, AttributionSource.TASK_REF));
     }
 
+    /** The ref the branch beat: the row taskRef, else the valid active task, when they point to another item. */
+    private String overriddenBy(AgentTaskQuery q, WorkItem winner) {
+        Optional<WorkItem> other = byTaskRef(q.organizationId(), q.userId(), q.taskRef());
+        if (other.isEmpty() && activeTaskApplies(q)) {
+            other = byTaskRef(q.organizationId(), q.userId(), q.activeTask().taskRef());
+        }
+        return other.filter(o -> !Objects.equals(o.getId(), winner.getId())).map(ResolveAgentTaskUseCase::refOf).orElse(null);
+    }
+
     private AgentAttribution outcome(WorkItem item, AttributionSource source, String repositoryProjectId) {
         return new AgentAttribution(toResolved(item, source), repositoryProjectId, source);
     }
@@ -93,16 +110,20 @@ public class ResolveAgentTaskUseCase {
     }
 
     private boolean activeTaskApplies(AgentTaskQuery q) {
-        return activeTaskApplies(q.activeTask(), q.bucketStart(), q.repository());
+        return activeTaskApplies(q.activeTask(), q.bucketStart(), q.repository(), q.branch(), q.day());
     }
 
     /**
      * Whether the active task of the device stands for a row of this hour and repository. It is the only
      * step of {@link #execute} that depends on the hour, so the ingest memoizes the rest per batch (agt9).
      */
-    public static boolean activeTaskApplies(ActiveTaskHint hint, Instant bucketStart, String repository) {
+    public static boolean activeTaskApplies(ActiveTaskHint hint, Instant bucketStart, String repository,
+                                            String branch, LocalDate day) {
         if (hint == null || hint.taskRef() == null || hint.since() == null || bucketStart == null) return false;
         if (bucketStart.isBefore(hint.since())) return false;
+        if (hint.day() != null && day != null && !hint.day().equals(day)) return false;
+        if (hint.branch() != null && !hint.branch().isBlank() && branch != null && !branch.isBlank()
+                && !hint.branch().trim().equals(branch.trim())) return false;
         return hint.repository() == null || hint.repository().isBlank()
                 || sameRepository(hint.repository(), repository);
     }

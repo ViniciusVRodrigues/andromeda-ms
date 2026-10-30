@@ -8,7 +8,25 @@ public class AgentDevice {
 
     /** The task the person declared active on this device (filled by the task-resolution package). */
     public record ActiveTask(String workItemId, String taskRef, String title, Instant since,
-                             String repository, LocalDate day) {
+                             String repository, LocalDate day, String branch) {
+
+        public ActiveTask(String workItemId, String taskRef, String title, Instant since, String repository,
+                          LocalDate day) {
+            this(workItemId, taskRef, title, since, repository, day, null);
+        }
+    }
+
+    /** Why a task stopped being active: BRANCH_CHANGED, REPO_CHANGED, DAY_ENDED, ITEM_CLOSED, LEFT_SPRINT or CLEARED. */
+    public static final java.util.Set<String> END_REASONS = java.util.Set.of(
+            "BRANCH_CHANGED", "REPO_CHANGED", "DAY_ENDED", "ITEM_CLOSED", "LEFT_SPRINT", "CLEARED");
+
+    /** The last task that ended on this device (atribuicao-a-prova-de-esquecimento, design 2.3). */
+    public record EndedTask(String workItemId, String ref, String title, String repo, String branch,
+                            String reason, Instant endedAt, String newBranch, String newRepo) {
+    }
+
+    /** The last branch x mark conflict the agent saw (design 2.4). */
+    public record TaskConflict(String taskRef, String branch, String branchRef, String repo, Instant at) {
     }
 
     private String id;
@@ -38,6 +56,8 @@ public class AgentDevice {
     private Instant lastUploadAt;
     private Integer pendingRows;
     private ActiveTask activeTask;
+    private EndedTask lastEndedTask;
+    private TaskConflict taskConflict;
 
     /** Pending "sync now" request made by a person (absent = none). */
     private Instant syncRequestedAt;
@@ -153,6 +173,10 @@ public class AgentDevice {
     public void setPendingRows(Integer pendingRows) { this.pendingRows = pendingRows; }
     public ActiveTask getActiveTask() { return activeTask; }
     public void setActiveTask(ActiveTask activeTask) { this.activeTask = activeTask; }
+    public EndedTask getLastEndedTask() { return lastEndedTask; }
+    public void setLastEndedTask(EndedTask lastEndedTask) { this.lastEndedTask = lastEndedTask; }
+    public TaskConflict getTaskConflict() { return taskConflict; }
+    public void setTaskConflict(TaskConflict taskConflict) { this.taskConflict = taskConflict; }
     public Instant getSyncRequestedAt() { return syncRequestedAt; }
     public void setSyncRequestedAt(Instant v) { this.syncRequestedAt = v; }
     public String getSyncRequestedBy() { return syncRequestedBy; }

@@ -127,4 +127,29 @@ class GetAgentTodayUseCaseTest {
         assertThat(today.devices()).hasSize(1);
         assertThat(today.resolved().get(0).resolvedBy()).isEqualTo("BRANCH");
     }
+
+    @Test
+    void should_exposeBranchDayEndedTaskAndConflict_onlyWhenFromToday() {
+        device.setActiveTask(new AgentDevice.ActiveTask("wi-1", "AB#123", "Task", NOW, "github.com/o/r", TODAY, "feature/x"));
+        device.setLastEndedTask(new AgentDevice.EndedTask("wi-1", "AB#122", "Old", "r", "b", "DAY_ENDED",
+                Instant.parse("2026-10-29T13:00:00Z"), null, null));
+        device.setTaskConflict(new AgentDevice.TaskConflict("AB#123", "feature/y", "AB#124", "r",
+                Instant.parse("2026-10-29T14:00:00Z")));
+        when(queries.findActiveAgentRowsSince(any(), any(), any())).thenReturn(List.of());
+
+        var dt = useCase.execute(ORG, USER).devices().get(0);
+
+        assertThat(dt.activeTask().branch()).isEqualTo("feature/x");
+        assertThat(dt.activeTask().day()).isEqualTo(TODAY);
+        assertThat(dt.lastEndedTask().reason()).isEqualTo("DAY_ENDED");
+        assertThat(dt.taskConflict().branchRef()).isEqualTo("AB#124");
+
+        device.setLastEndedTask(new AgentDevice.EndedTask("wi-1", "AB#122", "Old", "r", "b", "ITEM_CLOSED",
+                Instant.parse("2026-10-28T13:00:00Z"), null, null));
+        device.setTaskConflict(new AgentDevice.TaskConflict("AB#123", "feature/y", "AB#124", "r",
+                Instant.parse("2026-10-28T14:00:00Z")));
+        var old = useCase.execute(ORG, USER).devices().get(0);
+        assertThat(old.lastEndedTask()).isNull();
+        assertThat(old.taskConflict()).isNull();
+    }
 }

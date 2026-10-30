@@ -29,6 +29,33 @@ class AiUsageAllocationDocumentMapperTest {
     }
 
     @Test
+    void should_roundTripReviewReasonsAcknowledgementAndOverriddenTaskRef() {
+        AiUsageAllocation a = allocation(null);
+        a.setReviewReasons(List.of(
+                new AiUsageAllocation.ReviewReason(AiUsageAllocation.ReviewCode.ITEM_CLOSED, "wi-1", "AB#1", null),
+                new AiUsageAllocation.ReviewReason(AiUsageAllocation.ReviewCode.USAGE_SPIKE, null, null, 6L)));
+        a.setReviewAcknowledgedAt(Instant.parse("2026-10-30T10:00:00Z"));
+        a.setAgent(new AiUsageAllocation.AgentInfo(AiUsageAllocation.ResolvedBy.BRANCH, List.of("r"), List.of("b"), "AB#9"));
+
+        AiUsageAllocation back = mapper.toDomain(mapper.toDocument(a));
+
+        assertThat(back.getReviewReasons()).containsExactlyElementsOf(a.getReviewReasons());
+        assertThat(back.getReviewAcknowledgedAt()).isEqualTo(Instant.parse("2026-10-30T10:00:00Z"));
+        assertThat(back.getAgent().overriddenTaskRef()).isEqualTo("AB#9");
+    }
+
+    @Test
+    void should_readADocumentWithoutReviewReasonsAsEmpty() {
+        AiUsageAllocationDocument doc = mapper.toDocument(allocation(null));
+        doc.setReviewReasons(null);
+
+        AiUsageAllocation back = mapper.toDomain(doc);
+
+        assertThat(back.getReviewReasons()).isEmpty();
+        assertThat(back.hasReviewReasons()).isFalse();
+    }
+
+    @Test
     void should_readAbsentSourceAsInProgress() {
         AiUsageAllocation back = mapper.toDomain(mapper.toDocument(allocation(null)));
 

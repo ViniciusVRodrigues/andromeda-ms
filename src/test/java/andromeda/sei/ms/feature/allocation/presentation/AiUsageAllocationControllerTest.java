@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryOutput
 import andromeda.sei.ms.feature.allocation.application.dto.PendingAllocationDayOutput;
 import andromeda.sei.ms.feature.allocation.application.dto.WorkItemCandidateOutput;
 import andromeda.sei.ms.feature.allocation.application.usecase.AcceptAllocationUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.ConfirmAllocationDaysUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationCandidatesUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationHistoryUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationBatchesUseCase;
@@ -52,6 +53,7 @@ class AiUsageAllocationControllerTest {
     @Mock SaveAllocationUseCase saveAllocation;
     @Mock GetPendingAllocationBatchesUseCase getPendingAllocationBatches;
     @Mock AcceptAllocationUseCase acceptAllocation;
+    @Mock ConfirmAllocationDaysUseCase confirmAllocationDays;
     @Mock ManualAllocateUseCase manualAllocate;
     @Mock GetAllocationHistoryUseCase getAllocationHistory;
     @Mock andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions currentUserPermissions;
@@ -63,7 +65,7 @@ class AiUsageAllocationControllerTest {
     void setUp() {
         AiUsageAllocationController controller = new AiUsageAllocationController(
                 getPendingAllocations, getAllocationCandidates, saveAllocation,
-                getPendingAllocationBatches, acceptAllocation, manualAllocate, getAllocationHistory,
+                getPendingAllocationBatches, acceptAllocation, confirmAllocationDays, manualAllocate, getAllocationHistory,
                 currentUserPermissions);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
@@ -90,7 +92,8 @@ class AiUsageAllocationControllerTest {
     void pendingBatches_exposesCacheTokens() throws Exception {
         when(getPendingAllocationBatches.execute(anyString(), anyString())).thenReturn(List.of(
                 new andromeda.sei.ms.feature.allocation.application.dto.PendingBatchOutput(
-                        LocalDate.of(2026, 6, 3), 10, 5, 3000, 400, 2, java.math.BigDecimal.ONE, null, List.of())));
+                        LocalDate.of(2026, 6, 3), 10, 5, 3000, 400, 2, java.math.BigDecimal.ONE, null, List.of(), List.of(),
+                        new andromeda.sei.ms.feature.allocation.application.dto.ReviewOutput("SUGGESTED", List.of(), List.of()))));
 
         mockMvc.perform(get("/api/v1/ai/allocations/pending-batches"))
                 .andExpect(status().isOk())
@@ -212,5 +215,79 @@ class AiUsageAllocationControllerTest {
                         .content(body))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("ALLOCATION_WORK_ITEM_TYPE_NOT_ELIGIBLE"));
+    }
+
+    // ── POST /confirm (atribuicao-a-prova-de-esquecimento 1.3) ─────────────────────────────
+
+    private org.springframework.test.web.servlet.ResultActions confirm(String body) throws Exception {
+        return mockMvc.perform(post("/api/v1/ai/allocations/confirm")
+                .contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void confirm_returns_confirmedAndSkipped() throws Exception {
+        when(confirmAllocationDays.execute("org-1", "user-1",
+                List.of(LocalDate.of(2026, 10, 27), LocalDate.of(2026, 10, 28)), false))
+                .thenReturn(new ConfirmAllocationDaysUseCase.Result(List.of(LocalDate.of(2026, 10, 27)),
+                        List.of(new ConfirmAllocationDaysUseCase.Skipped(LocalDate.of(2026, 10, 28),
+                                ConfirmAllocationDaysUseCase.SkipReason.NEEDS_REVIEW))));
+
+        confirm("{\"days\":[\"2026-10-27\",\"2026-10-28\"],\"includeReview\":false}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.confirmed[0]").value("2026-10-27"))
+                .andExpect(jsonPath("$.skipped[0].day").value("2026-10-28"))
+                .andExpect(jsonPath("$.skipped[0].reason").value("NEEDS_REVIEW"));
+    }
+
+    @Test
+    void confirm_passesIncludeReview() throws Exception {
+        when(confirmAllocationDays.execute("org-1", "user-1", List.of(LocalDate.of(2026, 10, 27)), true))
+                .thenReturn(new ConfirmAllocationDaysUseCase.Result(List.of(LocalDate.of(2026, 10, 27)), List.of()));
+
+        confirm("{\"days\":[\"2026-10-27\"],\"includeReview\":true}")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.confirmed[0]").value("2026-10-27"));
+    }
+
+    @Test
+    void confirm_accepts31Days() throws Exception {
+        when(confirmAllocationDays.execute(anyString(), anyString(), any(), org.mockito.ArgumentMatchers.anyBoolean()))
+                .thenReturn(new ConfirmAllocationDaysUseCase.Result(List.of(), List.of()));
+        confirm(daysBody(31)).andExpect(status().isOk());
+    }
+
+    @Test
+    void confirm_returns400_with32Days() throws Exception {
+        confirm(daysBody(32)).andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void confirm_returns400_withoutDays() throws Exception {
+        confirm("{\"days\":[],\"includeReview\":false}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void confirm_returns400_withRepeatedDays() throws Exception {
+        confirm("{\"days\":[\"2026-10-27\",\"2026-10-27\"]}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void confirm_returns400_withMalformedOrImpossibleDate() throws Exception {
+        confirm("{\"days\":[\"27/10/2026\"]}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        confirm("{\"days\":[\"2026-02-30\"]}").andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    private static String daysBody(int n) {
+        StringBuilder sb = new StringBuilder("{\"days\":[");
+        for (int i = 0; i < n; i++) {
+            if (i > 0) sb.append(',');
+            sb.append('"').append(LocalDate.of(2026, 1, 1).plusDays(i)).append('"');
+        }
+        return sb.append("]}").toString();
     }
 }

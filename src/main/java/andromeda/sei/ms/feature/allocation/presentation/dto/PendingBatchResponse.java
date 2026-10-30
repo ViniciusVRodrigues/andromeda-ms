@@ -13,5 +13,16 @@ public record PendingBatchResponse(
         int totalInteractions,
         BigDecimal estimatedCostUsd,
         String suggestionAllocationId,
-        List<SplitResponse> suggestion
-) {}
+        List<String> allocationIds,
+        List<SuggestionItem> suggestion,
+        Review review
+) {
+    public record SuggestionItem(String workItemId, String workItemTitle, BigDecimal percentage,
+                                 String displayId, String source, OverriddenMark overriddenMark) {}
+
+    public record OverriddenMark(String displayId) {}
+
+    public record Review(String state, List<String> reasons, List<Detail> details) {}
+
+    public record Detail(String code, String workItemId, String displayId, Long ratio) {}
+}

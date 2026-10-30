@@ -9,7 +9,17 @@ import andromeda.sei.ms.feature.agent.domain.exception.AgentTokenInvalidExceptio
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.EndedTaskOutput;
+import andromeda.sei.ms.feature.workitem.domain.Sprint;
+import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
+
 import java.time.Clock;
+import java.time.DateTimeException;
+import java.time.Duration;
+import java.time.ZoneOffset;
+import java.util.Objects;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
@@ -23,17 +33,26 @@ public class RecordHeartbeatUseCase {
     static final int MAX_SYNC_SERVED = 40;
 
     private final AgentDeviceRepository devices;
+    /** The ended task is echoed to the agent for this long. */
+    static final Duration ENDED_TASK_TTL = Duration.ofHours(24);
+
     private final AgentVersionPolicy versionPolicy;
+    private final WorkItemRepository workItems;
+    private final SprintRepository sprints;
     private final Clock clock;
 
     @Autowired
-    public RecordHeartbeatUseCase(AgentDeviceRepository devices, AgentVersionPolicy versionPolicy) {
-        this(devices, versionPolicy, Clock.systemUTC());
+    public RecordHeartbeatUseCase(AgentDeviceRepository devices, AgentVersionPolicy versionPolicy,
+                                  WorkItemRepository workItems, SprintRepository sprints) {
+        this(devices, versionPolicy, workItems, sprints, Clock.systemUTC());
     }
 
-    RecordHeartbeatUseCase(AgentDeviceRepository devices, AgentVersionPolicy versionPolicy, Clock clock) {
+    RecordHeartbeatUseCase(AgentDeviceRepository devices, AgentVersionPolicy versionPolicy,
+                           WorkItemRepository workItems, SprintRepository sprints, Clock clock) {
         this.devices = devices;
         this.versionPolicy = versionPolicy;
+        this.workItems = workItems;
+        this.sprints = sprints;
         this.clock = clock;
     }
 
@@ -55,10 +74,54 @@ public class RecordHeartbeatUseCase {
                             req, now));
         }
 
+        if (input.taskConflict() != null) {
+            devices.setTaskConflict(principal.deviceId(), principal.organizationId(), input.taskConflict().value());
+        }
+
         AgentDevice device = devices.findActiveByIdAndOrganizationId(principal.deviceId(), principal.organizationId())
                 .orElseThrow(AgentTokenInvalidException::new);
+        endStaleTask(device, now);
+        AgentDevice.EndedTask ended = device.getLastEndedTask();
+        EndedTaskOutput endedOut = ended != null && ended.endedAt() != null
+                && ended.endedAt().isAfter(now.minus(ENDED_TASK_TTL)) ? DeviceOutputs.ended(ended) : null;
         return new HeartbeatOutput(now, versionPolicy.minVersion(), DeviceOutputs.activeTask(device),
-                device.getSyncRequestedAt());
+                device.getSyncRequestedAt(), endedOut);
+    }
+
+    /** Design 2.3: with an active task, ends it when the day turned, the item closed or left the sprint. */
+    private void endStaleTask(AgentDevice device, Instant now) {
+        AgentDevice.ActiveTask t = device.getActiveTask();
+        if (t == null) return;
+        String reason = endReason(device, t, now);
+        if (reason == null) return;
+        AgentDevice.EndedTask ended = new AgentDevice.EndedTask(t.workItemId(), t.taskRef(), t.title(), t.repository(),
+                t.branch(), reason, now, null, null);
+        devices.endActiveTask(device.getId(), device.getOrganizationId(), ended);
+        device.setActiveTask(null);
+        device.setTaskConflict(null);
+        device.setLastEndedTask(ended);
+    }
+
+    private String endReason(AgentDevice device, AgentDevice.ActiveTask t, Instant now) {
+        if (t.day() != null && now.atZone(zoneOf(device)).toLocalDate().isAfter(t.day())) return "DAY_ENDED";
+        if (t.workItemId() == null) return null;
+        // One read per heartbeat, only with an active task.
+        WorkItem item = workItems.findByIdAndOrganizationIdAndActiveTrue(t.workItemId(), device.getOrganizationId())
+                .orElse(null);
+        if (item == null || item.getResolvedStatus() == WorkItem.ResolvedStatus.DONE) return "ITEM_CLOSED";
+        if (item.getProjectId() == null) return null;
+        Sprint current = sprints.findCurrentSprintByOrganizationIdAndProjectId(device.getOrganizationId(),
+                item.getProjectId()).orElse(null);
+        if (current != null && !Objects.equals(current.getId(), item.getSprintId())) return "LEFT_SPRINT";
+        return null;
+    }
+
+    private static ZoneId zoneOf(AgentDevice device) {
+        try {
+            return device.getTimezone() == null ? ZoneOffset.UTC : ZoneId.of(device.getTimezone());
+        } catch (DateTimeException e) {
+            return ZoneOffset.UTC;
+        }
     }
 
     private static Instant parseInstant(String text) {

@@ -13,7 +13,18 @@ public class AiUsageAllocation {
     public enum ResolvedBy { MARK, BRANCH, SINGLE_ACTIVE }
 
     /** Provenance of an {@code AGENT} allocation: distinct repositories and branches of its rows. */
-    public record AgentInfo(ResolvedBy resolvedBy, List<String> repositories, List<String> branches) {}
+    public record AgentInfo(ResolvedBy resolvedBy, List<String> repositories, List<String> branches,
+                            String overriddenTaskRef) {
+        public AgentInfo(ResolvedBy resolvedBy, List<String> repositories, List<String> branches) {
+            this(resolvedBy, repositories, branches, null);
+        }
+    }
+
+    /** Why the server wants the person to look at the day before confirming it (atribuicao-a-prova-de-esquecimento, 1.2). */
+    public enum ReviewCode { ITEM_CLOSED, OTHER_ASSIGNEE, OUT_OF_SPRINT, USAGE_SPIKE }
+
+    /** One review reason; {@code workItemId}/{@code displayId} are absent on day-level reasons, {@code ratio} only on the spike. */
+    public record ReviewReason(ReviewCode code, String workItemId, String displayId, Long ratio) {}
 
 
     /** Where an automatic suggestion came from; absent (legacy) is read as {@link #IN_PROGRESS}. */
@@ -36,6 +47,10 @@ public class AiUsageAllocation {
     private AgentInfo agent;
     /** True on a MANUAL allocation made by moving agent rows to another task (agente-endpoint-v2, design 15). */
     private boolean movedFromAgent;
+    /** Never null; empty when there is no reason to review. */
+    private List<ReviewReason> reviewReasons = List.of();
+    /** When the person confirmed a day that had review reasons. */
+    private Instant reviewAcknowledgedAt;
 
     public AiUsageAllocation(String id, String organizationId, String userId, LocalDate day,
                               List<String> aiUsageIds, List<AllocationSplit> splits,
@@ -110,6 +125,16 @@ public class AiUsageAllocation {
 
     public boolean isMovedFromAgent() { return movedFromAgent; }
     public void setMovedFromAgent(boolean movedFromAgent) { this.movedFromAgent = movedFromAgent; }
+
+    public List<ReviewReason> getReviewReasons() { return reviewReasons; }
+    public void setReviewReasons(List<ReviewReason> reviewReasons) {
+        this.reviewReasons = reviewReasons == null ? List.of() : reviewReasons;
+    }
+
+    public Instant getReviewAcknowledgedAt() { return reviewAcknowledgedAt; }
+    public void setReviewAcknowledgedAt(Instant reviewAcknowledgedAt) { this.reviewAcknowledgedAt = reviewAcknowledgedAt; }
+
+    public boolean hasReviewReasons() { return reviewReasons != null && !reviewReasons.isEmpty(); }
 
     public boolean isAgent() { return assignedBy == AssignedBy.AGENT; }
 
