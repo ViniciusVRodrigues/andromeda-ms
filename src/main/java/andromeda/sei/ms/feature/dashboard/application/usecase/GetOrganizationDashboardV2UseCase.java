@@ -194,7 +194,7 @@ public class GetOrganizationDashboardV2UseCase {
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
                 cfr(ctx, s.vcs().changes(), ix.completed(), range),
-                (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAt())).count(),
+                (int) s.vcs().pullRequests().stream().filter(pr -> range.contains(pr.getMergedAtIfMerged())).count(),
                 (int) s.vcs().commitsIn(range), timeToFirstReview(ctx, s.vcs().pullRequests(), range), cost,
                 ai.tokens(), ai.activeUsers(), points, AiRatios.per(cost, points),
                 AiRatios.per(cost, hours));
@@ -247,8 +247,8 @@ public class GetOrganizationDashboardV2UseCase {
                 : current.elapsedPct() - current.progressPct();
         Double lastPredictability = lastPastSprint(items, ctx.today()).map(SprintFigures::predictabilityPct).orElse(null);
         Double cfr = cfr(ctx, view.changes(), view.completed(), range);
-        int stale = staleCount(ctx, view.pullRequests());
-        List<VcsPullRequest> merged = filter(view.pullRequests(), pr -> range.contains(pr.getMergedAt()));
+        int stale = staleCount(ctx, project.getId(), view.pullRequests());
+        List<VcsPullRequest> merged = filter(view.pullRequests(), pr -> range.contains(pr.getMergedAtIfMerged()));
         return new PortfolioRow(project.getId(), project.getName(),
                 items.latestSprint().map(Sprint::getTeamName).orElse(null),
                 project.getMemberIds() == null ? 0 : project.getMemberIds().size(), current, gap, lastPredictability,
@@ -283,10 +283,22 @@ public class GetOrganizationDashboardV2UseCase {
         return past.isEmpty() ? Optional.empty() : Optional.of(past.getLast());
     }
 
-    private static int staleCount(Context ctx, List<VcsPullRequest> prs) {
-        Map<String, Set<String>> chosen = ctx.snapshot().vcs().chosenBranches();
+    /** Stale pull requests of one project, judged by the branches of that project's own bindings. */
+    private static int staleCount(Context ctx, String projectId, List<VcsPullRequest> prs) {
+        Map<String, Set<String>> chosen = ctx.snapshot().vcs().chosenBranches(projectId);
         return (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN
                 && StalePullRequestPolicy.isStale(pr, ctx.now(), chosen)).count();
+    }
+
+    /** Stale pull requests of a repository bound to several projects: stalled under at least one of its links. */
+    private static int staleCount(Context ctx, List<VcsPullRequest> prs) {
+        Map<String, List<Set<String>>> perLink = ctx.snapshot().vcs().chosenBranchesPerLink();
+        return (int) prs.stream().filter(pr -> pr.getStatus() == PullRequestStatus.OPEN)
+                .filter(pr -> {
+                    List<Set<String>> links = perLink.get(pr.getRepositoryId());
+                    if (links == null || links.isEmpty()) return StalePullRequestPolicy.isStale(pr, ctx.now(), Set.<String>of());
+                    return links.stream().anyMatch(chosen -> StalePullRequestPolicy.isStale(pr, ctx.now(), chosen));
+                }).count();
     }
 
     /** Items completed per bucket, in one pass over the items (buckets are contiguous and ordered). */
@@ -408,7 +420,7 @@ public class GetOrganizationDashboardV2UseCase {
         List<VcsPullRequest> prs = ctx.snapshot().vcs().pullRequests();
         List<Bucket> buckets = ctx.buckets().buckets();
         List<List<VcsPullRequest>> created = byBucket(ctx, prs, VcsPullRequest::getCreatedAt);
-        List<List<VcsPullRequest>> merged = byBucket(ctx, prs, VcsPullRequest::getMergedAt);
+        List<List<VcsPullRequest>> merged = byBucket(ctx, prs, VcsPullRequest::getMergedAtIfMerged);
         List<ActivityRow> activity = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
             Bucket b = buckets.get(i);
@@ -428,7 +440,7 @@ public class GetOrganizationDashboardV2UseCase {
         DayRange range = ctx.period().current();
         List<VcsPullRequest> prs = ctx.indexed().prsByRepo().getOrDefault(repo.getId(), List.of());
         List<VcsPullRequest> open = filter(prs, pr -> pr.getStatus() == PullRequestStatus.OPEN);
-        List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAt()));
+        List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAtIfMerged()));
         return new RepoRow(repo.getId(), repoName(repo), repo.getProvider() != null ? repo.getProvider().name() : null,
                 ctx.indexed().projectNamesByRepo().getOrDefault(repo.getId(), ""),
                 cfr(ctx, ctx.indexed().changesByRepo().getOrDefault(repo.getId(), List.of()), List.of(), range),

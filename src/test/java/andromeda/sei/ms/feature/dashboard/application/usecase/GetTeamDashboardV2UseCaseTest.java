@@ -437,7 +437,7 @@ class GetTeamDashboardV2UseCaseTest {
 
     @Test
     void should_mapRepositoryHealth_withCommitsOfTheSprint() {
-        when(listProjectRepositoriesUseCase.execute(PROJECT, S2_START, LocalDate.parse("2026-10-08"))).thenReturn(List.of(
+        when(listProjectRepositoriesUseCase.execute(PROJECT, S2_START, LocalDate.parse("2026-10-08"), NOW)).thenReturn(List.of(
                 new ProjectRepositoryOutput(REPO, "owner/orion", 2, 1, null, null, null, null, null,
                         new DurationStat(5.0, 9.0, 4), ReviewMetrics.empty(), DeliveryMetrics.unavailable(),
                         REPO, VcsProvider.GITHUB, "owner/orion", "main")));

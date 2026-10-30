@@ -307,8 +307,8 @@ public class OrganizationDashboardData {
         List<VcsPullRequest> pullRequests = DeliveryMetricsService.union(pullRequestsF.stream().map(f -> join(f)).toList(),
                 VcsPullRequest::getId).stream().filter(pr -> pr.getId() != null && pr.isActive()).toList();
         List<MergedChange> changes = deliveryMetricsService.mergedChangesFrom(orgId, repositories,
-                pullRequests.stream().filter(pr -> pr.getMergedAt() != null && !pr.getMergedAt().isBefore(from)
-                        && pr.getMergedAt().isBefore(to)).toList());
+                pullRequests.stream().filter(pr -> pr.getMergedAtIfMerged() != null && !pr.getMergedAtIfMerged().isBefore(from)
+                        && pr.getMergedAtIfMerged().isBefore(to)).toList());
         Map<LocalDate, Long> commits = new HashMap<>();
         commitsF.forEach(f -> join(f).forEach((day, n) -> commits.merge(day, n, Long::sum)));
         return new Vcs(bindings, repositories, pullRequests, commits, changes);
@@ -339,6 +339,26 @@ public class OrganizationDashboardData {
         /** Repository id to the branches chosen on its binding (a promotion pull request is not stalled). */
         public Map<String, Set<String>> chosenBranches() {
             return StalePullRequestPolicy.chosenBranchesByRepository(bindings, repositories);
+        }
+
+        /** Branches chosen on the bindings of one project: a repository bound to two projects has one set per link. */
+        public Map<String, Set<String>> chosenBranches(String projectId) {
+            return StalePullRequestPolicy.chosenBranchesByRepository(
+                    bindings.stream().filter(b -> projectId.equals(b.getProjectId())).toList(), repositories);
+        }
+
+        /** Branches chosen on every binding of each repository (one set per link). */
+        public Map<String, List<Set<String>>> chosenBranchesPerLink() {
+            Map<String, String> defaults = new java.util.HashMap<>();
+            repositories.stream().filter(r -> r != null && r.getId() != null)
+                    .forEach(r -> defaults.putIfAbsent(r.getId(), r.getDefaultBranch()));
+            Map<String, List<Set<String>>> byRepository = new java.util.HashMap<>();
+            for (VcsRepoBinding binding : bindings) {
+                if (binding.getRepositoryId() == null) continue;
+                byRepository.computeIfAbsent(binding.getRepositoryId(), id -> new java.util.ArrayList<>())
+                        .add(Set.copyOf(binding.effectiveBranches(defaults.get(binding.getRepositoryId()))));
+            }
+            return byRepository;
         }
 
         public Set<String> repositoryIdsOf(String projectId) {

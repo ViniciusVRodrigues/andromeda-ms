@@ -95,6 +95,9 @@ public class VcsPullRequest {
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 
     public Instant getMergedAt() { return mergedAt; }
+
+    /** The merge date of a pull request that is really MERGED; a CLOSED one with a stale merge date has none. */
+    public Instant getMergedAtIfMerged() { return status == PullRequestStatus.MERGED ? mergedAt : null; }
     public void setMergedAt(Instant mergedAt) { this.mergedAt = mergedAt; }
 
     public Instant getClosedAt() { return closedAt; }

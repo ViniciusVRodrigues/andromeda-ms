@@ -202,8 +202,8 @@ public class GetProjectOverviewV2UseCase {
             // One read of the merged changes of both periods (one bug-link lookup); each calculation
             // keeps only the merges of its own window.
             CompletableFuture<List<MergedChange>> changes = loads.then(vcs, v -> deliveryMetricsService.mergedChangesFrom(
-                    orgId, v.repositories(), filter(v.pullRequests(), pr -> pr.getMergedAt() != null
-                            && !pr.getMergedAt().isBefore(previous.from()) && pr.getMergedAt().isBefore(current.to()))));
+                    orgId, v.repositories(), filter(v.pullRequests(), pr -> pr.getMergedAtIfMerged() != null
+                            && !pr.getMergedAtIfMerged().isBefore(previous.from()) && pr.getMergedAtIfMerged().isBefore(current.to()))));
             CompletableFuture<Map<String, Long>> currentCommits = loads.then(vcs,
                     v -> vcsActivity.commitCounts(orgId, v.repositories(), current.from(), current.to()));
             CompletableFuture<Map<String, Long>> previousCommits = loads.then(vcs,
@@ -277,7 +277,7 @@ public class GetProjectOverviewV2UseCase {
         Double points = ctx.items().complexityDeliveredIn(range);
         Double hours = ctx.items().effortLoggedIn(range);
         BigDecimal cost = ctx.allocated().total(range);
-        List<VcsPullRequest> merged = filter(ctx.vcs().pullRequests(), pr -> range.contains(pr.getMergedAt()));
+        List<VcsPullRequest> merged = filter(ctx.vcs().pullRequests(), pr -> range.contains(pr.getMergedAtIfMerged()));
         return new PeriodStats(done.size(), delivery.deploymentsPerWeek(), predictability(ctx, range),
                 Percentiles.of(units.stream().map(WorkItem::getLeadTimeHours).toList()),
                 Percentiles.of(units.stream().map(WorkItem::getCycleTimeHours).toList()),
@@ -383,7 +383,7 @@ public class GetProjectOverviewV2UseCase {
     private static List<PrFlowRow> prFlow(Context ctx, PeriodBuckets buckets) {
         return buckets.buckets().stream().map(b -> new PrFlowRow(b.start(), b.label(),
                 (int) ctx.vcs().pullRequests().stream().filter(pr -> b.range().contains(pr.getCreatedAt())).count(),
-                (int) ctx.vcs().pullRequests().stream().filter(pr -> b.range().contains(pr.getMergedAt())).count(),
+                (int) ctx.vcs().pullRequests().stream().filter(pr -> b.range().contains(pr.getMergedAtIfMerged())).count(),
                 timeToFirstReview(ctx, b.range()))).toList();
     }
 
@@ -398,7 +398,7 @@ public class GetProjectOverviewV2UseCase {
     private RepoRow repoRow(Context ctx, VcsRepository repo, VcsRepoBinding binding) {
         DayRange range = ctx.period().current();
         List<VcsPullRequest> prs = filter(ctx.vcs().pullRequests(), pr -> repo.getId().equals(pr.getRepositoryId()));
-        List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAt()));
+        List<VcsPullRequest> merged = filter(prs, pr -> range.contains(pr.getMergedAtIfMerged()));
         List<VcsPullRequest> open = filter(prs, pr -> pr.getStatus() == PullRequestStatus.OPEN);
         Set<String> repoPrIds = prs.stream().map(VcsPullRequest::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         DeliveryMetrics delivery = delivery(ctx, filter(ctx.changes(), c -> repoPrIds.contains(c.id())), List.of(), range);
