@@ -162,4 +162,67 @@ class DashboardAggregationsMongoTest {
         assertThat(repository.summarizeTotalsByUser(ORG, List.of("u1"), BASE, BASE.plusDays(5))).singleElement()
                 .satisfies(r -> assertThat(r.inputTokens()).isEqualTo(10));
     }
+
+    private static final String COVER = AiUsageDocument.DASHBOARD_COVER_INDEX;
+
+    private static void collect(Object node, String key, List<String> into, List<Number> numbers) {
+        if (node instanceof org.bson.Document d) {
+            d.forEach((k, v) -> {
+                if (k.equals("stage") && v instanceof String stage) into.add(stage);
+                if (k.equals(key) && v instanceof Number n) numbers.add(n);
+                collect(v, key, into, numbers);
+            });
+        } else if (node instanceof List<?> list) {
+            list.forEach(v -> collect(v, key, into, numbers));
+        }
+    }
+
+    @Test
+    void should_coverTheDayAndModelSum_withoutReadingDocuments() {
+        for (int i = 0; i < 40; i++) {
+            insert(ORG, "u" + (i % 3), i % 10, i % 2 == 0 ? "opus" : "sonnet", "vscode", 10 + i, 5, 2, "1.25", true,
+                    Instant.parse("2099-02-01T10:00:00Z"));
+        }
+        org.bson.Document command = new org.bson.Document("aggregate", "ai_usages")
+                .append("pipeline", repository.dayAndModelPipeline(ORG, List.of("u0", "u1", "u2"), BASE, BASE.plusDays(30)))
+                .append("cursor", new org.bson.Document()).append("hint", COVER);
+
+        org.bson.Document explain = mongoTemplate.executeCommand(new org.bson.Document("explain", command)
+                .append("verbosity", "executionStats"));
+
+        List<String> stages = new java.util.ArrayList<>();
+        List<Number> examined = new java.util.ArrayList<>();
+        collect(explain, "totalDocsExamined", stages, examined);
+        assertThat(stages).contains("PROJECTION_COVERED").doesNotContain("FETCH", "COLLSCAN");
+        assertThat(examined).isNotEmpty().allSatisfy(n -> assertThat(n.longValue()).isZero());
+    }
+
+    @Test
+    void should_returnTheSameSums_when_theCoverIndexIsMissing() {
+        insert(ORG, "u1", 3, "opus", "vscode", 10, 5, 2, "1.50", true, null);
+        insert(ORG, "u1", 3, "opus", "cursor", 20, 1, 3, null, true, null);
+        List<AiUsageDayModel> withIndex = repository.summarizeByDayAndModel(ORG, List.of("u1"), BASE, BASE.plusDays(9));
+        assertThat(withIndex).singleElement().satisfies(r -> assertThat(r.inputTokens()).isEqualTo(30));
+
+        mongoTemplate.indexOps(AiUsageDocument.class).dropIndex(COVER);
+        try {
+            List<AiUsageDayModel> without = repository.summarizeByDayAndModel(ORG, List.of("u1"), BASE, BASE.plusDays(9));
+            assertThat(without).isEqualTo(withIndex);
+            assertThat(repository.summarizeInteractionsByEditor(ORG, List.of("u1"), BASE, BASE.plusDays(9))).hasSize(2);
+            assertThat(repository.summarizeTotalsByUser(ORG, List.of("u1"), BASE, BASE.plusDays(9))).hasSize(1);
+            assertThat(repository.summarizeByUserAndDay(ORG, List.of("u1"), BASE, BASE.plusDays(9))).hasSize(1);
+        } finally {
+            mongoTemplate.indexOps(AiUsageDocument.class).createIndex(new org.springframework.data.mongodb.core.index
+                    .CompoundIndexDefinition(new org.bson.Document(coverKeys())).named(COVER));
+        }
+    }
+
+    private static java.util.Map<String, Object> coverKeys() {
+        java.util.Map<String, Object> keys = new java.util.LinkedHashMap<>();
+        for (String field : List.of("organizationId", "userId", "day", "active", "model", "editor", "costUsd",
+                "inputTokens", "outputTokens", "interactions", "allocationId", "uploadedAt", "_id")) {
+            keys.put(field, 1);
+        }
+        return keys;
+    }
 }

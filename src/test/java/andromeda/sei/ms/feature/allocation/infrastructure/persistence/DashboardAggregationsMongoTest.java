@@ -243,4 +243,227 @@ class DashboardAggregationsMongoTest {
         assertThat(repository.summarizeValidatedCoverageByDayAndModel(ORG, workItems, null, null)).singleElement()
                 .satisfies(d -> assertThat(d.allocationId()).isEqualTo(both.getId()));
     }
+
+    // --- PERF2 D7: coverage by the stamp; a list that does not match its stamped records goes to the $lookup ---
+
+    private void stamp(AiUsageDocument usage, AiUsageAllocationDocument allocation) {
+        mongoTemplate.updateFirst(Query.query(org.springframework.data.mongodb.core.query.Criteria.where("_id")
+                        .is(usage.getId())),
+                org.springframework.data.mongodb.core.query.Update.update("allocationId", allocation.getId()),
+                AiUsageDocument.class);
+    }
+
+    private AiUsageAllocationDocument stamped(int dayOffset, List<AiUsageDocument> cited, List<AiUsageDocument> stampedOnes,
+                                              String... workItems) {
+        AiUsageAllocationDocument allocation = allocation(ORG, dayOffset, validated(), true,
+                cited.stream().map(AiUsageDocument::getId).toList(), workItems);
+        stampedOnes.forEach(u -> stamp(u, allocation));
+        return allocation;
+    }
+
+    /** Both summaries equal the Java loop over the cited ids; {@code fallbacks} allocations took the $lookup. */
+    private void assertLikeTheCitedList(List<String> workItems, long fallbacks) {
+        List<AiUsageAllocation> reference = repository.findValidatedByOrganizationIdAndWorkItemIdIn(ORG, workItems);
+        Map<String, AIUsage> found = new HashMap<>();
+        usages.findCostFieldsByOrganizationIdAndIdIn(ORG, reference.stream()
+                .flatMap(a -> a.getAiUsageIds().stream()).distinct().toList()).forEach(u -> found.put(u.getId(), u));
+
+        repository.fallbackAllocations.set(0);
+        List<AllocationCoverage> coverage = repository.summarizeValidatedCoverage(ORG, workItems, null, null);
+        assertThat(repository.fallbackAllocations.get()).as("fallback of the coverage").isEqualTo(fallbacks);
+        repository.fallbackAllocations.set(0);
+        List<AllocationCoverageDetail> detail = repository.summarizeValidatedCoverageByDayAndModel(ORG, workItems, null, null);
+        assertThat(repository.fallbackAllocations.get()).as("fallback of the detail").isEqualTo(fallbacks);
+
+        assertThat(coverage).extracting(AllocationCoverage::id)
+                .containsExactlyInAnyOrderElementsOf(reference.stream().map(AiUsageAllocation::getId).toList());
+        record Key(String allocation, LocalDate day, String model) {}
+        Map<Key, long[]> expectedDetail = new HashMap<>();
+        Map<Key, BigDecimal> expectedDetailCost = new HashMap<>();
+        for (AiUsageAllocation allocation : reference) {
+            BigDecimal cost = BigDecimal.ZERO;
+            long tokens = 0;
+            for (String id : allocation.getAiUsageIds()) {
+                AIUsage usage = found.get(id);
+                if (usage == null) continue;
+                BigDecimal c = usage.getCostUsd() == null ? BigDecimal.ZERO : usage.getCostUsd();
+                cost = cost.add(c);
+                tokens += usage.getInputTokens() + usage.getOutputTokens();
+                Key key = new Key(allocation.getId(), usage.getDay(), usage.getModel());
+                long[] sums = expectedDetail.computeIfAbsent(key, k -> new long[3]);
+                sums[0] += usage.getInputTokens();
+                sums[1] += usage.getOutputTokens();
+                sums[2] += usage.getInteractions();
+                expectedDetailCost.merge(key, c, BigDecimal::add);
+            }
+            AllocationCoverage row = coverage.stream().filter(c -> c.id().equals(allocation.getId())).findFirst().orElseThrow();
+            assertThat(row.costUsd()).isEqualByComparingTo(cost);
+            assertThat(row.tokens()).isEqualTo(tokens);
+            assertThat(row.userId()).isEqualTo(allocation.getUserId());
+            assertThat(row.day()).isEqualTo(allocation.getDay());
+        }
+        assertThat(detail).hasSize(expectedDetail.size());
+        for (AllocationCoverageDetail d : detail) {
+            Key key = new Key(d.allocationId(), d.day(), d.model());
+            assertThat(expectedDetail).containsKey(key);
+            assertThat(d.inputTokens()).isEqualTo(expectedDetail.get(key)[0]);
+            assertThat(d.outputTokens()).isEqualTo(expectedDetail.get(key)[1]);
+            assertThat(d.interactions()).isEqualTo(expectedDetail.get(key)[2]);
+            assertThat(d.costUsd()).isEqualByComparingTo(expectedDetailCost.get(key));
+        }
+    }
+
+    @Test
+    void should_notTakeTheLookup_when_theStampMatchesTheCitedList() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, "legacy-b", 2, null, 20, 0, 1, null, true);   // string id, null cost and model
+        AiUsageDocument c = usage(ORG, null, 1, "opus", 7, 3, 1, "0.25", true);
+        stamped(1, List.of(a, b, c), List.of(a, b, c), "w1");
+        stamped(2, List.of(), List.of(), "w1");                                       // no ids
+
+        assertLikeTheCitedList(List.of("w1"), 0);
+        assertThat(repository.summarizeValidatedCoverage(ORG, List.of("w1"), null, null))
+                .anySatisfy(r -> {
+                    assertThat(r.tokens()).isEqualTo(15 + 20 + 10);
+                    assertThat(r.costUsd()).isEqualByComparingTo("1.75");
+                })
+                .anySatisfy(r -> assertThat(r.tokens()).isZero());
+    }
+
+    @Test
+    void should_takeTheLookup_when_aCitedIdIsRepeated() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        stamped(1, List.of(a, a), List.of(a), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aCitedRecordIsInactive() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument inactive = usage(ORG, null, 1, "opus", 99, 99, 9, "9", false);
+        stamped(1, List.of(a, inactive), List.of(a, inactive), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aCitedRecordBelongsToAnotherOrganization() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument foreign = usage("org-2", null, 1, "opus", 99, 99, 9, "9", true);
+        stamped(1, List.of(a, foreign), List.of(a, foreign), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aCitedIdDoesNotExist() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageAllocationDocument allocation = allocation(ORG, 1, validated(), true,
+                List.of(a.getId(), "ghost", "ffffffffffffffffffffffff"), "w1");
+        stamp(a, allocation);
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aRecordIsStampedButNotCited() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument extra = usage(ORG, null, 1, "opus", 99, 99, 9, "9", true);
+        stamped(1, List.of(a), List.of(a, extra), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aRecordIsCitedButNotStamped() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, null, 1, "opus", 20, 5, 2, "2", true);
+        stamped(1, List.of(a, b), List.of(a), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_aCitedRecordIsOutsideTheDaysOfTheBatch() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument far = usage(ORG, null, 20, "opus", 20, 5, 2, "2", true);
+        stamped(1, List.of(a, far), List.of(a, far), "w1");
+        stamped(2, List.of(), List.of(), "w1");
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_takeTheLookup_when_anAllocationWithoutIdsHasStampedRecords() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageAllocationDocument nullIds = allocation(ORG, 1, validated(), true, null, "w1");
+        stamp(a, nullIds);
+        assertLikeTheCitedList(List.of("w1"), 1);
+    }
+
+    @Test
+    void should_ignoreARecordOfAnotherOrganization_withTheSameAllocationIdAndUser() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument foreign = usage("org-2", null, 1, "opus", 99, 99, 9, "9", true);
+        stamped(1, List.of(a), List.of(a, foreign), "w1");
+
+        assertLikeTheCitedList(List.of("w1"), 0);
+        assertThat(repository.summarizeValidatedCoverage(ORG, List.of("w1"), null, null))
+                .singleElement().satisfies(r -> assertThat(r.tokens()).isEqualTo(15));
+    }
+
+    @Test
+    void should_mixConsistentAndInconsistentAllocationsInTheSameBatch() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, null, 2, "sonnet", 20, 5, 2, "2", true);
+        AiUsageDocument c = usage(ORG, null, 2, "sonnet", 30, 5, 2, "3", true);
+        stamped(1, List.of(a), List.of(a), "w1");
+        stamped(2, List.of(b, b), List.of(b), "w1");
+        stamped(2, List.of(c), List.of(c), "w2");
+
+        assertLikeTheCitedList(List.of("w1", "w2"), 1);
+    }
+
+    @Test
+    void should_keepTheFirstChunk_when_anInconsistentAllocationIsInTwoChunks() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, null, 1, "opus", 20, 5, 2, "2", true);
+        AiUsageAllocationDocument both = stamped(1, List.of(a, a), List.of(a), "w5", "w1500");
+        stamped(1, List.of(b), List.of(b), "w1500");
+        List<String> workItems = IntStream.range(0, 2500).mapToObj(i -> "w" + i).toList();
+
+        assertThat(repository.summarizeValidatedCoverage(ORG, workItems, null, null))
+                .filteredOn(r -> r.id().equals(both.getId())).singleElement()
+                .satisfies(r -> assertThat(r.tokens()).isEqualTo(30));
+        assertThat(repository.summarizeValidatedCoverageByDayAndModel(ORG, workItems, null, null))
+                .filteredOn(d -> d.allocationId().equals(both.getId())).singleElement()
+                .satisfies(d -> assertThat(d.inputTokens()).isEqualTo(20));
+    }
+
+    @Test
+    void should_signTheCitedListWithLongs() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        stamped(1, List.of(a, a, a), List.of(a), "w1");
+
+        List<org.bson.Document> rows = mongoTemplate.getCollection("ai_usage_allocations")
+                .aggregate(repository.allocationSignaturePipeline(ORG, List.of("w1"), null, null))
+                .into(new ArrayList<>());
+
+        assertThat(rows).singleElement().satisfies(row -> {
+            org.bson.Document sig = row.get("sig", org.bson.Document.class);
+            assertThat(sig.get("n")).isEqualTo(3L);
+            assertThat(sig.get("h1")).isInstanceOf(Long.class);
+            assertThat(sig.get("h2")).isInstanceOf(Long.class);
+            assertThat(sig.getLong("h1")).isNotZero();
+        });
+    }
+
+    @Test
+    void should_matchTheCitedList_when_consistentAndInconsistentAllocationsAreInDifferentChunks() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, null, 2, "sonnet", 20, 5, 2, "2", true);
+        AiUsageDocument c = usage(ORG, null, 3, "opus", 30, 5, 2, "3", true);
+        AiUsageDocument d = usage(ORG, null, 3, "opus", 40, 5, 2, "4", true);
+        stamped(1, List.of(a), List.of(a), "w5");                       // chunk 1, consistent
+        stamped(2, List.of(b, b), List.of(b), "w1200");                 // chunk 2, inconsistent
+        stamped(3, List.of(c), List.of(c), "w2400");                    // chunk 3, consistent
+        stamped(3, List.of(d, d), List.of(d), "w7", "w2300");           // two chunks, inconsistent
+        List<String> workItems = IntStream.range(0, 2500).mapToObj(i -> "w" + i).toList();
+
+        assertLikeTheCitedList(workItems, 2);
+    }
 }

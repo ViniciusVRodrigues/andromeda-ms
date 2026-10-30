@@ -8,6 +8,7 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.ValidatedUserDay;
 import andromeda.sei.ms.shared.infrastructure.persistence.ParallelChunks;
 import andromeda.sei.ms.shared.infrastructure.persistence.RawDocuments;
+import com.mongodb.MongoCommandException;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
 import andromeda.sei.ms.feature.aiusage.infrastructure.persistence.AiUsageDocument;
@@ -22,6 +23,7 @@ import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -45,6 +47,7 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     private static final String STATUS = "status";
     private static final String ACTIVE = "active";
     private static final String AI_USAGE_IDS = "aiUsageIds";
+    private static final String ALLOCATION_ID = "allocationId";
     private static final String SPLIT_WORK_ITEM_ID = "splits.workItemId";
     private static final String SPLIT_PERCENTAGE = "splits.percentage";
 
@@ -227,41 +230,48 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
 
     private static final String USAGE = "u";
 
+    /** Allocations that failed the stamp check and went to the {@code $lookup} (PERF2 D7); read by the tests. */
+    final java.util.concurrent.atomic.AtomicLong fallbackAllocations = new java.util.concurrent.atomic.AtomicLong();
+
     @Override
     public List<AllocationCoverage> summarizeValidatedCoverage(String organizationId,
             java.util.Collection<String> workItemIds, LocalDate from, LocalDate to) {
         if (workItemIds == null || workItemIds.isEmpty()) return List.of();
-        return firstChunkPerAllocation(ParallelChunks.read(workItemIds,
-                chunk -> List.of(coverageChunk(organizationId, chunk, from, to))), AllocationCoverage::id);
+        Stamped stamped = stampedUsage(allocationSignatures(organizationId, workItemIds, from, to), organizationId);
+        List<AllocationCoverage> rows = new ArrayList<>();
+        for (StampedAllocation a : stamped.consistent()) {
+            BigDecimal cost = BigDecimal.ZERO;
+            long tokens = 0;
+            for (UsageRow u : a.usage()) {
+                cost = cost.add(u.cost());
+                tokens += u.input() + u.output();
+            }
+            rows.add(new AllocationCoverage(a.id(), a.userId(), a.day(), a.splits(), cost, tokens));
+        }
+        fallbackAllocations.addAndGet(stamped.inconsistentIds().size());
+        rows.addAll(ParallelChunks.read(stamped.inconsistentIds(), chunk -> coverageChunk(organizationId, chunk)));
+        return rows;
     }
 
     @Override
     public List<AllocationCoverageDetail> summarizeValidatedCoverageByDayAndModel(String organizationId,
             java.util.Collection<String> workItemIds, LocalDate from, LocalDate to) {
         if (workItemIds == null || workItemIds.isEmpty()) return List.of();
-        return firstChunkPerAllocation(ParallelChunks.read(workItemIds,
-                chunk -> List.of(detailChunk(organizationId, chunk, from, to))),
-                AllocationCoverageDetail::allocationId);
-    }
-
-    /** An allocation splitting to work items of two chunks comes back from both: keep the first chunk's rows. */
-    private static <T> List<T> firstChunkPerAllocation(List<List<T>> chunks,
-                                                       java.util.function.Function<T, String> id) {
-        java.util.Set<String> seen = new java.util.HashSet<>();
-        List<T> result = new ArrayList<>();
-        for (List<T> chunk : chunks) {
-            java.util.Set<String> before = new java.util.HashSet<>(seen);
-            for (T row : chunk) {
-                if (before.contains(id.apply(row))) continue;
-                result.add(row);
-                seen.add(id.apply(row));
+        Stamped stamped = stampedUsage(allocationSignatures(organizationId, workItemIds, from, to), organizationId);
+        List<AllocationCoverageDetail> rows = new ArrayList<>();
+        for (StampedAllocation a : stamped.consistent()) {
+            for (UsageRow u : a.usage()) {
+                rows.add(new AllocationCoverageDetail(a.id(), a.userId(), a.splits(), u.day(), u.model(),
+                        u.input(), u.output(), u.interactions(), u.cost()));
             }
         }
-        return result;
+        fallbackAllocations.addAndGet(stamped.inconsistentIds().size());
+        rows.addAll(ParallelChunks.read(stamped.inconsistentIds(), chunk -> detailChunk(organizationId, chunk)));
+        return rows;
     }
 
-    /** $match, $unwind of the cited ids and the join with the active usage records of the organization. */
-    private List<Document> coverageJoin(String organizationId, List<String> workItemIds, LocalDate from, LocalDate to) {
+    /** Validated, active allocations of the organization that split to the work items, within the optional days. */
+    private Document allocationMatch(String organizationId, List<String> workItemIds, LocalDate from, LocalDate to) {
         Document match = new Document(ORGANIZATION_ID, organizationId)
                 .append(SPLIT_WORK_ITEM_ID, new Document("$in", workItemIds))
                 .append(STATUS, AiUsageAllocation.Status.VALIDATED.name())
@@ -272,6 +282,18 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
             if (to != null) range.append("$lte", RawDocuments.storedDay(mongoTemplate, to));
             match.append(DAY, range);
         }
+        return match;
+    }
+
+    /**
+     * $match of the given allocations (already chosen, so no work item or day filter), $unwind of the cited
+     * ids and the join with the active usage records of the organization.
+     */
+    private List<Document> coverageJoin(String organizationId, List<String> allocationIds) {
+        Document match = new Document(ORGANIZATION_ID, organizationId)
+                .append("_id", new Document("$in", RawDocuments.storedIds(allocationIds)))
+                .append(STATUS, AiUsageAllocation.Status.VALIDATED.name())
+                .append(ACTIVE, true);
         Document usageProjection = new Document("day", 1).append("model", 1).append("inputTokens", 1)
                 .append("outputTokens", 1).append("interactions", 1).append("costUsd", 1);
         return List.of(
@@ -298,9 +320,8 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return new Document("$sum", new Document("$ifNull", java.util.Arrays.asList("$" + field, 0)));
     }
 
-    private List<AllocationCoverage> coverageChunk(String organizationId, List<String> workItemIds,
-                                                   LocalDate from, LocalDate to) {
-        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, workItemIds, from, to));
+    private List<AllocationCoverage> coverageChunk(String organizationId, List<String> allocationIds) {
+        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, allocationIds));
         pipeline.add(new Document("$group", new Document("_id", "$_id")
                 .append(USER_ID, new Document("$first", "$" + USER_ID))
                 .append(DAY, new Document("$first", "$" + DAY))
@@ -318,9 +339,8 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return rows;
     }
 
-    private List<AllocationCoverageDetail> detailChunk(String organizationId, List<String> workItemIds,
-                                                       LocalDate from, LocalDate to) {
-        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, workItemIds, from, to));
+    private List<AllocationCoverageDetail> detailChunk(String organizationId, List<String> allocationIds) {
+        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, allocationIds));
         pipeline.add(new Document("$match", new Document(USAGE, new Document("$exists", true))));
         pipeline.add(new Document("$group", new Document("_id", new Document("allocation", "$_id")
                 .append("day", "$" + USAGE + ".day").append("model", "$" + USAGE + ".model"))
@@ -340,6 +360,154 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
                     RawDocuments.decimal(row.get("cost"))));
         }
         return rows;
+    }
+
+    // --- PERF2 D7: coverage by the usage stamp, checked against the cited list by a hash signature ---
+
+    private static final String NUM = "n";
+    private static final String H1 = "h1";
+    private static final String H2 = "h2";
+    private static final String SIG = "sig";
+    private static final int P1 = 2147483647;
+    private static final int P2 = 2147483629;
+
+    private record UsageRow(LocalDate day, String model, long n, long h1, long h2,
+                            BigDecimal cost, long input, long output, long interactions) {}
+
+    private record AllocationSig(String id, String userId, LocalDate day, List<AllocationSplit> splits,
+                                 long n, long h1, long h2) {}
+
+    private record StampedAllocation(String id, String userId, LocalDate day, List<AllocationSplit> splits,
+                                     List<UsageRow> usage) {}
+
+    /** Allocations whose cited list equals their stamped records, with those records; and the ids that do not. */
+    private record Stamped(List<StampedAllocation> consistent, List<String> inconsistentIds) {}
+
+    /** One id's term of a hash sum, as a long so the sums never turn into doubles. */
+    private static Document hashTerm(Object key, int prime) {
+        return new Document("$toLong", new Document("$mod", java.util.Arrays.asList(
+                new Document("$toHashedIndexKey", key), prime)));
+    }
+
+    /** Signature of the cited list: count and two hash sums over the ids in the stored form (as the old usageKey). */
+    private static Document citedSignature() {
+        Document key = new Document("$convert", new Document("input", "$$this").append("to", "objectId")
+                .append("onError", "$$this").append("onNull", "$$this"));
+        return new Document("$reduce", new Document("input",
+                new Document("$ifNull", java.util.Arrays.asList("$" + AI_USAGE_IDS, List.of())))
+                .append("initialValue", new Document(NUM, 0L).append(H1, 0L).append(H2, 0L))
+                .append("in", new Document(NUM, new Document("$add", java.util.Arrays.asList("$$value." + NUM, 1L)))
+                        .append(H1, new Document("$add", java.util.Arrays.asList("$$value." + H1, hashTerm(key, P1))))
+                        .append(H2, new Document("$add", java.util.Arrays.asList("$$value." + H2, hashTerm(key, P2))))));
+    }
+
+    List<Document> allocationSignaturePipeline(String organizationId, List<String> workItemIds,
+                                               LocalDate from, LocalDate to) {
+        return List.of(
+                new Document("$match", allocationMatch(organizationId, workItemIds, from, to)),
+                new Document("$project", new Document(USER_ID, 1).append(DAY, 1).append(SPLIT_WORK_ITEM_ID, 1)
+                        .append(SPLIT_PERCENTAGE, 1).append(SIG, citedSignature())));
+    }
+
+    /** Usage of the allocations' stamp, grouped by (allocation, day, model), with the signature of the ids. */
+    private List<Document> stampedUsagePipeline(String organizationId, java.util.Collection<String> userIds,
+                                                LocalDate minDay, LocalDate maxDay) {
+        return List.of(
+                new Document("$match", new Document(ORGANIZATION_ID, organizationId)
+                        .append(USER_ID, new Document("$in", List.copyOf(userIds)))
+                        .append(ACTIVE, true)
+                        .append(DAY, new Document("$gte", RawDocuments.storedDay(mongoTemplate, minDay))
+                                .append("$lte", RawDocuments.storedDay(mongoTemplate, maxDay)))),
+                new Document("$group", new Document("_id", new Document(ALLOCATION_ID, "$" + ALLOCATION_ID)
+                        .append(DAY, "$" + DAY).append("model", "$model"))
+                        .append(NUM, new Document("$sum", 1))
+                        .append(H1, new Document("$sum", hashTerm("$_id", P1)))
+                        .append(H2, new Document("$sum", hashTerm("$_id", P2)))
+                        .append("cost", sumOrZero("costUsd"))
+                        .append("input", sumOrZero("inputTokens"))
+                        .append("output", sumOrZero("outputTokens"))
+                        .append("interactions", sumOrZero("interactions"))));
+    }
+
+    /** Same hint-and-retry as the dashboard sums of the usage repository (PERF2 D6). */
+    private List<Document> aggregateUsageCovered(List<Document> pipeline) {
+        MongoCollection<Document> usages = mongoTemplate.getCollection(
+                mongoTemplate.getCollectionName(AiUsageDocument.class));
+        try {
+            return usages.aggregate(pipeline).hintString(AiUsageDocument.DASHBOARD_COVER_INDEX).into(new ArrayList<>());
+        } catch (MongoCommandException e) {
+            if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("hint")) throw e;
+            return usages.aggregate(pipeline).into(new ArrayList<>());
+        }
+    }
+
+    /** Signatures of the allocations, per chunk of work items; an allocation in two chunks keeps its first row. */
+    private List<AllocationSig> allocationSignatures(String organizationId, java.util.Collection<String> workItemIds,
+                                                     LocalDate from, LocalDate to) {
+        List<AllocationSig> all = ParallelChunks.read(workItemIds, chunk -> {
+            List<AllocationSig> rows = new ArrayList<>();
+            for (Document row : collection().aggregate(allocationSignaturePipeline(organizationId, chunk, from, to))) {
+                Document sig = row.get(SIG, Document.class);
+                rows.add(new AllocationSig(RawDocuments.id(row), row.getString(USER_ID),
+                        RawDocuments.day(mongoTemplate, row.get(DAY)), splitsOf(row.get("splits")),
+                        RawDocuments.longValue(sig.get(NUM)), RawDocuments.longValue(sig.get(H1)),
+                        RawDocuments.longValue(sig.get(H2))));
+            }
+            return rows;
+        });
+        Map<String, AllocationSig> byId = new LinkedHashMap<>();
+        all.forEach(a -> byId.putIfAbsent(a.id(), a));
+        return List.copyOf(byId.values());
+    }
+
+    /** One scan of the stamp for all the allocations; rows of other allocations (or none) are dropped. */
+    private Stamped stampedUsage(List<AllocationSig> allocations, String organizationId) {
+        if (allocations.isEmpty()) return new Stamped(List.of(), List.of());
+        java.util.Set<String> users = new java.util.LinkedHashSet<>();
+        java.util.Set<String> known = new java.util.HashSet<>();
+        LocalDate minDay = null;
+        LocalDate maxDay = null;
+        for (AllocationSig a : allocations) {
+            users.add(a.userId());
+            known.add(a.id());
+            if (a.day() == null) continue;
+            if (minDay == null || a.day().isBefore(minDay)) minDay = a.day();
+            if (maxDay == null || a.day().isAfter(maxDay)) maxDay = a.day();
+        }
+        Map<String, List<UsageRow>> usageByAllocation = new java.util.HashMap<>();
+        if (minDay != null) {
+            for (Document row : aggregateUsageCovered(stampedUsagePipeline(organizationId, users, minDay, maxDay))) {
+                Document key = row.get("_id", Document.class);
+                String allocationId = key.getString(ALLOCATION_ID);
+                if (allocationId == null || !known.contains(allocationId)) continue;
+                usageByAllocation.computeIfAbsent(allocationId, k -> new ArrayList<>())
+                        .add(new UsageRow(RawDocuments.day(mongoTemplate, key.get(DAY)), key.getString("model"),
+                                RawDocuments.longValue(row.get(NUM)), RawDocuments.longValue(row.get(H1)),
+                                RawDocuments.longValue(row.get(H2)), RawDocuments.decimal(row.get("cost")),
+                                RawDocuments.longValue(row.get("input")), RawDocuments.longValue(row.get("output")),
+                                RawDocuments.longValue(row.get("interactions"))));
+            }
+        }
+
+        List<StampedAllocation> consistent = new ArrayList<>();
+        List<String> inconsistent = new ArrayList<>();
+        for (AllocationSig a : allocations) {
+            List<UsageRow> rows = usageByAllocation.getOrDefault(a.id(), List.of());
+            long n = 0;
+            long h1 = 0;
+            long h2 = 0;
+            for (UsageRow u : rows) {
+                n += u.n();
+                h1 += u.h1();
+                h2 += u.h2();
+            }
+            if (a.day() != null && n == a.n() && h1 == a.h1() && h2 == a.h2()) {
+                consistent.add(new StampedAllocation(a.id(), a.userId(), a.day(), a.splits(), rows));
+            } else {
+                inconsistent.add(a.id());
+            }
+        }
+        return new Stamped(consistent, inconsistent);
     }
 
     private static List<AllocationSplit> splitsOf(Object splits) {
