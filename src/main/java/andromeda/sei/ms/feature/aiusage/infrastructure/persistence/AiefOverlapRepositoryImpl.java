@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 public class AiefOverlapRepositoryImpl implements AiefOverlapRepository {
 
     private static final String AGENT = "AGENT";
+    private static final int CHUNK = 5000;
 
     private final MongoTemplate mongoTemplate;
 
@@ -73,19 +74,33 @@ public class AiefOverlapRepositoryImpl implements AiefOverlapRepository {
 
     @Override
     public long deactivate(String organizationId, Collection<String> ids) {
-        if (ids.isEmpty()) return 0;
-        Query query = Query.query(Criteria.where("_id").in(ids).and("organizationId").is(organizationId)
-                .and("source").is(null).and("active").is(true));
         Update update = new Update().set("active", false).set("supersededBy", AGENT).set("updatedAt", Instant.now());
-        return mongoTemplate.updateMulti(query, update, AiUsageDocument.class).getModifiedCount();
+        long changed = 0;
+        for (List<String> chunk : chunks(ids)) {
+            Query query = Query.query(Criteria.where("_id").in(chunk).and("organizationId").is(organizationId)
+                    .and("source").is(null).and("active").is(true));
+            changed += mongoTemplate.updateMulti(query, update, AiUsageDocument.class).getModifiedCount();
+        }
+        return changed;
     }
 
     @Override
     public long reactivate(String organizationId, Collection<String> ids) {
-        if (ids.isEmpty()) return 0;
-        Query query = Query.query(Criteria.where("_id").in(ids).and("organizationId").is(organizationId)
-                .and("source").is(null).and("active").is(false).and("supersededBy").is(AGENT));
         Update update = new Update().set("active", true).unset("supersededBy").set("updatedAt", Instant.now());
-        return mongoTemplate.updateMulti(query, update, AiUsageDocument.class).getModifiedCount();
+        long changed = 0;
+        for (List<String> chunk : chunks(ids)) {
+            Query query = Query.query(Criteria.where("_id").in(chunk).and("organizationId").is(organizationId)
+                    .and("source").is(null).and("active").is(false).and("supersededBy").is(AGENT));
+            changed += mongoTemplate.updateMulti(query, update, AiUsageDocument.class).getModifiedCount();
+        }
+        return changed;
+    }
+
+    /** The first run walks the whole history: the ids go in slices so no {@code $in} nears the 16 MB limit. */
+    private static List<List<String>> chunks(Collection<String> ids) {
+        List<String> all = List.copyOf(ids);
+        List<List<String>> out = new java.util.ArrayList<>();
+        for (int i = 0; i < all.size(); i += CHUNK) out.add(all.subList(i, Math.min(all.size(), i + CHUNK)));
+        return out;
     }
 }
