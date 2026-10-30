@@ -33,8 +33,12 @@ public class AiUsageAllocationDocumentMapper {
         if (doc.getAgent() != null) {
             allocation.setAgent(new AiUsageAllocation.AgentInfo(doc.getAgent().getResolvedBy(),
                     doc.getAgent().getRepositories() == null ? List.of() : doc.getAgent().getRepositories(),
-                    doc.getAgent().getBranches() == null ? List.of() : doc.getAgent().getBranches()));
+                    doc.getAgent().getBranches() == null ? List.of() : doc.getAgent().getBranches(), doc.getAgent().getOverriddenTaskRef()));
         }
+        allocation.setReviewReasons(doc.getReviewReasons() == null ? List.of() : doc.getReviewReasons().stream()
+                .map(r -> new AiUsageAllocation.ReviewReason(r.getCode(), r.getWorkItemId(), r.getDisplayId(), r.getRatio()))
+                .toList());
+        allocation.setReviewAcknowledgedAt(doc.getReviewAcknowledgedAt());
         allocation.setMovedFromAgent(doc.isMovedFromAgent());
         return allocation;
     }
@@ -61,7 +65,12 @@ public class AiUsageAllocationDocumentMapper {
                 .suggestionSource(allocation.getSuggestionSource())
                 .agent(allocation.getAgent() == null ? null : new AiUsageAllocationDocument.AgentInfoDocument(
                         allocation.getAgent().resolvedBy(), allocation.getAgent().repositories(),
-                        allocation.getAgent().branches()))
+                        allocation.getAgent().branches(), allocation.getAgent().overriddenTaskRef()))
+                .reviewReasons(allocation.getReviewReasons() == null ? List.of() : allocation.getReviewReasons().stream()
+                        .map(r -> new AiUsageAllocationDocument.ReviewReasonDocument(r.code(), r.workItemId(),
+                                r.displayId(), r.ratio()))
+                        .toList())
+                .reviewAcknowledgedAt(allocation.getReviewAcknowledgedAt())
                 .movedFromAgent(allocation.isMovedFromAgent())
                 .active(allocation.isActive())
                 .version(allocation.getVersion())

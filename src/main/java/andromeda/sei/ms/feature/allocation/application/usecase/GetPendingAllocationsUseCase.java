@@ -22,6 +22,7 @@ public class GetPendingAllocationsUseCase {
                 .findPendingByOrganizationIdAndUserId(organizationId, userId);
 
         Map<java.time.LocalDate, List<AiUsageAllocation>> byDay = pending.stream()
+                .filter(AiUsageAllocation::isActive)
                 .collect(Collectors.groupingBy(AiUsageAllocation::getDay));
 
         return byDay.entrySet().stream()

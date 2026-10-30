@@ -49,6 +49,9 @@ class ManualAllocateUseCaseTest {
 
     @Mock private andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
 
+    @Mock
+    private andromeda.sei.ms.feature.aiusage.domain.AgentUsageQueries agentUsageQueries;
+
     @InjectMocks
     private ManualAllocateUseCase useCase;
 
@@ -81,16 +84,105 @@ class ManualAllocateUseCaseTest {
     }
 
     @Test
-    void shouldAllocateManually_whenAllocationIdProvided() {
-        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID))
-                .thenReturn(Optional.of(pendingAllocation));
-        when(allocationRepository.save(any())).thenReturn(pendingAllocation);
+    void shouldAllocateManually_whenAllocationIdProvided_replacingThePendingOfTheDay() {
+        when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(pendingAllocation));
+        when(allocationRepository.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            a.setId("new-id");
+            return a;
+        });
 
         useCase.execute(ORG_ID, USER_ID, ALLOCATION_ID, null, validSplits);
 
-        verify(allocationRepository).save(pendingAllocation);
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getStatus()).isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        assertThat(captor.getValue().getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.MANUAL);
+        assertThat(captor.getValue().isMovedFromAgent()).isFalse();
+        verify(allocationRepository).deleteById(ALLOCATION_ID);
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(eq(List.of("usage-1")), eq("new-id"));
+        verify(agentUsageQueries, never()).stampTask(any(), any(), any(), any(), any(), any());
+    }
+
+    private AiUsageAllocation agentPending(String id, String wi, List<String> usageIds) {
+        AiUsageAllocation a = new AiUsageAllocation(id, ORG_ID, USER_ID, DAY, usageIds,
+                List.of(new AllocationSplit(wi, "T", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.AGENT,
+                true, 0L, Instant.now(), Instant.now());
+        a.setAgent(new AiUsageAllocation.AgentInfo(AiUsageAllocation.ResolvedBy.BRANCH, List.of(), List.of("b")));
+        return a;
+    }
+
+    @Test
+    void should_absorbAgentAndAutoPendingAndUnallocatedRows_andStampManualOnTheAgentRows() {
+        AiUsageAllocation agent = agentPending("agent-1", "wi-9", List.of("ua1", "ua2"));
+        AiUsageAllocation validatedAgent = agentPending("agent-v", "wi-8", List.of("uv"));
+        validatedAgent.setStatus(AiUsageAllocation.Status.VALIDATED);
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(agent, pendingAllocation, validatedAgent));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("usage-1"), mockAiUsage("un-1")));
+        when(allocationRepository.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            if (a.getId() == null) a.setId("new-id");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository, org.mockito.Mockito.times(2)).save(captor.capture());
+        AiUsageAllocation created = captor.getAllValues().stream().filter(a -> "new-id".equals(a.getId())).findFirst().orElseThrow();
+        assertThat(created.getStatus()).isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        assertThat(created.getAssignedBy()).isEqualTo(AiUsageAllocation.AssignedBy.MANUAL);
+        assertThat(created.isMovedFromAgent()).isTrue();
+        assertThat(created.getAiUsageIds()).containsExactlyInAnyOrder("ua1", "ua2", "usage-1", "un-1");
+        // the agent pending is deactivated, the automatic one dropped, the confirmed agent one untouched
+        assertThat(agent.isActive()).isFalse();
+        verify(allocationRepository).deleteById(ALLOCATION_ID);
+        assertThat(validatedAgent.isActive()).isTrue();
+        assertThat(created.getAiUsageIds()).doesNotContain("uv");
+        // the manual correction wins: MANUAL stamped only on the rows that came from the agent
+        ArgumentCaptor<java.util.Collection<String>> stamped = ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(agentUsageQueries).stampTask(eq(ORG_ID), stamped.capture(), eq("wi-1"), eq("proj-1"), eq("AB#wi-1"), eq("MANUAL"));
+        assertThat(stamped.getValue()).containsExactlyInAnyOrder("ua1", "ua2");
+    }
+
+    @Test
+    void should_absorbTheWholeDay_whenAdjustingByTheIdOfAnAgentPending() {
+        AiUsageAllocation agentA = agentPending("agent-a", "wi-9", List.of("ua1"));
+        AiUsageAllocation agentB = agentPending("agent-b", "wi-8", List.of("ub1"));
+        when(allocationRepository.findById("agent-a", ORG_ID)).thenReturn(Optional.of(agentA));
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(agentA, agentB));
+        when(allocationRepository.save(any())).thenAnswer(i -> {
+            AiUsageAllocation a = i.getArgument(0);
+            if (a.getId() == null) a.setId("new-id");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, "agent-a", null, validSplits);
+
+        assertThat(agentA.isActive()).isFalse();
+        assertThat(agentB.isActive()).isFalse();
         verify(allocationRepository).updateAllocationIdOnUsageRecords(
-                eq(List.of("usage-1")), eq(ALLOCATION_ID));
+                org.mockito.ArgumentMatchers.argThat(ids -> ids.size() == 2 && ids.contains("ua1") && ids.contains("ub1")),
+                eq("new-id"));
+    }
+
+    @Test
+    void should_notTouchAnotherUsersAllocationOfTheDay() {
+        AiUsageAllocation foreign = agentPending("agent-x", "wi-9", List.of("ux"));
+        foreign.setUserId("someone-else");
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(foreign));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("un-1")));
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        assertThat(foreign.isActive()).isTrue();
+        verify(allocationRepository).save(org.mockito.ArgumentMatchers.argThat(a -> a.getAiUsageIds().equals(List.of("un-1"))));
     }
 
     @Test
@@ -156,6 +248,7 @@ class ManualAllocateUseCaseTest {
     @Test
     void shouldRecalculateAiRatiosOfEveryProjectOfTheSplits() {
         when(allocationRepository.findById(ALLOCATION_ID, ORG_ID)).thenReturn(Optional.of(pendingAllocation));
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(pendingAllocation));
         when(allocationRepository.save(any())).thenReturn(pendingAllocation);
         when(workItemRepository.findByIdAndOrganizationIdAndActiveTrue("wi-2", ORG_ID))
                 .thenReturn(Optional.of(workItem("wi-2", "proj-2")));

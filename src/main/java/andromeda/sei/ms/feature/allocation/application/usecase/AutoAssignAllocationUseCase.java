@@ -80,6 +80,8 @@ public class AutoAssignAllocationUseCase {
             return;
         }
         AiUsageAllocation pending = existing.stream()
+                .filter(AiUsageAllocation::isActive)
+                .filter(a -> !a.isAgent())
                 .filter(a -> a.getStatus() == AiUsageAllocation.Status.PENDING_VALIDATION)
                 .findFirst().orElse(null);
 
