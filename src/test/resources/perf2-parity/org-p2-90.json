@@ -1,0 +1,1068 @@
+{
+  "ai": {
+    "adoption": {
+      "activeUsers": 3,
+      "connected": 0,
+      "people": 3
+    },
+    "byEditor": [
+      {
+        "editor": "jetbrains",
+        "interactions": 14046
+      },
+      {
+        "editor": "cursor",
+        "interactions": 13488
+      },
+      {
+        "editor": "vscode",
+        "interactions": 11551
+      }
+    ],
+    "byModel": [
+      {
+        "costUsd": 208.239262,
+        "interactions": 12377,
+        "model": "claude-opus-5",
+        "tokens": 2679871
+      },
+      {
+        "costUsd": 180.788224,
+        "interactions": 13786,
+        "model": "gpt-5",
+        "tokens": 2960130
+      },
+      {
+        "costUsd": 171.329824,
+        "interactions": 10341,
+        "model": "claude-sonnet-5",
+        "tokens": 2718010
+      }
+    ],
+    "costByBucket": [
+      {
+        "byModel": {
+          "claude-opus-5": 11.555728,
+          "claude-sonnet-5": 14.748772,
+          "gpt-5": 14.22132
+        },
+        "label": "20/07",
+        "start": "2026-07-20"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 23.755695,
+          "claude-sonnet-5": 13.372053,
+          "gpt-5": 32.544002
+        },
+        "label": "27/07",
+        "start": "2026-07-27"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 10.417151,
+          "claude-sonnet-5": 4.878486,
+          "gpt-5": 12.541782
+        },
+        "label": "03/08",
+        "start": "2026-08-03"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 19.854021,
+          "claude-sonnet-5": 14.81356,
+          "gpt-5": 11.846537
+        },
+        "label": "10/08",
+        "start": "2026-08-10"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 23.389712,
+          "claude-sonnet-5": 20.685108,
+          "gpt-5": 14.444059
+        },
+        "label": "17/08",
+        "start": "2026-08-17"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 14.959092,
+          "claude-sonnet-5": 3.945354,
+          "gpt-5": 20.797419
+        },
+        "label": "24/08",
+        "start": "2026-08-24"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 16.578929,
+          "claude-sonnet-5": 14.075178,
+          "gpt-5": 4.40822
+        },
+        "label": "31/08",
+        "start": "2026-08-31"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 13.221066,
+          "claude-sonnet-5": 19.197993,
+          "gpt-5": 2.577504
+        },
+        "label": "07/09",
+        "start": "2026-09-07"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 13.777524,
+          "claude-sonnet-5": 12.251079,
+          "gpt-5": 13.484942
+        },
+        "label": "14/09",
+        "start": "2026-09-14"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 12.372829,
+          "claude-sonnet-5": 17.035505,
+          "gpt-5": 31.96276
+        },
+        "label": "21/09",
+        "start": "2026-09-21"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 14.390326,
+          "claude-sonnet-5": 13.752388,
+          "gpt-5": 8.684477
+        },
+        "label": "28/09",
+        "start": "2026-09-28"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 14.154171,
+          "claude-sonnet-5": 16.040984,
+          "gpt-5": 8.930317
+        },
+        "label": "05/10",
+        "start": "2026-10-05"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 17.234298,
+          "claude-sonnet-5": 6.533364,
+          "gpt-5": 0
+        },
+        "label": "12/10",
+        "start": "2026-10-12"
+      }
+    ],
+    "costByProject": [
+      {
+        "costUsd": 154.71950082,
+        "name": "Bootes",
+        "projectId": "proj-2"
+      },
+      {
+        "costUsd": null,
+        "name": "Não alocado a work items",
+        "projectId": null
+      }
+    ],
+    "models": [
+      "claude-opus-5",
+      "gpt-5",
+      "claude-sonnet-5"
+    ],
+    "subscription": {
+      "consumptionUsd": 747.804122,
+      "perUserMonthUsd": null,
+      "subscriptionUsd": null,
+      "usersAboveSubscription": null
+    },
+    "tokens": {
+      "input": 8013980,
+      "output": 3443335
+    }
+  },
+  "asOf": "2026-10-15T12:00:00Z",
+  "delivery": {
+    "flow": [
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "20/07",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-07-20"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "27/07",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-07-27"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "03/08",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-08-03"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "10/08",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-08-10"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "17/08",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-08-17"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "24/08",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-08-24"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "31/08",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-08-31"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "07/09",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-09-07"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "14/09",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-09-14"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "21/09",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-09-21"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "28/09",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-09-28"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "05/10",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-10-05"
+      },
+      {
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "label": "12/10",
+        "leadTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "start": "2026-10-12"
+      }
+    ],
+    "throughputByProject": [
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "20/07",
+        "start": "2026-07-20"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "27/07",
+        "start": "2026-07-27"
+      },
+      {
+        "byProject": {
+          "proj-2": 1
+        },
+        "label": "03/08",
+        "start": "2026-08-03"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "10/08",
+        "start": "2026-08-10"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "17/08",
+        "start": "2026-08-17"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "24/08",
+        "start": "2026-08-24"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "31/08",
+        "start": "2026-08-31"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "07/09",
+        "start": "2026-09-07"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "14/09",
+        "start": "2026-09-14"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "21/09",
+        "start": "2026-09-21"
+      },
+      {
+        "byProject": {
+          "proj-2": 0
+        },
+        "label": "28/09",
+        "start": "2026-09-28"
+      },
+      {
+        "byProject": {
+          "proj-2": 1
+        },
+        "label": "05/10",
+        "start": "2026-10-05"
+      },
+      {
+        "byProject": {
+          "proj-2": 1
+        },
+        "label": "12/10",
+        "start": "2026-10-12"
+      }
+    ],
+    "typeMix": [
+      {
+        "count": 0,
+        "type": "STORY"
+      },
+      {
+        "count": 2,
+        "type": "BUG"
+      },
+      {
+        "count": 2,
+        "type": "TASK"
+      }
+    ]
+  },
+  "engineering": {
+    "activity": [
+      {
+        "commits": 0,
+        "label": "20/07",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-07-20",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "27/07",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-07-27",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "03/08",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-08-03",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "10/08",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-08-10",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "17/08",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-08-17",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "24/08",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-08-24",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "31/08",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-08-31",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "07/09",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-09-07",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "14/09",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-09-14",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "21/09",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-09-21",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "28/09",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-09-28",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "05/10",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-10-05",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      },
+      {
+        "commits": 0,
+        "label": "12/10",
+        "merged": 0,
+        "opened": 0,
+        "start": "2026-10-12",
+        "timeToFirstReviewHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        }
+      }
+    ],
+    "repos": []
+  },
+  "integrations": {
+    "aiConnector": {
+      "activeTokens": 0,
+      "lastUploadAt": "2026-10-15T21:51:04Z"
+    },
+    "azure": {
+      "consecutiveFailures": null,
+      "lastError": null,
+      "lastSuccessAt": null,
+      "status": "DISCONNECTED"
+    },
+    "coverage": {
+      "aiConnectedPct": 0,
+      "aiDaysAllocatedPct": 45.74,
+      "azureLinkedPct": 0,
+      "githubLinkedPct": 0,
+      "itemsWithEstimatePct": 100,
+      "prsLinkedPct": null
+    },
+    "github": {
+      "consecutiveFailures": null,
+      "lastError": null,
+      "lastSuccessAt": null,
+      "status": "DISCONNECTED"
+    },
+    "projects": [
+      {
+        "azureLastSyncAt": null,
+        "azureProject": null,
+        "azureSyncEnabled": null,
+        "name": "Bootes",
+        "projectId": "proj-2",
+        "repos": []
+      }
+    ],
+    "syncByDay": [
+      {
+        "date": "2026-10-02",
+        "failed": 0,
+        "label": "02/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-03",
+        "failed": 0,
+        "label": "03/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-04",
+        "failed": 0,
+        "label": "04/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-05",
+        "failed": 0,
+        "label": "05/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-06",
+        "failed": 0,
+        "label": "06/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-07",
+        "failed": 0,
+        "label": "07/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-08",
+        "failed": 0,
+        "label": "08/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-09",
+        "failed": 0,
+        "label": "09/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-10",
+        "failed": 0,
+        "label": "10/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-11",
+        "failed": 0,
+        "label": "11/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-12",
+        "failed": 0,
+        "label": "12/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-13",
+        "failed": 0,
+        "label": "13/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-14",
+        "failed": 0,
+        "label": "14/10",
+        "partial": 0,
+        "success": 0
+      },
+      {
+        "date": "2026-10-15",
+        "failed": 0,
+        "label": "15/10",
+        "partial": 0,
+        "success": 0
+      }
+    ]
+  },
+  "kpis": {
+    "activeAiUsers": 3,
+    "aiCostPerHour": 10.314633,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 154.71950082,
+    "aiTokens": 11457315,
+    "cfrPct": 50,
+    "commits": 0,
+    "complexityDelivered": 0,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "itemsDone": 4,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "people": 3,
+    "projects": 1,
+    "prsMerged": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "period": {
+    "days": 90,
+    "end": "2026-10-15",
+    "granularity": "semana",
+    "previousEnd": "2026-07-17",
+    "previousStart": "2026-04-19",
+    "start": "2026-07-18"
+  },
+  "portfolio": [
+    {
+      "aiCostPerHour": 10.314633,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 154.71950082,
+      "cfrPct": 50,
+      "complexityDelivered": 0,
+      "complexityPlanned": null,
+      "currentProgressGapPct": -40,
+      "currentSprint": {
+        "elapsedPct": 60,
+        "id": "s-2-cur",
+        "name": "Sprint atual 2",
+        "pointsDone": null,
+        "pointsPlanned": null,
+        "progressPct": 100
+      },
+      "health": {
+        "level": "attention",
+        "reasons": [
+          "taxa de falha de 50%"
+        ]
+      },
+      "lastPredictabilityPct": null,
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "memberCount": 3,
+      "name": "Bootes",
+      "prCycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "predictabilityPct": null,
+      "projectId": "proj-2",
+      "stalePrs": 0,
+      "team": "Time proj-2",
+      "throughput": 4,
+      "throughputTrend": [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        1
+      ]
+    }
+  ],
+  "previous": {
+    "activeAiUsers": 3,
+    "aiCostPerHour": 13.803542,
+    "aiCostPerPoint": 44.861513,
+    "aiCostUsd": 179.44605034,
+    "aiTokens": 11832134,
+    "cfrPct": 25,
+    "commits": 0,
+    "complexityDelivered": 4,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "itemsDone": 4,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "people": null,
+    "projects": null,
+    "prsMerged": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "sprintHistory": {
+    "projects": [
+      {
+        "name": "Bootes",
+        "projectId": "proj-2",
+        "sprints": [
+          {
+            "aiCostPerHour": 2.862865,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 17.1771882,
+            "aiTokens": 339918,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": 6,
+            "endDate": "2026-07-29",
+            "hoursPerPoint": null,
+            "itemsDone": 1,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.6",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p6",
+            "startDate": "2026-07-16"
+          },
+          {
+            "aiCostPerHour": 10.576826,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 21.15365192,
+            "aiTokens": 228496,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": 2,
+            "endDate": "2026-08-12",
+            "hoursPerPoint": null,
+            "itemsDone": 1,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.5",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p5",
+            "startDate": "2026-07-30"
+          },
+          {
+            "aiCostPerHour": null,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 45.03659258,
+            "aiTokens": 534024,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": null,
+            "endDate": "2026-08-26",
+            "hoursPerPoint": null,
+            "itemsDone": 0,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.4",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p4",
+            "startDate": "2026-08-13"
+          },
+          {
+            "aiCostPerHour": null,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 9.07361206,
+            "aiTokens": 160737,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": null,
+            "endDate": "2026-09-09",
+            "hoursPerPoint": null,
+            "itemsDone": 0,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.3",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p3",
+            "startDate": "2026-08-27"
+          },
+          {
+            "aiCostPerHour": null,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 21.51605717,
+            "aiTokens": 396069,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": null,
+            "endDate": "2026-09-23",
+            "hoursPerPoint": null,
+            "itemsDone": 0,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.2",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p2",
+            "startDate": "2026-09-10"
+          },
+          {
+            "aiCostPerHour": null,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 25.81013351,
+            "aiTokens": 479795,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": false,
+            "effortLogged": null,
+            "endDate": "2026-10-07",
+            "hoursPerPoint": null,
+            "itemsDone": 0,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint passada 2.1",
+            "predictabilityPct": null,
+            "sprintId": "s-2-p1",
+            "startDate": "2026-09-24"
+          },
+          {
+            "aiCostPerHour": 5.074464,
+            "aiCostPerPoint": null,
+            "aiCostUsd": 20.29785561,
+            "aiTokens": 435348,
+            "complexityDelivered": null,
+            "complexityPlanned": null,
+            "current": true,
+            "effortLogged": 4,
+            "endDate": "2026-10-21",
+            "hoursPerPoint": null,
+            "itemsDone": 1,
+            "leadTimeHours": {
+              "n": 0,
+              "p50": null,
+              "p90": null
+            },
+            "name": "Sprint atual 2",
+            "predictabilityPct": null,
+            "sprintId": "s-2-cur",
+            "startDate": "2026-10-08"
+          }
+        ]
+      }
+    ]
+  }
+}
