@@ -2,6 +2,7 @@ package andromeda.sei.ms.feature.agent.application.usecase;
 
 import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.DeviceOutput;
 import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.HeartbeatInput;
+import andromeda.sei.ms.feature.agent.application.dto.AgentDtos.HeartbeatInput.ConflictUpdate;
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
 import andromeda.sei.ms.feature.agent.domain.AgentPrincipal;
 import andromeda.sei.ms.feature.agent.domain.exception.AgentDeviceNotFoundException;
@@ -10,6 +11,10 @@ import andromeda.sei.ms.feature.agent.domain.exception.AgentTokenInvalidExceptio
 import andromeda.sei.ms.feature.organization.domain.OrganizationRepository;
 import andromeda.sei.ms.shared.application.security.EffectivePermissionService;
 import andromeda.sei.ms.shared.domain.security.UserPermissionSnapshot;
+import andromeda.sei.ms.feature.workitem.domain.Sprint;
+import andromeda.sei.ms.feature.workitem.domain.SprintRepository;
+import andromeda.sei.ms.feature.workitem.domain.WorkItem;
+import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +40,8 @@ class AgentDeviceLifecycleTest {
     private RefreshAgentTokenUseCase refresh;
     private AuthenticateAgentTokenUseCase authenticate;
     private RecordHeartbeatUseCase heartbeat;
+    private WorkItemRepository workItems;
+    private SprintRepository sprints;
     private ListOwnDevicesUseCase list;
     private RevokeOwnDeviceUseCase revoke;
     private RequestDeviceSyncUseCase requestSync;
@@ -45,6 +52,8 @@ class AgentDeviceLifecycleTest {
     @BeforeEach
     void setUp() {
         store = new FakeAgentStore();
+        workItems = mock(WorkItemRepository.class);
+        sprints = mock(SprintRepository.class);
         clock = new MutableClock(Instant.parse("2026-10-29T12:00:00Z"));
         policy = new AgentVersionPolicy("0.1.0", "0.2.0");
         AgentTokenIssuer issuer = new AgentTokenIssuer(Duration.ofHours(1), Duration.ofDays(90),
@@ -54,7 +63,7 @@ class AgentDeviceLifecycleTest {
         when(perms.snapshot(ORG, USER)).thenReturn(Optional.of(mock(UserPermissionSnapshot.class)));
         refresh = new RefreshAgentTokenUseCase(store, orgs, issuer, clock);
         authenticate = new AuthenticateAgentTokenUseCase(store, perms, policy, clock);
-        heartbeat = new RecordHeartbeatUseCase(store, policy, clock);
+        heartbeat = new RecordHeartbeatUseCase(store, policy, workItems, sprints, clock);
         list = new ListOwnDevicesUseCase(store, policy, Duration.ofDays(3), clock);
         revoke = new RevokeOwnDeviceUseCase(store, clock);
         requestSync = new RequestDeviceSyncUseCase(store, clock);
@@ -335,5 +344,125 @@ class AgentDeviceLifecycleTest {
         assertThat(d.syncServedAt()).isEqualTo(Instant.parse("2026-10-29T10:00:00Z"));
         revoke.execute(ORG, USER, device.getId());
         assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isFalse();
+    }
+
+    // ---- end of the active task (atribuicao-a-prova-de-esquecimento, design 2.3 / 2.4) ----
+
+    private static final String ITEM = "wi-1";
+
+    private void markTask(LocalDate day) {
+        device.setActiveTask(new AgentDevice.ActiveTask(ITEM, "AB#4790", "Custo", clock.instant(),
+                "github.com/o/r", day, "feature/4790"));
+    }
+
+    private WorkItem openItem(WorkItem.ResolvedStatus status, String sprintId) {
+        WorkItem item = mock(WorkItem.class);
+        when(item.getResolvedStatus()).thenReturn(status);
+        when(item.getProjectId()).thenReturn("proj-1");
+        when(item.getSprintId()).thenReturn(sprintId);
+        when(workItems.findByIdAndOrganizationIdAndActiveTrue(ITEM, ORG)).thenReturn(Optional.of(item));
+        return item;
+    }
+
+    private void currentSprint(String id) {
+        Sprint sprint = mock(Sprint.class);
+        when(sprint.getId()).thenReturn(id);
+        when(sprints.findCurrentSprintByOrganizationIdAndProjectId(ORG, "proj-1")).thenReturn(Optional.of(sprint));
+    }
+
+    @Test
+    void should_keepTheActiveTask_whenDayItemAndSprintAreFine() {
+        markTask(LocalDate.parse("2026-10-29"));
+        openItem(WorkItem.ResolvedStatus.IN_PROGRESS, "sp-1");
+        currentSprint("sp-1");
+
+        var out = heartbeat.execute(principal(), beat(null));
+
+        assertThat(out.activeTask().ref()).isEqualTo("AB#4790");
+        assertThat(out.activeTask().branch()).isEqualTo("feature/4790");
+        assertThat(out.activeTaskEnded()).isNull();
+        assertThat(device.getActiveTask()).isNotNull();
+    }
+
+    @Test
+    void should_endTheTaskWithDayEnded_whenTheLocalDayTurned() {
+        markTask(LocalDate.parse("2026-10-28"));
+        device.setTaskConflict(new AgentDevice.TaskConflict("AB#4790", "b", "AB#1", "r", clock.instant()));
+
+        var out = heartbeat.execute(principal(), beat(null));
+
+        assertThat(out.activeTask()).isNull();
+        assertThat(out.activeTaskEnded().reason()).isEqualTo("DAY_ENDED");
+        assertThat(out.activeTaskEnded().ref()).isEqualTo("AB#4790");
+        assertThat(out.activeTaskEnded().endedAt()).isEqualTo(clock.instant());
+        assertThat(device.getActiveTask()).isNull();
+        assertThat(device.getTaskConflict()).isNull();
+        assertThat(device.getLastEndedTask().reason()).isEqualTo("DAY_ENDED");
+    }
+
+    @Test
+    void should_endTheTaskWithItemClosed_whenTheItemIsDoneOrGone() {
+        markTask(LocalDate.parse("2026-10-29"));
+        openItem(WorkItem.ResolvedStatus.DONE, "sp-1");
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTaskEnded().reason()).isEqualTo("ITEM_CLOSED");
+
+        markTask(LocalDate.parse("2026-10-29"));
+        when(workItems.findByIdAndOrganizationIdAndActiveTrue(ITEM, ORG)).thenReturn(Optional.empty());
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTaskEnded().reason()).isEqualTo("ITEM_CLOSED");
+    }
+
+    @Test
+    void should_endTheTaskWithLeftSprint_whenTheItemIsInAnotherOrNoSprint() {
+        markTask(LocalDate.parse("2026-10-29"));
+        openItem(WorkItem.ResolvedStatus.IN_PROGRESS, "sp-old");
+        currentSprint("sp-1");
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTaskEnded().reason()).isEqualTo("LEFT_SPRINT");
+
+        markTask(LocalDate.parse("2026-10-29"));
+        openItem(WorkItem.ResolvedStatus.IN_PROGRESS, null);
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTaskEnded().reason()).isEqualTo("LEFT_SPRINT");
+    }
+
+    @Test
+    void should_keepTheTask_whenTheProjectHasNoCurrentSprint() {
+        markTask(LocalDate.parse("2026-10-29"));
+        openItem(WorkItem.ResolvedStatus.IN_PROGRESS, "sp-old");
+        when(sprints.findCurrentSprintByOrganizationIdAndProjectId(ORG, "proj-1")).thenReturn(Optional.empty());
+
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTask()).isNotNull();
+    }
+
+    @Test
+    void should_notReadTheWorkItem_whenThereIsNoActiveTask() {
+        heartbeat.execute(principal(), beat(null));
+        org.mockito.Mockito.verifyNoInteractions(workItems, sprints);
+    }
+
+    @Test
+    void should_echoTheEndedTaskOnlyForTwentyFourHours() {
+        device.setLastEndedTask(new AgentDevice.EndedTask(ITEM, "AB#4790", "Custo", "r", "b", "BRANCH_CHANGED",
+                clock.instant().minus(Duration.ofHours(23)), "feature/x", null));
+        var recent = heartbeat.execute(principal(), beat(null));
+        assertThat(recent.activeTaskEnded().reason()).isEqualTo("BRANCH_CHANGED");
+        assertThat(recent.activeTaskEnded().newBranch()).isEqualTo("feature/x");
+
+        device.setLastEndedTask(new AgentDevice.EndedTask(ITEM, "AB#4790", "Custo", "r", "b", "BRANCH_CHANGED",
+                clock.instant().minus(Duration.ofHours(24)), null, null));
+        assertThat(heartbeat.execute(principal(), beat(null)).activeTaskEnded()).isNull();
+    }
+
+    @Test
+    void should_keepSetOrClearTheTaskConflict_byWhatTheHeartbeatSends() {
+        var conflict = new AgentDevice.TaskConflict("AB#4790", "feature/4812", "AB#4812", "github.com/o/r",
+                clock.instant());
+
+        heartbeat.execute(principal(), new HeartbeatInput(null, null, null, null, ConflictUpdate.set(conflict)));
+        assertThat(device.getTaskConflict()).isEqualTo(conflict);
+
+        heartbeat.execute(principal(), beat(null)); // absent: keeps
+        assertThat(device.getTaskConflict()).isEqualTo(conflict);
+
+        heartbeat.execute(principal(), new HeartbeatInput(null, null, null, null, ConflictUpdate.clear()));
+        assertThat(device.getTaskConflict()).isNull();
     }
 }

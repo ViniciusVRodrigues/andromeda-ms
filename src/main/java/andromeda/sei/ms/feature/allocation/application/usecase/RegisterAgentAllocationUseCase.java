@@ -36,7 +36,15 @@ public class RegisterAgentAllocationUseCase {
     public record Registration(String organizationId, String userId, LocalDate day, String workItemId,
                                String workItemTitle, String projectId, List<String> usageIds,
                                AiUsageAllocation.ResolvedBy resolvedBy,
-                               List<String> repositories, List<String> branches) {
+                               List<String> repositories, List<String> branches, String overriddenTaskRef) {
+
+        public Registration(String organizationId, String userId, LocalDate day, String workItemId,
+                            String workItemTitle, String projectId, List<String> usageIds,
+                            AiUsageAllocation.ResolvedBy resolvedBy,
+                            List<String> repositories, List<String> branches) {
+            this(organizationId, userId, day, workItemId, workItemTitle, projectId, usageIds, resolvedBy,
+                    repositories, branches, null);
+        }
     }
 
     /** Returns the id of the pending AGENT allocation that now holds the rows. */
@@ -64,7 +72,8 @@ public class RegisterAgentAllocationUseCase {
             AiUsageAllocation created = new AiUsageAllocation(null, r.organizationId(), r.userId(), r.day(),
                     new ArrayList<>(r.usageIds()), List.of(new AllocationSplit(r.workItemId(), r.workItemTitle(), WHOLE)),
                     AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.AGENT, true, null, now, now);
-            created.setAgent(new AiUsageAllocation.AgentInfo(r.resolvedBy(), distinct(r.repositories()), distinct(r.branches())));
+            created.setAgent(new AiUsageAllocation.AgentInfo(r.resolvedBy(), distinct(r.repositories()), distinct(r.branches()),
+                    r.overriddenTaskRef()));
             created.setReviewReasons(reviewReasons.reasonsFor(r.organizationId(), r.userId(), r.day(), r.workItemId()));
             saved = allocationRepository.save(created);
         }
@@ -74,14 +83,15 @@ public class RegisterAgentAllocationUseCase {
 
     private static AiUsageAllocation.AgentInfo merge(AiUsageAllocation.AgentInfo old, Registration r) {
         if (old == null) {
-            return new AiUsageAllocation.AgentInfo(r.resolvedBy(), distinct(r.repositories()), distinct(r.branches()));
+            return new AiUsageAllocation.AgentInfo(r.resolvedBy(), distinct(r.repositories()), distinct(r.branches()),
+                    r.overriddenTaskRef());
         }
         List<String> repos = new ArrayList<>(old.repositories() == null ? List.of() : old.repositories());
         repos.addAll(r.repositories());
         List<String> branches = new ArrayList<>(old.branches() == null ? List.of() : old.branches());
         branches.addAll(r.branches());
         return new AiUsageAllocation.AgentInfo(stronger(old.resolvedBy(), r.resolvedBy()), distinct(repos), distinct(branches),
-                old.overriddenTaskRef());
+                old.overriddenTaskRef() != null ? old.overriddenTaskRef() : r.overriddenTaskRef());
     }
 
     /** MARK (the person said it) beats BRANCH beats SINGLE_ACTIVE. */

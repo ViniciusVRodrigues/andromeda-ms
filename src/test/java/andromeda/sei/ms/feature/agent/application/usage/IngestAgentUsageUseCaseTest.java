@@ -411,6 +411,21 @@ class IngestAgentUsageUseCaseTest {
     }
 
     @Test
+    void should_passTheOverriddenTaskRefToTheAllocation_when_theBranchBeatTheMark() {
+        when(resolveTask.execute(any())).thenReturn(new AgentAttribution(
+                new ResolvedTask("wi-1", "proj-1", "Fix login", "AB#4812", AttributionSource.BRANCH, "AB#4790"),
+                "proj-1", AttributionSource.BRANCH));
+        when(registerAllocation.execute(any())).thenReturn("alloc-1");
+
+        useCase.execute(principal, batch(withBranch(row("k1", 1, 2), "feature/AB#4812-x")));
+
+        ArgumentCaptor<RegisterAgentAllocationUseCase.Registration> captor =
+                ArgumentCaptor.forClass(RegisterAgentAllocationUseCase.Registration.class);
+        verify(registerAllocation).execute(captor.capture());
+        assertThat(captor.getValue().overriddenTaskRef()).isEqualTo("AB#4790");
+    }
+
+    @Test
     void should_queueAndSuggest_when_aLiveNewRowHasNoTask() {
         UsageUploadResult result = useCase.execute(principal, batch(row("k1", 1, 2)));
 

@@ -101,6 +101,19 @@ class FakeAgentStore implements AgentDeviceRepository, AgentDeviceAuthorizationR
     }
 
     @Override
+    public void endActiveTask(String deviceId, String organizationId, AgentDevice.EndedTask ended) {
+        AgentDevice d = devices.get(deviceId);
+        d.setLastEndedTask(ended);
+        d.setActiveTask(null);
+        d.setTaskConflict(null);
+    }
+
+    @Override
+    public void setTaskConflict(String deviceId, String organizationId, AgentDevice.TaskConflict conflict) {
+        devices.get(deviceId).setTaskConflict(conflict);
+    }
+
+    @Override
     public boolean requestSync(String deviceId, String organizationId, Instant at, String by) {
         AgentDevice d = devices.get(deviceId);
         if (d == null || d.isRevoked() || !Objects.equals(d.getOrganizationId(), organizationId)

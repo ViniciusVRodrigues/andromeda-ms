@@ -156,6 +156,49 @@ class AgentRepositoriesMongoTest {
     }
 
     @Test
+    void should_roundTripTheBranchEndTheTaskAndKeepTheConflict() {
+        AgentDevice saved = devices.save(device("a1", "r1"));
+        var day = java.time.LocalDate.parse("2099-01-01");
+        devices.setActiveTask(saved.getId(), "org-1", new AgentDevice.ActiveTask("wi-1", "AB#1", "T", NOW,
+                "github.com/o/r", day, "feature/x"));
+        devices.setTaskConflict(saved.getId(), "org-1",
+                new AgentDevice.TaskConflict("AB#1", "feature/y", "AB#2", "github.com/o/r", NOW));
+        AgentDevice loaded = devices.findByIdAndOrganizationId(saved.getId(), "org-1").orElseThrow();
+        assertThat(loaded.getActiveTask().branch()).isEqualTo("feature/x");
+        assertThat(loaded.getActiveTask().day()).isEqualTo(day);
+        assertThat(loaded.getTaskConflict().branchRef()).isEqualTo("AB#2");
+
+        devices.endActiveTask(saved.getId(), "org-1", new AgentDevice.EndedTask("wi-1", "AB#1", "T", "github.com/o/r",
+                "feature/x", "BRANCH_CHANGED", NOW.plusSeconds(5), "feature/y", null));
+        AgentDevice ended = devices.findByIdAndOrganizationId(saved.getId(), "org-1").orElseThrow();
+        assertThat(ended.getActiveTask()).isNull();
+        assertThat(ended.getTaskConflict()).isNull();
+        assertThat(ended.getLastEndedTask().reason()).isEqualTo("BRANCH_CHANGED");
+        assertThat(ended.getLastEndedTask().newBranch()).isEqualTo("feature/y");
+        assertThat(ended.getVersion()).isEqualTo(saved.getVersion());
+
+        devices.setTaskConflict(saved.getId(), "org-1", null);
+        assertThat(devices.findByIdAndOrganizationId(saved.getId(), "org-1").orElseThrow().getTaskConflict()).isNull();
+    }
+
+    @Test
+    void should_readAnOldDeviceDocumentWithoutTheNewFields() {
+        AgentDevice saved = devices.save(device("a1", "r1"));
+        mongoTemplate.getCollection("agent_devices").updateOne(
+                new org.bson.Document("_id", new org.bson.types.ObjectId(saved.getId())),
+                new org.bson.Document("$set", new org.bson.Document("activeTask", new org.bson.Document()
+                        .append("workItemId", "wi-1").append("taskRef", "AB#1").append("title", "T")
+                        .append("repository", "github.com/o/r"))));
+
+        AgentDevice loaded = devices.findByIdAndOrganizationId(saved.getId(), "org-1").orElseThrow();
+
+        assertThat(loaded.getActiveTask().taskRef()).isEqualTo("AB#1");
+        assertThat(loaded.getActiveTask().branch()).isNull();
+        assertThat(loaded.getLastEndedTask()).isNull();
+        assertThat(loaded.getTaskConflict()).isNull();
+    }
+
+    @Test
     void should_requestSyncOnlyWhenNonePendingAndOnlyInTheOwnOrganization() {
         AgentDevice d = devices.save(device("a1", "r1"));
         Instant t1 = NOW.plusSeconds(10);

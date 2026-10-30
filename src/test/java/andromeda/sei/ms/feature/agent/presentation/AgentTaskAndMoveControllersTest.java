@@ -21,6 +21,8 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
+import andromeda.sei.ms.feature.agent.application.dto.AgentDtos;
+import andromeda.sei.ms.feature.agent.application.usecase.RecordHeartbeatUseCase;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -88,7 +90,19 @@ class AgentTaskAndMoveControllersTest {
                 .andExpect(jsonPath("$.workItemId").value("wi-1"))
                 .andExpect(jsonPath("$.retroactiveRows").value(4));
         verify(setActive).execute(eq(PRINCIPAL), eq(new SetActiveTaskUseCase.Input("AB#123", null,
-                LocalDate.of(2026, 10, 29), "github.com/a/b")));
+                LocalDate.of(2026, 10, 29), "github.com/a/b", null)));
+    }
+
+    @Test
+    void should_passTheBranchOfTheActiveTask() throws Exception {
+        when(setActive.execute(eq(PRINCIPAL), any())).thenReturn(
+                new SetActiveTaskUseCase.Output("wi-1", "AB#123", "Task 123", 0));
+
+        agentMvc().perform(put("/agent/v1/active-task").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"taskRef\":\"AB#123\",\"day\":\"2026-10-29\",\"branch\":\"feature/x\"}"))
+                .andExpect(status().isOk());
+        verify(setActive).execute(eq(PRINCIPAL), eq(new SetActiveTaskUseCase.Input("AB#123", null,
+                LocalDate.of(2026, 10, 29), null, "feature/x")));
     }
 
     @Test
@@ -124,7 +138,56 @@ class AgentTaskAndMoveControllersTest {
     void should_answer204_when_theActiveTaskIsCleared() throws Exception {
         agentMvc().perform(delete("/agent/v1/active-task")).andExpect(status().isNoContent());
 
-        verify(clear).execute(PRINCIPAL);
+        verify(clear).execute(PRINCIPAL, new ClearActiveTaskUseCase.Input(null, null, null));
+    }
+
+    @Test
+    void should_answer204AndPassTheReason_when_theDeleteHasABody() throws Exception {
+        agentMvc().perform(delete("/agent/v1/active-task").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"BRANCH_CHANGED\",\"newBranch\":\"feature/y\"}"))
+                .andExpect(status().isNoContent());
+
+        verify(clear).execute(PRINCIPAL, new ClearActiveTaskUseCase.Input("BRANCH_CHANGED", "feature/y", null));
+    }
+
+    @Test
+    void should_answer400ValidationError_when_theReasonIsInvalid() throws Exception {
+        agentMvc().perform(delete("/agent/v1/active-task").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"WHATEVER\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        agentMvc().perform(delete("/agent/v1/active-task").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"ITEM_CLOSED\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    // ---- POST /agent/v1/heartbeat -------------------------------------------------------------
+
+    @Test
+    void should_distinguishAbsentNullAndObjectTaskConflict_inTheHeartbeat() throws Exception {
+        RecordHeartbeatUseCase heartbeat = mock(RecordHeartbeatUseCase.class);
+        when(heartbeat.execute(eq(PRINCIPAL), any())).thenReturn(null);
+        SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken(PRINCIPAL, "n"));
+        MockMvc mvc = build(new AgentHeartbeatController(heartbeat));
+        var captor = org.mockito.ArgumentCaptor.forClass(AgentDtos.HeartbeatInput.class);
+
+        mvc.perform(post("/agent/v1/heartbeat").contentType(MediaType.APPLICATION_JSON).content("{\"pendingRows\":1}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/agent/v1/heartbeat").contentType(MediaType.APPLICATION_JSON).content("{\"taskConflict\":null}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/agent/v1/heartbeat").contentType(MediaType.APPLICATION_JSON).content(
+                        "{\"taskConflict\":{\"taskRef\":\"AB#4790\",\"branch\":\"feature/4812\","
+                                + "\"branchRef\":\"AB#4812\",\"repo\":\"github.com/o/r\",\"at\":\"2026-10-30T14:05:00Z\"}}"))
+                .andExpect(status().isOk());
+
+        verify(heartbeat, org.mockito.Mockito.times(3)).execute(eq(PRINCIPAL), captor.capture());
+        var calls = captor.getAllValues();
+        org.assertj.core.api.Assertions.assertThat(calls.get(0).taskConflict()).isNull();
+        org.assertj.core.api.Assertions.assertThat(calls.get(1).taskConflict()).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(calls.get(1).taskConflict().value()).isNull();
+        org.assertj.core.api.Assertions.assertThat(calls.get(2).taskConflict().value().branchRef()).isEqualTo("AB#4812");
+        org.assertj.core.api.Assertions.assertThat(calls.get(2).taskConflict().value().at())
+                .isEqualTo(Instant.parse("2026-10-30T14:05:00Z"));
     }
 
     // ---- GET /api/v1/agent/today -----------------------------------------------------------------

@@ -58,7 +58,8 @@ public final class AgentWire {
             @Size(max = 64) String timezone,
             Integer pendingRows,
             String oldestPendingDay,
-            String syncServed) {
+            String syncServed,
+            tools.jackson.databind.JsonNode taskConflict) {
     }
 
     /** Body of {@code PUT /agent/v1/active-task}; {@code since} defaults to now. */
@@ -66,7 +67,17 @@ public final class AgentWire {
             @NotBlank @Size(max = 64) String taskRef,
             java.time.Instant since,
             @NotNull java.time.LocalDate day,
-            @Size(max = 300) String repo) {
+            @Size(max = 300) String repo,
+            @Size(max = 300) String branch) {
+    }
+
+    /** Optional body of {@code DELETE /agent/v1/active-task}; an absent reason means CLEARED. */
+    public record EndActiveTaskRequest(
+            @jakarta.validation.constraints.Pattern(
+                    regexp = "BRANCH_CHANGED|REPO_CHANGED|DAY_ENDED|CLEARED",
+                    message = "reason deve ser BRANCH_CHANGED, REPO_CHANGED, DAY_ENDED ou CLEARED") String reason,
+            @Size(max = 300) String newBranch,
+            @Size(max = 300) String newRepo) {
     }
 
     public record ActiveTaskResponse(String workItemId, String ref, String title, int retroactiveRows) {

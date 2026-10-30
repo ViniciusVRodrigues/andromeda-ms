@@ -104,6 +104,30 @@ class SetActiveTaskUseCaseTest {
     }
 
     @Test
+    void should_storeTheBranchAndRetroactOnlyRowsOfThatBranch_when_theBranchIsGiven() {
+        Instant live = Instant.parse("2026-10-29T14:00:00Z");
+        AIUsage other = row("r2", "github.com/acme/a", live);
+        other.setBranch("feature/outra");
+        AIUsage noBranch = row("r3", "github.com/acme/a", live);
+        noBranch.setBranch(null);
+        when(queries.findUnallocatedAgentRows(ORG, USER, TODAY)).thenReturn(List.of(
+                row("r1", "github.com/acme/a", live), other, noBranch));
+
+        SetActiveTaskUseCase.Output out = useCase.execute(principal, new SetActiveTaskUseCase.Input(
+                "AB#123", null, TODAY, "github.com/acme/a", " feature/x "));
+
+        assertThat(out.retroactiveRows()).isEqualTo(2);
+        ArgumentCaptor<AgentDevice.ActiveTask> task = ArgumentCaptor.forClass(AgentDevice.ActiveTask.class);
+        verify(devices).setActiveTask(eq(DEVICE), eq(ORG), task.capture());
+        assertThat(task.getValue().branch()).isEqualTo("feature/x");
+        assertThat(task.getValue().day()).isEqualTo(TODAY);
+        ArgumentCaptor<RegisterAgentAllocationUseCase.Registration> reg =
+                ArgumentCaptor.forClass(RegisterAgentAllocationUseCase.Registration.class);
+        verify(register).execute(reg.capture());
+        assertThat(reg.getValue().usageIds()).containsExactly("r1", "r3");
+    }
+
+    @Test
     void should_allocateEveryRepo_when_noRepoIsGiven() {
         Instant live = Instant.parse("2026-10-29T14:00:00Z");
         when(queries.findUnallocatedAgentRows(ORG, USER, TODAY)).thenReturn(List.of(

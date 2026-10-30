@@ -36,6 +36,7 @@ class ResolveAgentTaskUseCaseTest {
     private static final String USER = "user-1";
     private static final String P1 = "proj-1";
     private static final Instant T0 = Instant.parse("2026-10-29T10:00:00Z");
+    private static final java.time.LocalDate DAY = java.time.LocalDate.parse("2026-10-29");
 
     @Mock private WorkItemRepository workItems;
     @Mock private SprintRepository sprints;
@@ -70,7 +71,7 @@ class ResolveAgentTaskUseCaseTest {
     }
 
     private AgentTaskQuery query(String taskRef, String branch, Instant bucket, ActiveTaskHint hint) {
-        return new AgentTaskQuery(ORG, USER, taskRef, branch, "github.com/o/r", bucket, hint);
+        return new AgentTaskQuery(ORG, USER, taskRef, branch, "github.com/o/r", bucket, hint, DAY);
     }
 
     private void exists(WorkItem... items) {
@@ -83,15 +84,72 @@ class ResolveAgentTaskUseCaseTest {
     }
 
     @Test
-    void should_preferTaskRefOverBranch() {
+    void should_preferBranchOverTaskRef_andReportTheOverriddenRef() {
         exists(azure("123"), azure("999"));
 
         var r = useCase.execute(query("AB#123", "feature/AB#999-x", T0, null));
 
-        assertThat(r.source()).isEqualTo(AttributionSource.TASK_REF);
-        assertThat(r.resolvedTask().workItemId()).isEqualTo("wi-123");
-        assertThat(r.resolvedTask().ref()).isEqualTo("AB#123");
-        assertThat(r.resolvedTask().projectId()).isEqualTo(P1);
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+        assertThat(r.resolvedTask().workItemId()).isEqualTo("wi-999");
+        assertThat(r.resolvedTask().overriddenTaskRef()).isEqualTo("AB#123");
+    }
+
+    @Test
+    void should_notReportOverridden_when_branchAndTaskRefPointToTheSameItem() {
+        exists(azure("123"));
+
+        var r = useCase.execute(query("AB#123", "feature/AB#123-x", T0, null));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+        assertThat(r.resolvedTask().overriddenTaskRef()).isNull();
+    }
+
+    @Test
+    void should_preferBranchOverActiveTask_andReportTheOverriddenRef() {
+        exists(azure("4790"), azure("4812"));
+        var hint = new ActiveTaskHint("AB#4790", T0, "github.com/o/r", null, DAY);
+
+        var r = useCase.execute(query(null, "feature/AB#4812-custo", T0, hint));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+        assertThat(r.resolvedTask().workItemId()).isEqualTo("wi-4812");
+        assertThat(r.resolvedTask().overriddenTaskRef()).isEqualTo("AB#4790");
+    }
+
+    @Test
+    void should_notReportAnExpiredActiveTaskAsOverridden() {
+        exists(azure("4790"), azure("4812"));
+        var hint = new ActiveTaskHint("AB#4790", T0, "github.com/o/r", null, DAY.minusDays(1));
+
+        var r = useCase.execute(query(null, "feature/AB#4812-custo", T0, hint));
+
+        assertThat(r.source()).isEqualTo(AttributionSource.BRANCH);
+        assertThat(r.resolvedTask().overriddenTaskRef()).isNull();
+    }
+
+    @Test
+    void should_keepTaskRefWhenTheBranchDoesNotResolve() {
+        exists(azure("123"));
+        assertThat(useCase.execute(query("AB#123", "main", T0, null)).source()).isEqualTo(AttributionSource.TASK_REF);
+    }
+
+    @Test
+    void should_applyTheActiveTask_onlyOnTheDayAndBranchItWasMarked() {
+        exists(azure("123"));
+        var hint = new ActiveTaskHint("AB#123", T0, "github.com/o/r", "feature/x", DAY);
+
+        assertThat(useCase.execute(queryOn("feature/x", DAY, hint)).source()).isEqualTo(AttributionSource.ACTIVE_TASK);
+        assertThat(useCase.execute(queryOn("feature/outra", DAY, hint)).source()).isEqualTo(AttributionSource.NONE);
+        assertThat(useCase.execute(queryOn("feature/x", DAY.plusDays(1), hint)).source()).isEqualTo(AttributionSource.NONE);
+        // a row without a branch still matches a task marked with one
+        assertThat(useCase.execute(queryOn(null, DAY, hint)).source()).isEqualTo(AttributionSource.ACTIVE_TASK);
+        // a task marked without branch matches any branch
+        var noBranch = new ActiveTaskHint("AB#123", T0, "github.com/o/r", null, DAY);
+        assertThat(useCase.execute(queryOn("qualquer", DAY, noBranch)).source()).isEqualTo(AttributionSource.ACTIVE_TASK);
+    }
+
+    private AgentTaskQuery queryOn(String branch, java.time.LocalDate day, ActiveTaskHint hint) {
+        return new AgentTaskQuery(ORG, USER, null, branch, "github.com/o/r", T0, hint, day);
     }
 
     @Test

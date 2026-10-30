@@ -134,7 +134,29 @@ public class AgentDeviceRepositoryImpl implements AgentDeviceRepository {
             update.unset("activeTask");
         } else {
             update.set("activeTask", new AgentDeviceDocument.ActiveTaskDocument(task.workItemId(), task.taskRef(),
-                    task.title(), task.since(), task.repository(), task.day()));
+                    task.title(), task.since(), task.repository(), task.day(), task.branch()));
+        }
+        updateActive(deviceId, organizationId, update);
+    }
+
+    @Override
+    public void endActiveTask(String deviceId, String organizationId, AgentDevice.EndedTask e) {
+        Update update = new Update();
+        update.set("lastEndedTask", new AgentDeviceDocument.EndedTaskDocument(e.workItemId(), e.ref(), e.title(),
+                e.repo(), e.branch(), e.reason(), e.endedAt(), e.newBranch(), e.newRepo()));
+        update.unset("activeTask");
+        update.unset("taskConflict");
+        updateActive(deviceId, organizationId, update);
+    }
+
+    @Override
+    public void setTaskConflict(String deviceId, String organizationId, AgentDevice.TaskConflict c) {
+        Update update = new Update();
+        if (c == null) {
+            update.unset("taskConflict");
+        } else {
+            update.set("taskConflict", new AgentDeviceDocument.TaskConflictDocument(c.taskRef(), c.branch(),
+                    c.branchRef(), c.repo(), c.at()));
         }
         updateActive(deviceId, organizationId, update);
     }

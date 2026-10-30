@@ -45,4 +45,10 @@ public interface AgentDeviceRepository {
     void clearServedSync(String deviceId, String organizationId, Instant requestedAt, Instant servedAt);
 
     void setActiveTask(String deviceId, String organizationId, AgentDevice.ActiveTask task);
+
+    /** Ends the active task: records {@code ended}, clears the task and the task conflict (atomic). */
+    void endActiveTask(String deviceId, String organizationId, AgentDevice.EndedTask ended);
+
+    /** Stores the last conflict the agent saw; null clears it. */
+    void setTaskConflict(String deviceId, String organizationId, AgentDevice.TaskConflict conflict);
 }

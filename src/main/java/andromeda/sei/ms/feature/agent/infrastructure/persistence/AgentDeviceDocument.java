@@ -61,6 +61,8 @@ public class AgentDeviceDocument {
     private Instant lastUploadAt;
     private Integer pendingRows;
     private ActiveTaskDocument activeTask;
+    private EndedTaskDocument lastEndedTask;
+    private TaskConflictDocument taskConflict;
 
     private Instant syncRequestedAt;
     private String syncRequestedBy;
@@ -86,5 +88,32 @@ public class AgentDeviceDocument {
         private Instant since;
         private String repository;
         private LocalDate day;
+        private String branch;
+    }
+
+    @Data
+        @NoArgsConstructor
+    @AllArgsConstructor
+    public static class EndedTaskDocument {
+        private String workItemId;
+        private String ref;
+        private String title;
+        private String repo;
+        private String branch;
+        private String reason;
+        private Instant endedAt;
+        private String newBranch;
+        private String newRepo;
+    }
+
+    @Data
+        @NoArgsConstructor
+    @AllArgsConstructor
+    public static class TaskConflictDocument {
+        private String taskRef;
+        private String branch;
+        private String branchRef;
+        private String repo;
+        private Instant at;
     }
 }
