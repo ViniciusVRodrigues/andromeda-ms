@@ -2,6 +2,8 @@ package andromeda.sei.ms.feature.allocation.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverageDetail;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.ValidatedUserDay;
 import andromeda.sei.ms.shared.infrastructure.persistence.ParallelChunks;
@@ -221,6 +223,130 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
             days.add(new ValidatedUserDay(key.getString(USER_ID), RawDocuments.day(mongoTemplate, key.get(DAY))));
         }
         return days;
+    }
+
+    private static final String USAGE = "u";
+
+    @Override
+    public List<AllocationCoverage> summarizeValidatedCoverage(String organizationId,
+            java.util.Collection<String> workItemIds, LocalDate from, LocalDate to) {
+        if (workItemIds == null || workItemIds.isEmpty()) return List.of();
+        return firstChunkPerAllocation(ParallelChunks.read(workItemIds,
+                chunk -> List.of(coverageChunk(organizationId, chunk, from, to))), AllocationCoverage::id);
+    }
+
+    @Override
+    public List<AllocationCoverageDetail> summarizeValidatedCoverageByDayAndModel(String organizationId,
+            java.util.Collection<String> workItemIds, LocalDate from, LocalDate to) {
+        if (workItemIds == null || workItemIds.isEmpty()) return List.of();
+        return firstChunkPerAllocation(ParallelChunks.read(workItemIds,
+                chunk -> List.of(detailChunk(organizationId, chunk, from, to))),
+                AllocationCoverageDetail::allocationId);
+    }
+
+    /** An allocation splitting to work items of two chunks comes back from both: keep the first chunk's rows. */
+    private static <T> List<T> firstChunkPerAllocation(List<List<T>> chunks,
+                                                       java.util.function.Function<T, String> id) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        List<T> result = new ArrayList<>();
+        for (List<T> chunk : chunks) {
+            java.util.Set<String> before = new java.util.HashSet<>(seen);
+            for (T row : chunk) {
+                if (before.contains(id.apply(row))) continue;
+                result.add(row);
+                seen.add(id.apply(row));
+            }
+        }
+        return result;
+    }
+
+    /** $match, $unwind of the cited ids and the join with the active usage records of the organization. */
+    private List<Document> coverageJoin(String organizationId, List<String> workItemIds, LocalDate from, LocalDate to) {
+        Document match = new Document(ORGANIZATION_ID, organizationId)
+                .append(SPLIT_WORK_ITEM_ID, new Document("$in", workItemIds))
+                .append(STATUS, AiUsageAllocation.Status.VALIDATED.name())
+                .append(ACTIVE, true);
+        if (from != null || to != null) {
+            Document range = new Document();
+            if (from != null) range.append("$gte", RawDocuments.storedDay(mongoTemplate, from));
+            if (to != null) range.append("$lte", RawDocuments.storedDay(mongoTemplate, to));
+            match.append(DAY, range);
+        }
+        Document usageProjection = new Document("day", 1).append("model", 1).append("inputTokens", 1)
+                .append("outputTokens", 1).append("interactions", 1).append("costUsd", 1);
+        return List.of(
+                new Document("$match", match),
+                new Document("$project", new Document(USER_ID, 1).append(DAY, 1).append(AI_USAGE_IDS, 1)
+                        .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1)),
+                new Document("$unwind", new Document("path", "$" + AI_USAGE_IDS)
+                        .append("preserveNullAndEmptyArrays", true)),
+                new Document("$addFields", new Document("usageKey", new Document("$convert",
+                        new Document("input", "$" + AI_USAGE_IDS).append("to", "objectId")
+                                .append("onError", "$" + AI_USAGE_IDS).append("onNull", "$" + AI_USAGE_IDS)))),
+                new Document("$lookup", new Document("from", mongoTemplate.getCollectionName(AiUsageDocument.class))
+                        .append("localField", "usageKey").append("foreignField", "_id")
+                        .append("pipeline", List.of(
+                                new Document("$match", new Document(ORGANIZATION_ID, organizationId)
+                                        .append(ACTIVE, true)),
+                                new Document("$project", usageProjection)))
+                        .append("as", USAGE)),
+                new Document("$unwind", new Document("path", "$" + USAGE)
+                        .append("preserveNullAndEmptyArrays", true)));
+    }
+
+    private static Document sumOrZero(String field) {
+        return new Document("$sum", new Document("$ifNull", java.util.Arrays.asList("$" + field, 0)));
+    }
+
+    private List<AllocationCoverage> coverageChunk(String organizationId, List<String> workItemIds,
+                                                   LocalDate from, LocalDate to) {
+        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, workItemIds, from, to));
+        pipeline.add(new Document("$group", new Document("_id", "$_id")
+                .append(USER_ID, new Document("$first", "$" + USER_ID))
+                .append(DAY, new Document("$first", "$" + DAY))
+                .append("splits", new Document("$first", "$splits"))
+                .append("cost", sumOrZero(USAGE + ".costUsd"))
+                .append("tokens", new Document("$sum", new Document("$add", java.util.Arrays.asList(
+                        new Document("$ifNull", java.util.Arrays.asList("$" + USAGE + ".inputTokens", 0)),
+                        new Document("$ifNull", java.util.Arrays.asList("$" + USAGE + ".outputTokens", 0))))))));
+        List<AllocationCoverage> rows = new ArrayList<>();
+        for (Document row : collection().aggregate(pipeline)) {
+            rows.add(new AllocationCoverage(String.valueOf(row.get("_id")), row.getString(USER_ID),
+                    RawDocuments.day(mongoTemplate, row.get(DAY)), splitsOf(row.get("splits")),
+                    RawDocuments.decimal(row.get("cost")), RawDocuments.longValue(row.get("tokens"))));
+        }
+        return rows;
+    }
+
+    private List<AllocationCoverageDetail> detailChunk(String organizationId, List<String> workItemIds,
+                                                       LocalDate from, LocalDate to) {
+        List<Document> pipeline = new ArrayList<>(coverageJoin(organizationId, workItemIds, from, to));
+        pipeline.add(new Document("$match", new Document(USAGE, new Document("$exists", true))));
+        pipeline.add(new Document("$group", new Document("_id", new Document("allocation", "$_id")
+                .append("day", "$" + USAGE + ".day").append("model", "$" + USAGE + ".model"))
+                .append(USER_ID, new Document("$first", "$" + USER_ID))
+                .append("splits", new Document("$first", "$splits"))
+                .append("input", sumOrZero(USAGE + ".inputTokens"))
+                .append("output", sumOrZero(USAGE + ".outputTokens"))
+                .append("interactions", sumOrZero(USAGE + ".interactions"))
+                .append("cost", sumOrZero(USAGE + ".costUsd"))));
+        List<AllocationCoverageDetail> rows = new ArrayList<>();
+        for (Document row : collection().aggregate(pipeline)) {
+            Document key = row.get("_id", Document.class);
+            rows.add(new AllocationCoverageDetail(String.valueOf(key.get("allocation")), row.getString(USER_ID),
+                    splitsOf(row.get("splits")), RawDocuments.day(mongoTemplate, key.get("day")),
+                    key.getString("model"), RawDocuments.longValue(row.get("input")),
+                    RawDocuments.longValue(row.get("output")), RawDocuments.longValue(row.get("interactions")),
+                    RawDocuments.decimal(row.get("cost"))));
+        }
+        return rows;
+    }
+
+    private static List<AllocationSplit> splitsOf(Object splits) {
+        return RawDocuments.documents(splits).stream()
+                .map(split -> new AllocationSplit(split.getString("workItemId"), null,
+                        RawDocuments.decimal(split.get("percentage"))))
+                .toList();
     }
 
     private Document dayRange(LocalDate from, LocalDate to) {

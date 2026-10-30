@@ -78,4 +78,20 @@ public interface AiUsageAllocationRepository {
      */
     List<ValidatedUserDay> findValidatedUserDays(String organizationId, java.util.Collection<String> userIds,
                                                  LocalDate from, LocalDate to);
+
+    /**
+     * Active {@code VALIDATED} allocations splitting to any of the work items (day within {@code [from, to]};
+     * a null bound leaves that side open), each with the cost and tokens of the active usage records it cites
+     * (found by {@code aiUsageIds}, a repeated id counts twice), summed in the database. One row per
+     * allocation, zeros when no record is found. Empty without ids.
+     */
+    List<AllocationCoverage> summarizeValidatedCoverage(String organizationId,
+            java.util.Collection<String> workItemIds, LocalDate from, LocalDate to);
+
+    /**
+     * Same allocations and filter as {@link #summarizeValidatedCoverage}, but one row per (allocation, day,
+     * model) of the cited usage records, only for found records.
+     */
+    List<AllocationCoverageDetail> summarizeValidatedCoverageByDayAndModel(String organizationId,
+            java.util.Collection<String> workItemIds, LocalDate from, LocalDate to);
 }
