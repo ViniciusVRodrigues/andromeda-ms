@@ -61,6 +61,14 @@ public final class WiqlQueryBuilder {
                         .orElse("");
                 appendCondition(where, true, "[System.WorkItemType] IN (" + inClause + ")");
             }
+            List<String> excluded = filter.getExcludedWorkItemTypes();
+            if (excluded != null && !excluded.isEmpty()) {
+                String notInClause = excluded.stream()
+                        .map(t -> "'" + t.replace("'", "''") + "'")
+                        .reduce((a, b) -> a + ", " + b)
+                        .orElse("");
+                appendCondition(where, true, "[System.WorkItemType] NOT IN (" + notInClause + ")");
+            }
             if (filter.getAreaPath() != null && !filter.getAreaPath().isBlank()) {
                 appendCondition(where, true,
                         "[System.AreaPath] UNDER '" + filter.getAreaPath().replace("'", "''") + "'");

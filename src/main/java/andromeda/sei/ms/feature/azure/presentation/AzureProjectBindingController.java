@@ -231,6 +231,7 @@ public class AzureProjectBindingController {
                 request.syncFilter() == null ? null :
                         new UpdateWorkflowConfigInput.WiqlFilterInput(
                                 request.syncFilter().workItemTypes(),
+                                request.syncFilter().excludedWorkItemTypes(),
                                 request.syncFilter().areaPath(),
                                 request.syncFilter().iterationPath()),
                 request.hierarchyLevels() == null ? List.of() :
@@ -337,6 +338,7 @@ public class AzureProjectBindingController {
             WorkflowConfigResponse.WiqlFilterResponse syncFilter = wf.getSyncFilter() == null ? null :
                     new WorkflowConfigResponse.WiqlFilterResponse(
                             wf.getSyncFilter().getWorkItemTypes(),
+                            wf.getSyncFilter().getExcludedWorkItemTypes(),
                             wf.getSyncFilter().getAreaPath(),
                             wf.getSyncFilter().getIterationPath());
             List<WorkflowConfigResponse.HierarchyLevelResponse> hierarchyLevels = wf.getHierarchyLevels() == null

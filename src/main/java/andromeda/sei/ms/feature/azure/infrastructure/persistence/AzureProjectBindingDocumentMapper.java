@@ -113,6 +113,7 @@ public class AzureProjectBindingDocumentMapper {
         if (doc == null) return null;
         return new WiqlFilter(
                 doc.getWorkItemTypes() == null ? List.of() : doc.getWorkItemTypes(),
+                doc.getExcludedWorkItemTypes() == null ? List.of() : doc.getExcludedWorkItemTypes(),
                 doc.getAreaPath(),
                 doc.getIterationPath());
     }
@@ -121,6 +122,7 @@ public class AzureProjectBindingDocumentMapper {
         if (filter == null) return null;
         return new AzureProjectBindingDocument.WiqlFilterDocument(
                 filter.getWorkItemTypes() == null ? List.of() : filter.getWorkItemTypes(),
+                filter.getExcludedWorkItemTypes(),
                 filter.getAreaPath(),
                 filter.getIterationPath());
     }

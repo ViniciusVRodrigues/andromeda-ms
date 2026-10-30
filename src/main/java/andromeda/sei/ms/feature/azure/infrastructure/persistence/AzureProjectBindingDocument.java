@@ -104,6 +104,7 @@ public class AzureProjectBindingDocument {
     @AllArgsConstructor
     public static class WiqlFilterDocument {
         private List<String> workItemTypes;
+        private List<String> excludedWorkItemTypes;
         private String areaPath;
         private String iterationPath;
     }
