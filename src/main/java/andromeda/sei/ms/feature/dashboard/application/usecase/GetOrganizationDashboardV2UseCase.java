@@ -1,7 +1,9 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
-import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageDayModel;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageEditorTotal;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiModel;
@@ -186,7 +188,7 @@ public class GetOrganizationDashboardV2UseCase {
                 .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
         Double hours = ix.projects().values().stream().map(p -> p.items().effortLoggedIn(range))
                 .filter(Objects::nonNull).reduce(Double::sum).orElse(null);
-        AiFigures ai = current ? AiFigures.of(usageIn(ctx, range)) : AiFigures.ofTotals(s.ai().previous());
+        AiFigures ai = current ? AiFigures.of(s.ai().byDayModel(), s.ai().byUserDay()) : AiFigures.ofTotals(s.ai().previous());
         // the cost allocated (validated) to the visible projects, for every caller (coordinator's decision)
         BigDecimal cost = sum(ix.allocatedIn(current).values());
         return new OrgStats(current ? s.projects().size() : null, current ? s.people().size() : null,
@@ -203,10 +205,10 @@ public class GetOrganizationDashboardV2UseCase {
     /** The people's AI cost, tokens and active users of one period. */
     private record AiFigures(BigDecimal cost, long tokens, int activeUsers) {
 
-        static AiFigures of(List<AIUsage> usage) {
-            return new AiFigures(GetOrganizationDashboardV2UseCase.cost(usage),
-                    usage.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(),
-                    (int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct().count());
+        static AiFigures of(List<AiUsageDayModel> dayModels, List<AiUsageUserDay> userDays) {
+            return new AiFigures(costOfDayModels(dayModels),
+                    dayModels.stream().mapToLong(u -> u.inputTokens() + u.outputTokens()).sum(),
+                    (int) userDays.stream().map(AiUsageUserDay::userId).filter(Objects::nonNull).distinct().count());
         }
 
         static AiFigures ofTotals(List<andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals> totals) {
@@ -456,30 +458,36 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static Ai ai(Context ctx) {
         Snapshot s = ctx.snapshot();
-        List<AIUsage> usage = usageIn(ctx, ctx.period().current());
-        Map<String, List<AIUsage>> byModelRecords = byKey(usage, AIUsage::getModel);
-        List<String> models = byModelRecords.entrySet().stream()
-                .sorted(Map.Entry.<String, List<AIUsage>>comparingByValue(
-                        Comparator.comparing(GetOrganizationDashboardV2UseCase::cost)).reversed())
+        List<AiUsageDayModel> dayModels = s.ai().byDayModel();
+        Map<String, List<AiUsageDayModel>> byModelRows = dayModels.stream().filter(u -> u.model() != null)
+                .collect(Collectors.groupingBy(AiUsageDayModel::model, LinkedHashMap::new, Collectors.toList()));
+        // highest cost first; a tie is broken by the model name (ascending)
+        List<String> models = byModelRows.entrySet().stream()
+                .sorted(Map.Entry.<String, List<AiUsageDayModel>>comparingByValue(
+                        Comparator.comparing(GetOrganizationDashboardV2UseCase::costOfDayModels)).reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
                 .map(Map.Entry::getKey).toList();
         List<AiModel> byModel = models.stream().map(m -> {
-            List<AIUsage> of = byModelRecords.get(m);
-            return new AiModel(m, of.stream().mapToLong(u -> u.getInputTokens() + u.getOutputTokens()).sum(), cost(of),
-                    of.stream().mapToLong(AIUsage::getInteractions).sum());
+            List<AiUsageDayModel> of = byModelRows.get(m);
+            return new AiModel(m, of.stream().mapToLong(u -> u.inputTokens() + u.outputTokens()).sum(),
+                    costOfDayModels(of), of.stream().mapToLong(AiUsageDayModel::interactions).sum());
         }).toList();
-        List<EditorUse> byEditor = byKey(usage, AIUsage::getEditor).entrySet().stream()
-                .map(e -> new EditorUse(e.getKey(), e.getValue().stream().mapToLong(AIUsage::getInteractions).sum()))
-                .sorted(Comparator.comparingLong(EditorUse::interactions).reversed()).toList();
-        Tokens tokens = new Tokens(usage.stream().mapToLong(AIUsage::getInputTokens).sum(),
-                usage.stream().mapToLong(AIUsage::getOutputTokens).sum());
-        Adoption adoption = new Adoption((int) usage.stream().map(AIUsage::getUserId).filter(Objects::nonNull).distinct()
-                .count(), s.people().size(), connectedPeople(s));
-        return new Ai(models, costByBucket(ctx, usage, models), byModel, costByProject(ctx, usage), byEditor, tokens,
-                adoption, subscription(ctx, usage));
+        List<EditorUse> byEditor = s.ai().byEditor().stream().filter(e -> e.editor() != null)
+                .collect(Collectors.toMap(AiUsageEditorTotal::editor, AiUsageEditorTotal::interactions, Long::sum,
+                        LinkedHashMap::new))
+                .entrySet().stream().map(e -> new EditorUse(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparingLong(EditorUse::interactions).reversed()
+                        .thenComparing(EditorUse::editor)).toList();
+        Tokens tokens = new Tokens(dayModels.stream().mapToLong(AiUsageDayModel::inputTokens).sum(),
+                dayModels.stream().mapToLong(AiUsageDayModel::outputTokens).sum());
+        Adoption adoption = new Adoption((int) s.ai().byUserDay().stream().map(AiUsageUserDay::userId)
+                .filter(Objects::nonNull).distinct().count(), s.people().size(), connectedPeople(s));
+        return new Ai(models, costByBucket(ctx, dayModels, models), byModel, costByProject(ctx), byEditor, tokens,
+                adoption, subscription(ctx));
     }
 
-    /** Cost per model and bucket, in one pass over the records. */
-    private static List<CostBucket> costByBucket(Context ctx, List<AIUsage> usage, List<String> models) {
+    /** Cost per model and bucket, in one pass over the day-model sums. */
+    private static List<CostBucket> costByBucket(Context ctx, List<AiUsageDayModel> dayModels, List<String> models) {
         List<Bucket> buckets = ctx.buckets().buckets();
         List<Map<String, BigDecimal>> rows = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
@@ -487,10 +495,10 @@ public class GetOrganizationDashboardV2UseCase {
             models.forEach(m -> row.put(m, BigDecimal.ZERO));
             rows.add(row);
         }
-        for (AIUsage u : usage) {
-            if (u.getModel() == null || u.getCostUsd() == null) continue;
-            int index = bucketOfDay(buckets, u.getDay());
-            if (index >= 0) rows.get(index).merge(u.getModel(), u.getCostUsd(), BigDecimal::add);
+        for (AiUsageDayModel u : dayModels) {
+            if (u.model() == null || u.costUsd() == null) continue;
+            int index = bucketOfDay(buckets, u.day());
+            if (index >= 0) rows.get(index).merge(u.model(), u.costUsd(), BigDecimal::add);
         }
         List<CostBucket> result = new ArrayList<>();
         for (int i = 0; i < buckets.size(); i++) {
@@ -504,13 +512,13 @@ public class GetOrganizationDashboardV2UseCase {
      * ({@code allocationId} absent) — {@code null} for a partial caller, so that no subtraction
      * isolates what the people spent on projects the caller does not see.
      */
-    private static List<ProjectCost> costByProject(Context ctx, List<AIUsage> usage) {
+    private static List<ProjectCost> costByProject(Context ctx) {
         Map<String, BigDecimal> allocated = ctx.indexed().allocatedIn(true);
         List<ProjectCost> rows = new ArrayList<>(ctx.snapshot().projects().stream()
                 .map(p -> new ProjectCost(p.getId(), p.getName(), allocated.getOrDefault(p.getId(), BigDecimal.ZERO)))
                 .toList());
         rows.add(new ProjectCost(null, UNALLOCATED_NAME, ctx.snapshot().seesAll()
-                ? cost(filter(usage, u -> u.getAllocationId() == null)) : null));
+                ? sum(ctx.snapshot().ai().byUserDay().stream().map(AiUsageUserDay::unallocatedCostUsd).toList()) : null));
         return rows;
     }
 
@@ -520,23 +528,21 @@ public class GetOrganizationDashboardV2UseCase {
         return (int) s.people().stream().filter(withToken::contains).count();
     }
 
-    private static Subscription subscription(Context ctx, List<AIUsage> usage) {
-        BigDecimal consumption = cost(usage);
+    private static Subscription subscription(Context ctx) {
+        List<AiUsageUserDay> userDays = ctx.snapshot().ai().byUserDay();
+        BigDecimal consumption = sum(userDays.stream().map(AiUsageUserDay::costUsd).toList());
         Organization organization = ctx.snapshot().organization();
         BigDecimal perUser = organization != null ? organization.getSubscriptionCostPerUserUsd() : null;
         if (perUser == null) return new Subscription(consumption, null, null, null);
         BigDecimal months = BigDecimal.valueOf(ctx.period().days()).divide(DAYS_PER_MONTH, MONEY_SCALE, RoundingMode.HALF_UP);
         BigDecimal seats = perUser.multiply(BigDecimal.valueOf(ctx.snapshot().people().size()))
                 .multiply(BigDecimal.valueOf(ctx.period().days())).divide(DAYS_PER_MONTH, SUBSCRIPTION_SCALE, RoundingMode.HALF_UP);
-        int above = (int) byKey(usage, AIUsage::getUserId).values().stream()
-                .filter(records -> cost(records).divide(months, MONEY_SCALE, RoundingMode.HALF_UP).compareTo(perUser) > 0)
+        int above = (int) userDays.stream().filter(d -> d.userId() != null)
+                .collect(Collectors.groupingBy(AiUsageUserDay::userId, Collectors.mapping(AiUsageUserDay::costUsd, Collectors.toList())))
+                .values().stream()
+                .filter(costs -> sum(costs).divide(months, MONEY_SCALE, RoundingMode.HALF_UP).compareTo(perUser) > 0)
                 .count();
         return new Subscription(consumption, seats, perUser, above);
-    }
-
-    /** The people's usage of the current period (the read is already bounded to it). */
-    private static List<AIUsage> usageIn(Context ctx, DayRange range) {
-        return ctx.snapshot().ai().usage();
     }
 
     // ── integrations ──
@@ -550,7 +556,7 @@ public class GetOrganizationDashboardV2UseCase {
                 c.getStatus() != null ? c.getStatus().name() : null, c.getLastSuccessAt(), c.getConsecutiveFailures(),
                 error(c.getLastErrorCode()))).orElse(disconnected());
         AiConnectorCard aiConnector = new AiConnectorCard(activeTokens(s),
-                s.ai().usage().stream().map(AIUsage::getUploadedAt).filter(Objects::nonNull)
+                s.ai().byDayModel().stream().map(AiUsageDayModel::lastUploadedAt).filter(Objects::nonNull)
                         .max(Comparator.naturalOrder()).orElse(null));
         return new Integrations(azure, github, aiConnector, syncByDay(s.syncRuns(), ctx.today()), coverage(ctx),
                 sources(ctx));
@@ -615,9 +621,9 @@ public class GetOrganizationDashboardV2UseCase {
         Snapshot s = ctx.snapshot();
         DayRange current = ctx.period().current();
         Set<String> validated = s.ai().allocations().stream()
-                .filter(a -> a.getUserId() != null && current.containsDay(a.getDay()) && s.people().contains(a.getUserId()))
-                .map(a -> DashboardV2Views.personDay(a.getUserId(), a.getDay())).collect(Collectors.toSet());
-        AllocationSummary summary = DashboardV2Views.allocationSummary(usageIn(ctx, current), validated);
+                .filter(a -> a.userId() != null && current.containsDay(a.day()) && s.people().contains(a.userId()))
+                .map(a -> DashboardV2Views.personDay(a.userId(), a.day())).collect(Collectors.toSet());
+        AllocationSummary summary = DashboardV2Views.allocationSummaryOfDays(s.ai().byUserDay(), validated);
         long total = (long) summary.validatedDays() + summary.pendingDays() + summary.unallocatedDays();
         return Ratios.percent((long) summary.validatedDays() + summary.pendingDays(), total);
     }
@@ -647,8 +653,8 @@ public class GetOrganizationDashboardV2UseCase {
 
     // ── shared ──
 
-    private static BigDecimal cost(Collection<AIUsage> usage) {
-        return usage.stream().map(AIUsage::getCostUsd).filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
+    private static BigDecimal costOfDayModels(Collection<AiUsageDayModel> rows) {
+        return sum(rows.stream().map(AiUsageDayModel::costUsd).toList());
     }
 
     private static BigDecimal sum(Collection<BigDecimal> values) {
@@ -661,12 +667,6 @@ public class GetOrganizationDashboardV2UseCase {
 
     private static List<WorkItem> within(List<WorkItem> items, DayRange range) {
         return filter(items, i -> range.contains(i.getCompletedAt()));
-    }
-
-    /** Records grouped by a key, nulls left out, in first-seen order. */
-    private static Map<String, List<AIUsage>> byKey(List<AIUsage> usage, Function<AIUsage, String> key) {
-        return usage.stream().filter(u -> key.apply(u) != null)
-                .collect(Collectors.groupingBy(key, LinkedHashMap::new, Collectors.toList()));
     }
 
     private static boolean present(String value) {
@@ -727,24 +727,18 @@ public class GetOrganizationDashboardV2UseCase {
          */
         static Map<String, Map<LocalDate, DayAllocation>> allocatedByDay(Snapshot s) {
             Map<String, Map<LocalDate, DayAllocation>> byProject = new HashMap<>();
-            for (AiUsageAllocation allocation : s.ai().allocations()) {
-                if (allocation.getDay() == null || allocation.getSplits() == null
-                        || allocation.getAiUsageIds() == null) continue;
-                BigDecimal cost = BigDecimal.ZERO;
-                long tokens = 0;
-                for (String id : allocation.getAiUsageIds()) {
-                    BigDecimal c = s.ai().coveredCosts().get(id);
-                    if (c != null) cost = cost.add(c);
-                    tokens += s.ai().coveredTokens().getOrDefault(id, 0L);
-                }
+            for (AllocationCoverage allocation : s.ai().allocations()) {
+                if (allocation.day() == null || allocation.splits() == null) continue;
+                BigDecimal cost = allocation.costUsd() == null ? BigDecimal.ZERO : allocation.costUsd();
+                long tokens = allocation.tokens();
                 if (cost.signum() == 0 && tokens == 0) continue;
-                for (AllocationSplit split : allocation.getSplits()) {
+                for (AllocationSplit split : allocation.splits()) {
                     String projectId = split.getWorkItemId() == null ? null : s.itemProject().get(split.getWorkItemId());
                     if (projectId == null || split.getPercentage() == null) continue;
                     DayAllocation share = new DayAllocation(cost.multiply(split.getPercentage()),
                             split.getPercentage().multiply(BigDecimal.valueOf(tokens)));
                     byProject.computeIfAbsent(projectId, p -> new HashMap<>())
-                            .merge(allocation.getDay(), share, DayAllocation::plus);
+                            .merge(allocation.day(), share, DayAllocation::plus);
                 }
             }
             return byProject;
@@ -773,18 +767,11 @@ public class GetOrganizationDashboardV2UseCase {
          */
         static Map<String, BigDecimal> allocated(Snapshot s, DayRange range) {
             Map<String, BigDecimal> byProject = new HashMap<>();
-            Map<String, BigDecimal> costs = s.ai().coveredCosts();
-            for (AiUsageAllocation allocation : s.ai().allocations()) {
-                if (!range.containsDay(allocation.getDay()) || allocation.getSplits() == null) continue;
-                BigDecimal basis = BigDecimal.ZERO;
-                if (allocation.getAiUsageIds() != null) {
-                    for (String id : allocation.getAiUsageIds()) {
-                        BigDecimal cost = costs.get(id);
-                        if (cost != null) basis = basis.add(cost);
-                    }
-                }
+            for (AllocationCoverage allocation : s.ai().allocations()) {
+                if (!range.containsDay(allocation.day()) || allocation.splits() == null) continue;
+                BigDecimal basis = allocation.costUsd() == null ? BigDecimal.ZERO : allocation.costUsd();
                 if (basis.signum() == 0) continue;
-                for (AllocationSplit split : allocation.getSplits()) {
+                for (AllocationSplit split : allocation.splits()) {
                     String projectId = split.getWorkItemId() == null ? null : s.itemProject().get(split.getWorkItemId());
                     if (projectId != null && split.getPercentage() != null) {
                         byProject.merge(projectId, basis.multiply(split.getPercentage()), BigDecimal::add);

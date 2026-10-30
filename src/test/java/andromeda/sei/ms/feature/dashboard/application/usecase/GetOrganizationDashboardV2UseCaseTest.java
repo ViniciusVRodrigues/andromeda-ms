@@ -141,23 +141,17 @@ class GetOrganizationDashboardV2UseCaseTest {
                     .get(p).stream().map(WorkItem::getId).collect(java.util.stream.Collectors.toSet()));
         }
         when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(sprints);
-        when(aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(), any(), any()))
-                .thenAnswer(inv -> {
-                    Collection<String> users = inv.getArgument(1);
-                    LocalDate from = inv.getArgument(2);
-                    LocalDate to = inv.getArgument(3);
-                    return usage.stream().filter(u -> users.contains(u.getUserId()) && !u.getDay().isBefore(from)
-                            && !u.getDay().isAfter(to)).toList();
-                });
+        when(aiUsageRepository.summarizeByDayAndModel(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byDayAndModel(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
+        when(aiUsageRepository.summarizeInteractionsByEditor(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byEditor(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byUserAndDay(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
         when(vcsReadPort.pullRequestMetricFieldsTouchedSince(eq(ORG), anyCollection(), any())).thenAnswer(inv -> {
             Collection<String> repositories = inv.getArgument(1);
             return prs.stream().filter(pr -> repositories.contains(pr.getRepositoryId())).toList();
         });
         when(syncLogRepository.countByProjectDayAndStatus(eq(ORG), anyCollection(), any())).thenCallRealMethod();
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenAnswer(inv -> {
-            Collection<String> ids = inv.getArgument(1);
-            return usage.stream().filter(u -> ids.contains(u.getId())).toList();
-        });
         when(aiUsageRepository.summarizeTotalsByUser(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv -> {
             Collection<String> users = inv.getArgument(1);
             LocalDate from = inv.getArgument(2);
@@ -207,7 +201,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Collection<String>> people = ArgumentCaptor.forClass(Collection.class);
         verify(aiUsageRepository, org.mockito.Mockito.atLeastOnce())
-                .findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), people.capture(), any(), any());
+                .summarizeByUserAndDay(eq(ORG), people.capture(), any(), any());
         assertThat(people.getAllValues().stream().flatMap(Collection::stream).distinct().toList())
                 .containsExactlyInAnyOrder("u-a", "u-b", "u-shared");
     }
@@ -233,7 +227,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.delivery().flow()).hasSize(12);
         assertThat(out.ai().costByProject()).singleElement().extracting(ProjectCost::projectId).isNull();
         verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(anyString(), anyString());
-        verify(aiUsageRepository, never()).findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(any(), anyCollection(), any(), any());
+        verify(aiUsageRepository, never()).summarizeByUserAndDay(any(), anyCollection(), any(), any());
     }
 
     @Test
@@ -593,14 +587,14 @@ class GetOrganizationDashboardV2UseCaseTest {
         useCase.execute(ORG, Set.of(A), 30);
 
         var from = org.mockito.ArgumentCaptor.forClass(LocalDate.class);
-        verify(allocationRepository).findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
+        verify(allocationRepository).summarizeValidatedCoverage(eq(ORG), anyCollection(),
                 from.capture(), any());
         assertThat(from.getValue()).isEqualTo(LocalDate.of(2026, 7, 1));
     }
 
     private void allocations(AiUsageAllocation... allocations) {
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenReturn(List.of(allocations));
+        when(allocationRepository.summarizeValidatedCoverage(eq(ORG), anyCollection(),
+                any(), any())).thenAnswer(inv -> OrganizationAiSums.coverage(List.of(allocations), usage));
     }
 
     private static AiUsageAllocation allocation(String id, String userId, String day, String usageId,
