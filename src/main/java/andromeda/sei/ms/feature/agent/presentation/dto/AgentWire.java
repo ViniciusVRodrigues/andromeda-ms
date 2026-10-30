@@ -58,7 +58,7 @@ public final class AgentWire {
             @Size(max = 64) String timezone,
             Integer pendingRows,
             String oldestPendingDay,
-            @Size(max = 40) String syncServed) {
+            String syncServed) {
     }
 
     /** Body of {@code PUT /agent/v1/active-task}; {@code since} defaults to now. */

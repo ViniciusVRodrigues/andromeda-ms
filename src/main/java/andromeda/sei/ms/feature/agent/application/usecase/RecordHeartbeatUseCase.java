@@ -19,6 +19,9 @@ import java.time.temporal.ChronoUnit;
 @Component
 public class RecordHeartbeatUseCase {
 
+    /** An ISO-8601 instant fits easily; anything longer is ignored, never a 400. */
+    static final int MAX_SYNC_SERVED = 40;
+
     private final AgentDeviceRepository devices;
     private final AgentVersionPolicy versionPolicy;
     private final Clock clock;
@@ -59,7 +62,7 @@ public class RecordHeartbeatUseCase {
     }
 
     private static Instant parseInstant(String text) {
-        if (text == null || text.isBlank()) return null;
+        if (text == null || text.isBlank() || text.length() > MAX_SYNC_SERVED) return null;
         try {
             return Instant.parse(text.trim());
         } catch (DateTimeParseException e) {

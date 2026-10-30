@@ -298,6 +298,8 @@ class AgentDeviceLifecycleTest {
     void should_ignoreAnInvalidOrUnmatchedSyncServedWithoutFailing() {
         Instant requested = requestSync.execute(ORG, USER, false, device.getId()).syncRequestedAt();
         assertThat(heartbeat.execute(principal(), beat("ontem")).syncRequestedAt()).isEqualTo(requested);
+        assertThat(heartbeat.execute(principal(), beat(requested + " ".repeat(40))).syncRequestedAt())
+                .isEqualTo(requested);
         assertThat(heartbeat.execute(principal(), beat(requested.plusSeconds(1).toString())).syncRequestedAt())
                 .isEqualTo(requested);
         assertThat(device.getSyncServedAt()).isNull();
