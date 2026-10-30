@@ -74,3 +74,9 @@ jobs:
             IMAGE=${{ env.IMAGE }}:sha-${{ github.sha }} \
             ENV_FILE=${{ secrets.VPS_MS_ENV_FILE }} \
             ~/scripts/deploy-ms.sh
+            # O deploy-ms.sh roda a cópia que está na VPS, não a do repositório. Garante aqui
+            # que o ms promovido volta sozinho quando a JVM sai (ExitOnOutOfMemoryError):
+            # unless-stopped reinicia depois de uma saída e não traz de volta o que o deploy
+            # parou ou removeu de propósito.
+            docker update --restart unless-stopped andromeda-ms-blue
+            docker inspect -f 'andromeda-ms-blue restart={{.HostConfig.RestartPolicy.Name}} entrypoint={{json .Config.Entrypoint}}' andromeda-ms-blue

@@ -26,4 +26,7 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 
 EXPOSE 9090
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Sai no primeiro OutOfMemoryError (heap, metaspace ou thread nativa): uma JVM
+# que sobrevive ao OOM fica de pé e muda, e a política de restart do container
+# (--restart unless-stopped no deploy-ms.sh) só age quando o processo termina.
+ENTRYPOINT ["java", "-XX:+ExitOnOutOfMemoryError", "-jar", "app.jar"]
