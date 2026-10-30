@@ -12,6 +12,9 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.Parameter;
+import org.junit.jupiter.params.ParameterizedClass;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
@@ -29,7 +32,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** perf2 P1: allocation coverage computed in Mongo equals the Java loop the dashboards run today. */
 @MongoIntegrationTest
+@ParameterizedClass(name = "exactPathMaxCited={0}")
+@ValueSource(ints = {0, 50_000}) // 0 forces the stamp scan, 50_000 the exact path
 class DashboardAggregationsMongoTest {
+
+    @Parameter int exactPathMaxCited;
 
     private static final String ORG = "org-1";
     private static final LocalDate BASE = LocalDate.of(2099, 1, 1);
@@ -45,6 +52,7 @@ class DashboardAggregationsMongoTest {
     void setUp() {
         repository = new AiUsageAllocationRepositoryImpl(allocationMongo, new AiUsageAllocationDocumentMapper(),
                 mongoTemplate);
+        repository.exactPathMaxCited = exactPathMaxCited;
         usages = new AiUsageRepositoryImpl(usageMongo, new AiUsageDocumentMapper(), mongoTemplate);
         mongoTemplate.remove(new Query(), "ai_usages");
         mongoTemplate.remove(new Query(), "ai_usage_allocations");
@@ -268,6 +276,7 @@ class DashboardAggregationsMongoTest {
         usages.findCostFieldsByOrganizationIdAndIdIn(ORG, reference.stream()
                 .flatMap(a -> a.getAiUsageIds().stream()).distinct().toList()).forEach(u -> found.put(u.getId(), u));
 
+        if (exactPathMaxCited > 0) fallbacks = 0; // the exact path serves all of them, no check
         repository.fallbackAllocations.set(0);
         List<AllocationCoverage> coverage = repository.summarizeValidatedCoverage(ORG, workItems, null, null);
         assertThat(repository.fallbackAllocations.get()).as("fallback of the coverage").isEqualTo(fallbacks);
@@ -392,6 +401,8 @@ class DashboardAggregationsMongoTest {
         AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
         AiUsageAllocationDocument nullIds = allocation(ORG, 1, validated(), true, null, "w1");
         stamp(a, nullIds);
+        AiUsageDocument b = usage(ORG, null, 1, "opus", 20, 5, 2, "2", true);
+        stamped(1, List.of(b), List.of(b), "w1"); // cites a record, so the stamp scan runs
         assertLikeTheCitedList(List.of("w1"), 1);
     }
 
@@ -465,5 +476,39 @@ class DashboardAggregationsMongoTest {
         List<String> workItems = IntStream.range(0, 2500).mapToObj(i -> "w" + i).toList();
 
         assertLikeTheCitedList(workItems, 2);
+    }
+
+    @Test
+    void should_matchAnUppercaseHexId_likeTheConvertOfTheOldPipeline() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageAllocationDocument allocation = allocation(ORG, 1, validated(), true,
+                List.of(a.getId().toUpperCase()), "w1");
+        stamp(a, allocation);
+
+        repository.fallbackAllocations.set(0);
+        assertThat(repository.summarizeValidatedCoverage(ORG, List.of("w1"), null, null)).singleElement()
+                .satisfies(r -> {
+                    assertThat(r.tokens()).isEqualTo(15);
+                    assertThat(r.costUsd()).isEqualByComparingTo("1.50");
+                });
+        assertThat(repository.summarizeValidatedCoverageByDayAndModel(ORG, List.of("w1"), null, null))
+                .singleElement().satisfies(d -> assertThat(d.inputTokens()).isEqualTo(10));
+        assertThat(repository.fallbackAllocations.get()).isZero();
+    }
+
+    @Test
+    void should_scanTheStampOnlyAboveTheLimitOfCitedRecords() {
+        AiUsageDocument a = usage(ORG, null, 1, "opus", 10, 5, 2, "1.50", true);
+        AiUsageDocument b = usage(ORG, null, 1, "opus", 20, 5, 2, "2", true);
+        stamped(1, List.of(a, b), List.of(a, b), "w1");
+
+        repository.exactPathMaxCited = 2; // two cited records: not above
+        repository.summarizeValidatedCoverage(ORG, List.of("w1"), null, null);
+        repository.summarizeValidatedCoverageByDayAndModel(ORG, List.of("w1"), null, null);
+        assertThat(repository.stampScans.get()).isZero();
+
+        repository.exactPathMaxCited = 1;
+        repository.summarizeValidatedCoverage(ORG, List.of("w1"), null, null);
+        assertThat(repository.stampScans.get()).isEqualTo(1);
     }
 }
