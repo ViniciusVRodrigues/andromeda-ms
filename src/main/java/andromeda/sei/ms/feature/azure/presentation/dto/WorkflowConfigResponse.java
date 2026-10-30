@@ -17,6 +17,6 @@ public record WorkflowConfigResponse(
     public record TypeMappingResponse(String rawType, WorkItem.ResolvedType resolvedType, boolean receivesAi) {}
     public record FieldMappingResponse(FieldMapping.InternalFieldTarget internalField, String workItemType,
                                         String azureFieldReferenceName, String azureFieldType) {}
-    public record WiqlFilterResponse(List<String> workItemTypes, String areaPath, String iterationPath) {}
+    public record WiqlFilterResponse(List<String> workItemTypes, List<String> excludedWorkItemTypes, String areaPath, String iterationPath) {}
     public record HierarchyLevelResponse(String rawType, Integer rank) {}
 }

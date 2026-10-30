@@ -82,6 +82,7 @@ public class UpdateWorkflowConfigUseCase {
         WiqlFilter syncFilter = input.syncFilter() == null ? null :
                 new WiqlFilter(
                         input.syncFilter().workItemTypes() == null ? List.of() : input.syncFilter().workItemTypes(),
+                        input.syncFilter().excludedWorkItemTypes() == null ? List.of() : input.syncFilter().excludedWorkItemTypes(),
                         input.syncFilter().areaPath(),
                         input.syncFilter().iterationPath());
 

@@ -35,6 +35,7 @@ public record UpdateWorkflowConfigRequest(
 
     public record WiqlFilterRequest(
             List<String> workItemTypes,
+            List<String> excludedWorkItemTypes,
             String areaPath,
             String iterationPath
     ) {}

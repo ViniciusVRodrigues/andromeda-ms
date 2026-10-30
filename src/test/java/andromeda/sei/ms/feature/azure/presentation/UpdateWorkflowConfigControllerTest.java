@@ -262,4 +262,59 @@ class UpdateWorkflowConfigControllerTest {
         org.assertj.core.api.Assertions.assertThat(captor.getValue().typeMappings().get(0).receivesAi()).isTrue();
         org.assertj.core.api.Assertions.assertThat(captor.getValue().typeMappings().get(1).receivesAi()).isNull();
     }
+
+    @Test
+    void updateWorkflowConfig_shouldPassExcludedTypesToUseCaseAndReturnThem() throws Exception {
+        Instant now = Instant.now();
+        var syncFilter = new andromeda.sei.ms.feature.azure.domain.WiqlFilter(
+                List.of(), List.of("Test Case", "Shared Steps"), null, null);
+        AzureProjectBinding binding = new AzureProjectBinding(
+                "bind-1", "org-1", "proj-1", "azure-id-1", "My Project",
+                true, null,
+                new WorkflowConfig(List.of(), List.of(), List.of(), syncFilter, WorkflowConfig.ConfigSource.CUSTOM),
+                true, now, now, null);
+        when(updateWorkflowConfigUseCase.execute(eq("bind-1"), any(UpdateWorkflowConfigInput.class)))
+                .thenReturn(binding);
+
+        mockMvc.perform(put("/api/v1/integrations/azure/bindings/bind-1/workflow-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "statusMappings": [],
+                                  "typeMappings": [],
+                                  "syncFilter": {"workItemTypes": [], "excludedWorkItemTypes": ["Test Case", "Shared Steps"]}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workflowConfig.syncFilter.excludedWorkItemTypes[0]").value("Test Case"))
+                .andExpect(jsonPath("$.workflowConfig.syncFilter.excludedWorkItemTypes[1]").value("Shared Steps"));
+
+        org.mockito.ArgumentCaptor<UpdateWorkflowConfigInput> captor =
+                org.mockito.ArgumentCaptor.forClass(UpdateWorkflowConfigInput.class);
+        org.mockito.Mockito.verify(updateWorkflowConfigUseCase).execute(eq("bind-1"), captor.capture());
+        org.assertj.core.api.Assertions.assertThat(captor.getValue().syncFilter().excludedWorkItemTypes())
+                .containsExactly("Test Case", "Shared Steps");
+    }
+
+    @Test
+    void updateWorkflowConfig_shouldTreatMissingExcludedTypesAsEmptyList() throws Exception {
+        Instant now = Instant.now();
+        var syncFilter = new andromeda.sei.ms.feature.azure.domain.WiqlFilter(List.of("Bug"), null, null);
+        AzureProjectBinding binding = new AzureProjectBinding(
+                "bind-1", "org-1", "proj-1", "azure-id-1", "My Project",
+                true, null,
+                new WorkflowConfig(List.of(), List.of(), List.of(), syncFilter, WorkflowConfig.ConfigSource.CUSTOM),
+                true, now, now, null);
+        when(updateWorkflowConfigUseCase.execute(eq("bind-1"), any(UpdateWorkflowConfigInput.class)))
+                .thenReturn(binding);
+
+        mockMvc.perform(put("/api/v1/integrations/azure/bindings/bind-1/workflow-config")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"statusMappings": [], "typeMappings": [], "syncFilter": {"workItemTypes": ["Bug"]}}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workflowConfig.syncFilter.excludedWorkItemTypes").isArray())
+                .andExpect(jsonPath("$.workflowConfig.syncFilter.excludedWorkItemTypes").isEmpty());
+    }
 }

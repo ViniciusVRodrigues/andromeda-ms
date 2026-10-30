@@ -20,6 +20,6 @@ public record UpdateWorkflowConfigInput(
     }
     public record FieldMappingInput(FieldMapping.InternalFieldTarget internalField, String workItemType,
                                      String azureFieldReferenceName, String azureFieldType) {}
-    public record WiqlFilterInput(List<String> workItemTypes, String areaPath, String iterationPath) {}
+    public record WiqlFilterInput(List<String> workItemTypes, List<String> excludedWorkItemTypes, String areaPath, String iterationPath) {}
     public record HierarchyLevelInput(String rawType, Integer rank) {}
 }

@@ -135,4 +135,27 @@ class AzureProjectBindingDocumentMapperTest {
         assertThat(back.get(0).getReceivesAi()).isFalse();
         assertThat(back.get(1).getReceivesAi()).isTrue();
     }
+
+    @Test
+    void shouldReadSyncFilterWithoutExcludedTypesAsEmptyAndRoundTripTheList() {
+        AzureProjectBindingDocument doc = AzureProjectBindingDocument.builder()
+                .id("bind-1").organizationId("org-1").projectId("proj-1").azureProjectId("azure-1")
+                .syncEnabled(true)
+                .workflowConfig(AzureProjectBindingDocument.WorkflowConfigDocument.builder()
+                        .statusMappings(List.of()).typeMappings(List.of()).fieldMappings(List.of())
+                        .hierarchyLevels(List.of())
+                        .syncFilter(AzureProjectBindingDocument.WiqlFilterDocument.builder()
+                                .workItemTypes(List.of("Bug")).build())
+                        .configSource(WorkflowConfig.ConfigSource.CUSTOM.name()).build())
+                .active(true).createdAt(NOW).updatedAt(NOW).build();
+
+        AzureProjectBinding binding = mapper.toDomain(doc);
+        assertThat(binding.getWorkflowConfig().getSyncFilter().getExcludedWorkItemTypes()).isEmpty();
+
+        binding.getWorkflowConfig().getSyncFilter().setExcludedWorkItemTypes(List.of("Test Case"));
+        var back = mapper.toDocument(binding).getWorkflowConfig().getSyncFilter();
+        assertThat(back.getExcludedWorkItemTypes()).containsExactly("Test Case");
+        assertThat(mapper.toDomain(mapper.toDocument(binding)).getWorkflowConfig().getSyncFilter()
+                .getExcludedWorkItemTypes()).containsExactly("Test Case");
+    }
 }

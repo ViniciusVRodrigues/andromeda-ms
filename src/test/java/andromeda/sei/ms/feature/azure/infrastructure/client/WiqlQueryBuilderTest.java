@@ -160,4 +160,38 @@ class WiqlQueryBuilderTest {
         assertThat(WiqlQueryBuilder.build(Instant.parse("2026-01-01T00:00:00Z"), 100, filter))
                 .startsWith("SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND ");
     }
+
+    private static final String BASE = "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project";
+
+    @Test
+    void shouldIncludeNotInClauseWhenExcludedTypesConfigured() {
+        WiqlFilter filter = new WiqlFilter(List.of(), List.of("Test Case", "Shared Steps"), null, null);
+
+        assertThat(WiqlQueryBuilder.build(null, null, filter)).isEqualTo(
+                BASE + " AND [System.WorkItemType] NOT IN ('Test Case', 'Shared Steps') ORDER BY [System.Id] ASC");
+    }
+
+    @Test
+    void shouldEscapeApostropheInExcludedTypes() {
+        WiqlFilter filter = new WiqlFilter(null, List.of("Dev's Task"), null, null);
+
+        assertThat(WiqlQueryBuilder.build(null, null, filter))
+                .contains("NOT IN ('Dev''s Task')");
+    }
+
+    @Test
+    void shouldCombineInAndNotInClauses() {
+        WiqlFilter filter = new WiqlFilter(List.of("Bug"), List.of("Test Case"), null, null);
+
+        assertThat(WiqlQueryBuilder.build(null, null, filter)).isEqualTo(
+                BASE + " AND [System.WorkItemType] IN ('Bug') AND [System.WorkItemType] NOT IN ('Test Case') ORDER BY [System.Id] ASC");
+    }
+
+    @Test
+    void shouldOmitNotInClauseWhenExcludedTypesEmptyOrNull() {
+        assertThat(WiqlQueryBuilder.build(null, null, new WiqlFilter(null, List.of(), null, null)))
+                .doesNotContain("NOT IN");
+        assertThat(WiqlQueryBuilder.build(null, null, new WiqlFilter(null, null, null, null)))
+                .doesNotContain("NOT IN");
+    }
 }
