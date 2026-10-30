@@ -8,6 +8,8 @@ public record AiUsageSummaryByMonthOutput(
         YearMonth month,
         long totalInputTokens,
         long totalOutputTokens,
+        long totalCacheReadTokens,
+        long totalCacheWriteTokens,
         int totalInteractions,
         BigDecimal totalCostUsd,
         List<ModelBreakdownOutput> modelBreakdown

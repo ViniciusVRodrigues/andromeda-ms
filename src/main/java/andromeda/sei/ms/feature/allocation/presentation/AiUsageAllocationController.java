@@ -101,6 +101,7 @@ public class AiUsageAllocationController {
                 .stream()
                 .map(b -> new PendingBatchResponse(
                         b.day(), b.totalInputTokens(), b.totalOutputTokens(),
+                        b.totalCacheReadTokens(), b.totalCacheWriteTokens(),
                         b.totalInteractions(), b.estimatedCostUsd(),
                         b.suggestionAllocationId(),
                         b.suggestion().stream()

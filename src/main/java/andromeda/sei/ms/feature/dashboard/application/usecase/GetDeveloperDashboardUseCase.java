@@ -329,7 +329,7 @@ public class GetDeveloperDashboardUseCase {
         List<DailyAiUsage> series = new ArrayList<>();
         LocalDate cursor = sprintStart;
         while (!cursor.isAfter(sprintEnd)) {
-            series.add(byDay.getOrDefault(cursor, new DailyAiUsage(cursor, 0L, 0L, 0L, BigDecimal.ZERO)));
+            series.add(byDay.getOrDefault(cursor, new DailyAiUsage(cursor, 0L, 0L, 0L, 0L, 0L, BigDecimal.ZERO)));
             cursor = cursor.plusDays(1);
         }
         return series;

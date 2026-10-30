@@ -352,7 +352,7 @@ class GetIndividualDashboardV2UseCaseTest {
     void should_breakDownAiCostByModel_sortedByCost_andSumTheSprintUsage() {
         when(developerDashboard.execute(ORG, ME, PROJECT, "s2", null, null, null)).thenAnswer(inv -> new DeveloperDashboardOutput(
                 List.of(), null, null,
-                List.of(new DailyAiUsage(LocalDate.parse("2026-10-01"), 100, 50, 3, new BigDecimal("1.50"))),
+                List.of(new DailyAiUsage(LocalDate.parse("2026-10-01"), 100, 50, 7000, 9000, 3, new BigDecimal("1.50"))),
                 new BigDecimal("1.50"), 0, 0, List.of(), 0, List.of(), new AiSprintSummary(150, new BigDecimal("1.50"), 0),
                 Map.of(), null, List.of(), null, DurationStat.empty(), DurationStat.empty()));
         when(aiUsageRepository.findSummaryGroupedByModel(ORG, ME, LocalDate.parse("2026-10-01"), LocalDate.parse("2026-10-14"), null))
@@ -366,6 +366,9 @@ class GetIndividualDashboardV2UseCaseTest {
         assertThat(out.ai().byModel().get(1).costUsd()).isEqualByComparingTo("0.40");
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("1.50");
         assertThat(out.kpis().aiTokens()).isEqualTo(150L);
+        // The day carries 7000 cache-read + 9000 cache-write, yet the dashboard keeps input + output only.
+        assertThat(out.ai().byDay().get(0).inputTokens()).isEqualTo(100L);
+        assertThat(out.ai().byDay().get(0).outputTokens()).isEqualTo(50L);
         assertThat(out.ai().byDay()).hasSize(1);
         assertThat(out.ai().byDay().get(0).label()).isEqualTo("01/10");
     }

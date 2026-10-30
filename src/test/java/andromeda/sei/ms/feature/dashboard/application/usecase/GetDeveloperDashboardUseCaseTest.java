@@ -334,8 +334,8 @@ class GetDeveloperDashboardUseCaseTest {
                 .thenReturn(List.of());
 
         // Only two days have usage; the rest of the 10-day span must be zero-filled.
-        DailyAiUsage june2 = new DailyAiUsage(LocalDate.of(2026, 6, 2), 1000L, 500L, 5L, new BigDecimal("0.05"));
-        DailyAiUsage june5 = new DailyAiUsage(LocalDate.of(2026, 6, 5), 2000L, 800L, 9L, new BigDecimal("0.12"));
+        DailyAiUsage june2 = new DailyAiUsage(LocalDate.of(2026, 6, 2), 1000L, 500L, 0L, 0L, 5L, new BigDecimal("0.05"));
+        DailyAiUsage june5 = new DailyAiUsage(LocalDate.of(2026, 6, 5), 2000L, 800L, 0L, 0L, 9L, new BigDecimal("0.12"));
         when(aiUsageRepository.findDailyUsageByUserIdAndDateRange(
                 eq(ORG), eq(USER), eq(SPRINT_START), eq(SPRINT_END), isNull()))
                 .thenReturn(List.of(june2, june5));

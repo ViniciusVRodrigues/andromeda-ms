@@ -15,12 +15,12 @@ import org.springframework.stereotype.Component;
 public class GetDailyAiUsageUseCase {
     private final AIUsageRepository repository;
     private final AiUsageAllocationRepository allocationRepository;
-    public record Day(LocalDate day, long inputTokens, long outputTokens, long interactions, BigDecimal costUsd,
+    public record Day(LocalDate day, long inputTokens, long outputTokens, long cacheReadTokens, long cacheWriteTokens, long interactions, BigDecimal costUsd,
                      boolean hasAgentAllocation) {}
     public List<Day> execute(String organizationId, String userId, YearMonth month) {
         Set<LocalDate> agentDays = allocationRepository.findAgentDays(organizationId, userId, month.atDay(1), month.atEndOfMonth());
         return repository.findDailyUsageByUserIdAndDateRange(organizationId, userId, month.atDay(1), month.atEndOfMonth(), null)
-                .stream().map(d -> new Day(d.day(), d.inputTokens(), d.outputTokens(), d.interactions(), d.costUsd(),
+                .stream().map(d -> new Day(d.day(), d.inputTokens(), d.outputTokens(), d.cacheReadTokens(), d.cacheWriteTokens(), d.interactions(), d.costUsd(),
                         agentDays.contains(d.day()))).toList();
     }
 }

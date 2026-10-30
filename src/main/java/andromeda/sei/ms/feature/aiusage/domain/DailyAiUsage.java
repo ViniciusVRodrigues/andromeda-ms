@@ -7,6 +7,8 @@ public record DailyAiUsage(
         LocalDate day,
         long inputTokens,
         long outputTokens,
+        long cacheReadTokens,
+        long cacheWriteTokens,
         long interactions,
         BigDecimal costUsd
 ) {}

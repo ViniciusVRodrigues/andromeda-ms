@@ -87,6 +87,18 @@ class AiUsageAllocationControllerTest {
     }
 
     @Test
+    void pendingBatches_exposesCacheTokens() throws Exception {
+        when(getPendingAllocationBatches.execute(anyString(), anyString())).thenReturn(List.of(
+                new andromeda.sei.ms.feature.allocation.application.dto.PendingBatchOutput(
+                        LocalDate.of(2026, 6, 3), 10, 5, 3000, 400, 2, java.math.BigDecimal.ONE, null, List.of())));
+
+        mockMvc.perform(get("/api/v1/ai/allocations/pending-batches"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].totalCacheReadTokens").value(3000))
+                .andExpect(jsonPath("$[0].totalCacheWriteTokens").value(400));
+    }
+
+    @Test
     void getCandidates_returns_complexity_and_effort_without_storyPoints() throws Exception {
         when(getAllocationCandidates.execute(anyString(), anyString(), any(LocalDate.class))).thenReturn(List.of(
                 new WorkItemCandidateOutput("wi-1", "T", "Sprint 1", "STORY", "10", 3.0, 12.0)));

@@ -145,6 +145,8 @@ public class AiUsageController {
                 output.month().toString(),
                 output.totalInputTokens(),
                 output.totalOutputTokens(),
+                output.totalCacheReadTokens(),
+                output.totalCacheWriteTokens(),
                 output.totalInteractions(),
                 output.totalCostUsd(),
                 breakdown));
