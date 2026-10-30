@@ -230,10 +230,12 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     }
 
     /**
-     * Cited records the exact path reads in one request (id list plus 6 fields each, as the main did); above
+     * Cited records the exact path reads in one request (id list plus 6 fields each, as the main did: about
+     * 200 thousand ids are a few MB on the wire and tens of MB in the JVM, and fetching them beat the stamp
+     * scan on the project dashboard at 90 days, PERF2 measurement). Above
      * it the stamp scan serves the allocations and only the inconsistent ones take the exact path.
      */
-    static final int EXACT_PATH_MAX_CITED = 50_000;
+    static final int EXACT_PATH_MAX_CITED = 200_000;
 
     /** Package-private so the tests force either path. */
     int exactPathMaxCited = EXACT_PATH_MAX_CITED;

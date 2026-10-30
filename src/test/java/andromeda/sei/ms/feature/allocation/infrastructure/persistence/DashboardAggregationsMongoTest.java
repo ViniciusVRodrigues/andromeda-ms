@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** perf2 P1: allocation coverage computed in Mongo equals the Java loop the dashboards run today. */
 @MongoIntegrationTest
 @ParameterizedClass(name = "exactPathMaxCited={0}")
-@ValueSource(ints = {0, 50_000}) // 0 forces the stamp scan, 50_000 the exact path
+@ValueSource(ints = {0, 200_000}) // 0 forces the stamp scan, 200_000 the exact path
 class DashboardAggregationsMongoTest {
 
     @Parameter int exactPathMaxCited;
