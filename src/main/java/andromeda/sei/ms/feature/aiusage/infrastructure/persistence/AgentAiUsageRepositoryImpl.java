@@ -10,6 +10,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.schema.JsonSchemaObject;
 import org.springframework.data.mongodb.core.query.Query;
 import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Repository;
@@ -35,11 +36,35 @@ public class AgentAiUsageRepositoryImpl implements AgentAIUsageRepository, Agent
     public Map<String, AIUsage> findByKeys(String organizationId, String deviceId, Collection<String> keys) {
         Map<String, AIUsage> byKey = new HashMap<>();
         if (keys == null || keys.isEmpty()) return byKey;
-        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
-                .and("deviceId").is(deviceId).and("agentKey").in(keys));
-        mongoTemplate.find(query, AiUsageDocument.class)
+        mongoTemplate.find(keysQuery(organizationId, deviceId, keys), AiUsageDocument.class)
                 .forEach(d -> byKey.put(d.getAgentKey(), mapper.toDomain(d)));
         return byKey;
+    }
+
+    // The agent indexes are partial ({agentKey|deviceId: {$type: 'string'}}): the planner only picks
+    // one when the query repeats that filter, so every agent lookup carries it (agt8). Without it Mongo
+    // falls back to {organizationId, userId, day} and walks the organization.
+    static Query keysQuery(String organizationId, String deviceId, Collection<String> keys) {
+        return Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("deviceId").is(deviceId).and("agentKey").in(keys).type(JsonSchemaObject.Type.stringType()));
+    }
+
+    static Query countersQuery(String organizationId, String deviceId, LocalDate from, LocalDate to) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                .and("deviceId").in(deviceId).type(JsonSchemaObject.Type.stringType())
+                .and("agentKey").exists(true).and("day").gte(from).lte(to));
+        query.fields().include("day", "agentKey", "inputTokens", "outputTokens", "cacheReadTokens",
+                "cacheWriteTokens", "thinkingTokens");
+        return query;
+    }
+
+    static Query keysOfDayQuery(String organizationId, String deviceId, LocalDate day, int limit) {
+        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
+                        .and("deviceId").in(deviceId).type(JsonSchemaObject.Type.stringType())
+                        .and("agentKey").exists(true).and("day").is(day))
+                .with(Sort.by(Sort.Direction.ASC, "agentKey")).limit(limit);
+        query.fields().include("agentKey");
+        return query;
     }
 
     @Override
@@ -72,21 +97,14 @@ public class AgentAiUsageRepositoryImpl implements AgentAIUsageRepository, Agent
     @Override
     public List<AIUsage> findCountersByDeviceAndDayBetween(String organizationId, String deviceId,
                                                            LocalDate from, LocalDate to) {
-        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
-                .and("deviceId").is(deviceId).and("agentKey").exists(true)
-                .and("day").gte(from).lte(to));
-        query.fields().include("day", "agentKey", "inputTokens", "outputTokens", "cacheReadTokens",
-                "cacheWriteTokens", "thinkingTokens");
-        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(mapper::toDomain).toList();
+        return mongoTemplate.find(countersQuery(organizationId, deviceId, from, to), AiUsageDocument.class).stream()
+                .map(mapper::toDomain).toList();
     }
 
     @Override
     public List<String> findKeysByDeviceAndDay(String organizationId, String deviceId, LocalDate day, int limit) {
-        Query query = Query.query(Criteria.where("organizationId").is(organizationId)
-                        .and("deviceId").is(deviceId).and("agentKey").exists(true).and("day").is(day))
-                .with(Sort.by(Sort.Direction.ASC, "agentKey")).limit(limit);
-        query.fields().include("agentKey");
-        return mongoTemplate.find(query, AiUsageDocument.class).stream().map(AiUsageDocument::getAgentKey).toList();
+        return mongoTemplate.find(keysOfDayQuery(organizationId, deviceId, day, limit), AiUsageDocument.class).stream()
+                .map(AiUsageDocument::getAgentKey).toList();
     }
 
     private static Criteria aief(String organizationId, String userId, LocalDate day, Collection<String> editors) {

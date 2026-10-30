@@ -11,11 +11,5 @@ public interface AgentDeviceMongoRepository extends MongoRepository<AgentDeviceD
 
     Optional<AgentDeviceDocument> findByIdAndOrganizationIdAndActiveTrue(String id, String organizationId);
 
-    Optional<AgentDeviceDocument> findByAccessTokenHash(String accessTokenHash);
-
-    Optional<AgentDeviceDocument> findByRefreshTokenHash(String refreshTokenHash);
-
-    Optional<AgentDeviceDocument> findByPreviousRefreshHash(String previousRefreshHash);
-
     List<AgentDeviceDocument> findAllByOrganizationIdAndUserId(String organizationId, String userId);
 }

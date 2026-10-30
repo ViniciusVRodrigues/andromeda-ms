@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.agent.infrastructure.persistence;
 import andromeda.sei.ms.feature.agent.domain.AgentDevice;
 import andromeda.sei.ms.feature.agent.domain.AgentDeviceAuthorization;
 import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
+import andromeda.sei.ms.shared.testsupport.QueryPlans;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -197,5 +198,32 @@ class AgentRepositoriesMongoTest {
         assertThat(cleared.getSyncRequestedBy()).isNull();
         assertThat(cleared.getSyncServedAt()).isEqualTo(NOW.plusSeconds(20));
         assertThat(devices.requestSync(d.getId(), "org-1", NOW.plusSeconds(30), "user-1")).isTrue();
+    }
+
+    @Test
+    void should_findTheDeviceByEachTokenHashThroughItsPartialIndex() {
+        for (int i = 0; i < 30; i++) {
+            AgentDevice revoked = device(null, null);
+            revoked.setActive(false);
+            devices.save(revoked);
+        }
+        AgentDevice paired = device("acc-1", "ref-1");
+        paired.setPreviousRefreshHash("prev-1");
+        AgentDevice d = devices.save(paired);
+
+        record Case(String field, String hash, String index) {
+        }
+        for (Case c : List.of(new Case("accessTokenHash", "acc-1", "uq_agent_device_access_hash"),
+                new Case("refreshTokenHash", "ref-1", "uq_agent_device_refresh_hash"),
+                new Case("previousRefreshHash", "prev-1", "idx_agent_device_previous_refresh"))) {
+            QueryPlans.Plan plan = QueryPlans.winning(mongoTemplate, AgentDeviceDocument.class,
+                    AgentDeviceRepositoryImpl.byTokenHash(c.field(), c.hash()));
+            assertThat(plan.scansTheCollection()).as(c.field()).isFalse();
+            assertThat(plan.indexes()).as(c.field()).containsOnly(c.index());
+        }
+        assertThat(devices.findByAccessTokenHash("acc-1")).map(AgentDevice::getId).contains(d.getId());
+        assertThat(devices.findByRefreshTokenHash("ref-1")).map(AgentDevice::getId).contains(d.getId());
+        assertThat(devices.findByPreviousRefreshHash("prev-1")).map(AgentDevice::getId).contains(d.getId());
+        assertThat(devices.findByAccessTokenHash("nope")).isEmpty();
     }
 }
