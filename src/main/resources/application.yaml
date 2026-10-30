@@ -58,6 +58,10 @@ andromeda:
     privacy-url: ${AGENT_PRIVACY_URL:}
     task-clear-command: ${AGENT_TASK_CLEAR_COMMAND:andromeda task --clear}
     stale-after: P3D
+    rate-limit:
+      code-per-ip: ${AGENT_RATE_LIMIT_CODE_PER_IP:100}
+      token-per-ip: ${AGENT_RATE_LIMIT_TOKEN_PER_IP:1200}
+      token-per-credential: ${AGENT_RATE_LIMIT_TOKEN_PER_CREDENTIAL:30}
     access-token-ttl: PT1H
     refresh-token-ttl: P90D
     refresh-grace: PT2M
