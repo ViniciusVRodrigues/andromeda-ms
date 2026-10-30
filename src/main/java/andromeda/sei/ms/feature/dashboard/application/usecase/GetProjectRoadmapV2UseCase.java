@@ -1,8 +1,8 @@
 package andromeda.sei.ms.feature.dashboard.application.usecase;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
-import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
@@ -163,26 +163,14 @@ public class GetProjectRoadmapV2UseCase {
     private Map<String, ItemAi> itemAi(String orgId, List<WorkItem> units) {
         Set<String> ids = units.stream().map(WorkItem::getId).filter(Objects::nonNull).collect(Collectors.toSet());
         if (ids.isEmpty()) return Map.of();
-        List<AiUsageAllocation> allocations = allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(orgId, ids);
+        List<AllocationCoverage> allocations = allocationRepository.summarizeValidatedCoverage(orgId, ids, null, null);
         if (allocations.isEmpty()) return Map.of();
-        Set<String> usageIds = allocations.stream().filter(a -> a.getAiUsageIds() != null)
-                .flatMap(a -> a.getAiUsageIds().stream()).collect(Collectors.toSet());
-        Map<String, AIUsage> usageById = usageIds.isEmpty() ? Map.of()
-                : aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(orgId, usageIds).stream()
-                        .filter(u -> u.getId() != null)
-                        .collect(Collectors.toMap(AIUsage::getId, Function.identity(), (a, b) -> a));
         Map<String, ItemAi> byItem = new HashMap<>();
-        for (AiUsageAllocation allocation : allocations) {
-            if (allocation.getSplits() == null || allocation.getAiUsageIds() == null) continue;
-            BigDecimal cost = BigDecimal.ZERO;
-            BigDecimal tokens = BigDecimal.ZERO;
-            for (String usageId : allocation.getAiUsageIds()) {
-                AIUsage usage = usageById.get(usageId);
-                if (usage == null) continue;
-                if (usage.getCostUsd() != null) cost = cost.add(usage.getCostUsd());
-                tokens = tokens.add(BigDecimal.valueOf(usage.getInputTokens() + usage.getOutputTokens()));
-            }
-            for (AllocationSplit split : allocation.getSplits()) {
+        for (AllocationCoverage allocation : allocations) {
+            if (allocation.splits() == null) continue;
+            BigDecimal cost = allocation.costUsd() == null ? BigDecimal.ZERO : allocation.costUsd();
+            BigDecimal tokens = BigDecimal.valueOf(allocation.tokens());
+            for (AllocationSplit split : allocation.splits()) {
                 if (split.getPercentage() == null || !ids.contains(split.getWorkItemId())) continue;
                 ItemAi add = new ItemAi(cost.multiply(split.getPercentage()), tokens.multiply(split.getPercentage()));
                 byItem.merge(split.getWorkItemId(), add, ItemAi::plus);

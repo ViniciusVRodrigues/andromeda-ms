@@ -364,25 +364,25 @@ public class GetTeamDashboardV2UseCase {
 
     /** Allocated cost and the allocated share of tokens/interactions per day, up to today. */
     private static List<AiDay> aiByDay(Context ctx, List<AllocatedUsage> allocated) {
-        Map<LocalDate, List<AllocatedUsage>> byDay = allocated.stream().filter(a -> a.usage().getDay() != null)
-                .collect(Collectors.groupingBy(a -> a.usage().getDay()));
+        Map<LocalDate, List<AllocatedUsage>> byDay = allocated.stream().filter(a -> a.day() != null)
+                .collect(Collectors.groupingBy(a -> a.day()));
         return DashboardV2Views.days(ctx.window().startDay(), ctx.window().lastElapsedDay(ctx.today())).stream()
                 .map(day -> {
                     List<AllocatedUsage> records = byDay.getOrDefault(day, List.of());
                     return new AiDay(day.toString(), DashboardV2Views.label(day),
-                            share(records, a -> a.usage().getInputTokens()), share(records, a -> a.usage().getOutputTokens()),
-                            share(records, a -> a.usage().getInteractions()), cost(records));
+                            share(records, a -> a.inputTokens()), share(records, a -> a.outputTokens()),
+                            share(records, a -> a.interactions()), cost(records));
                 })
                 .toList();
     }
 
     private static List<AiModel> aiByModel(List<AllocatedUsage> allocated) {
-        return allocated.stream().filter(a -> a.usage().getModel() != null)
-                .collect(Collectors.groupingBy(a -> a.usage().getModel())).entrySet().stream()
+        return allocated.stream().filter(a -> a.model() != null)
+                .collect(Collectors.groupingBy(a -> a.model())).entrySet().stream()
                 .map(e -> new AiModel(e.getKey(),
-                        share(e.getValue(), a -> a.usage().getInputTokens() + a.usage().getOutputTokens()),
-                        cost(e.getValue()), share(e.getValue(), a -> a.usage().getInteractions())))
-                .sorted(Comparator.comparing(AiModel::costUsd).reversed())
+                        share(e.getValue(), a -> a.inputTokens() + a.outputTokens()),
+                        cost(e.getValue()), share(e.getValue(), a -> a.interactions())))
+                .sorted(Comparator.comparing(AiModel::costUsd).reversed().thenComparing(AiModel::model))
                 .toList();
     }
 

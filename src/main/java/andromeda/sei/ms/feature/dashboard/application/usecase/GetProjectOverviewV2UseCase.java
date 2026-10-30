@@ -488,11 +488,11 @@ public class GetProjectOverviewV2UseCase {
             Map<LocalDate, Map<String, BigDecimal>> byDay = new HashMap<>();
             Map<LocalDate, BigDecimal> tokens = new HashMap<>();
             for (AllocatedUsage usage : allocated) {
-                if (usage.usage().getDay() == null) continue;
-                tokens.merge(usage.usage().getDay(), usage.share().multiply(BigDecimal.valueOf(
-                        usage.usage().getInputTokens() + usage.usage().getOutputTokens())), BigDecimal::add);
-                byDay.computeIfAbsent(usage.usage().getDay(), d -> new HashMap<>())
-                        .merge(usage.usage().getModel(), usage.allocatedCostUsd(), BigDecimal::add);
+                if (usage.day() == null) continue;
+                tokens.merge(usage.day(), usage.share().multiply(BigDecimal.valueOf(
+                        usage.inputTokens() + usage.outputTokens())), BigDecimal::add);
+                byDay.computeIfAbsent(usage.day(), d -> new HashMap<>())
+                        .merge(usage.model(), usage.allocatedCostUsd(), BigDecimal::add);
             }
             return new AllocatedCost(byDay, tokens);
         }
@@ -522,7 +522,7 @@ public class GetProjectOverviewV2UseCase {
                     if (model != null) byModel.merge(model, cost, BigDecimal::add);
                 });
             });
-            return byModel.entrySet().stream().sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed())
+            return byModel.entrySet().stream().sorted(Map.Entry.<String, BigDecimal>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                     .map(Map.Entry::getKey).toList();
         }
 
