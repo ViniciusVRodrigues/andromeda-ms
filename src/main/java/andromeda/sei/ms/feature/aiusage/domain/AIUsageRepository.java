@@ -67,6 +67,17 @@ public interface AIUsageRepository {
                                                LocalDate from, LocalDate to);
 
     /**
+     * Usage of these users in {@code [from, to]} summed per (day, model) in the database (same filter as
+     * {@link #summarizeByUserAndDay}); a null model is its own row. Empty without users.
+     */
+    List<AiUsageDayModel> summarizeByDayAndModel(String organizationId, java.util.Collection<String> userIds,
+                                                 LocalDate from, LocalDate to);
+
+    /** Interactions of these users in {@code [from, to]} per editor (null editor is its own row); empty without users. */
+    List<AiUsageEditorTotal> summarizeInteractionsByEditor(String organizationId, java.util.Collection<String> userIds,
+                                                           LocalDate from, LocalDate to);
+
+    /**
      * Active usage records by id with only the fields a cost breakdown reads: id, userId, day, model,
      * tokens, interactions, cost and allocationId; every other field is {@code null}/zero. A lean read
      * for large id sets — use {@link #findByOrganizationIdAndIdIn} when the whole record is needed.

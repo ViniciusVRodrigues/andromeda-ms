@@ -42,7 +42,7 @@ class DeclaredIndexInitializerTest {
     /* Pinned inventory: 33 @Document classes declaring 76 indexes (agent_devices: 4; agent_device_authorizations: 3) (work_item_activities: org_workitem_revision_uq + org_actor_day) (usage_events: ix_usage_org_occurred + TTL; funnel_events: ix_funnel_id_occurred + TTL) (fix/mongo-index-creation report).
      * Adding or removing a declaration changes these numbers on purpose. */
     private static final int DOCUMENT_COLLECTIONS = 34;
-    private static final int DECLARED_INDEXES = 81;
+    private static final int DECLARED_INDEXES = 82;
 
     private static final String USERS = "users";
     private static final String WORK_ITEMS = "work_items";

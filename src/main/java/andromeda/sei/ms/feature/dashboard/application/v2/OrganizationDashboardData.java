@@ -1,9 +1,11 @@
 package andromeda.sei.ms.feature.dashboard.application.v2;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageDayModel;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageEditorTotal;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals;
-import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
@@ -39,7 +41,6 @@ import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Comparator;
@@ -72,11 +73,11 @@ import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.
  *       both periods counted per
  *       day in the database (one aggregation per repository, in parallel); the bug lookup behind
  *       the merged changes;</li>
- *   <li>the people's AI usage of the current period (lean, by user id and day, in up to
- *       {@value #USAGE_GROUPS} parallel groups) and of the previous one summed per person in the
- *       database; the validated allocations splitting to the visible work items (lean, by item id
- *       in parallel chunks) of both periods;
- *       the cost of the records they cover that the people's usage did not bring (lean, by id);</li>
+ *   <li>the people's AI usage of the current period summed in the database (per day and model, per
+ *       editor, per person and day; three aggregations in parallel) and of the previous one summed per
+ *       person; the validated allocations splitting to the visible work items of both periods, each
+ *       with the cost and tokens of the records it cites summed in the database (no usage row and no
+ *       allocation id list crosses to the JVM);</li>
  *   <li>the leaf sync runs of the last 14 days counted per project, day and status in the database.</li>
  * </ol>
  */
@@ -102,11 +103,6 @@ public class OrganizationDashboardData {
     private final GithubConnectionRepository githubConnectionRepository;
     private final AzureProjectBindingRepository azureBindingRepository;
     private final IntegrationSyncLogRepository syncLogRepository;
-
-    /** The people's usage is read in at most this many parallel queries. */
-    static final int USAGE_GROUPS = 8;
-    /** ... each over at most this many slices of days. */
-    static final int USAGE_SLICES = 4;
 
     /**
      * @param visibleProjectIds projects where the caller holds {@code DASHBOARD_STRATEGIC}; nothing
@@ -143,18 +139,22 @@ public class OrganizationDashboardData {
             // kpis.aiCostUsd (and previous) is the allocated cost for every caller: both periods.
             DayRange allocationRange = new DayRange(period.previous().first(), period.current().last());
             // ... and back to the start of a sprint crossing the period that began before it (sprintHistory).
-            CompletableFuture<List<AiUsageAllocation>> allocationsF = loads.supply(
+            CompletableFuture<List<AllocationCoverage>> allocationsF = loads.supply(
                     () -> allocations(orgId, itemsF, new DayRange(earliestStart(join(sprintsF), projectIds,
                             period.current(), allocationRange.first()), allocationRange.last())));
             List<User> users = join(usersF);
             Set<String> people = people(seesAll, projects, users);
-            CompletableFuture<List<AIUsage>> usageF = loads.supply(() -> usage(orgId, loads, people, period.current()));
+            DayRange current = period.current();
+            CompletableFuture<List<AiUsageDayModel>> dayModelF = loads.supply(() -> people.isEmpty() ? List.<AiUsageDayModel>of()
+                    : aiUsageRepository.summarizeByDayAndModel(orgId, people, current.first(), current.last()));
+            CompletableFuture<List<AiUsageEditorTotal>> editorF = loads.supply(() -> people.isEmpty() ? List.<AiUsageEditorTotal>of()
+                    : aiUsageRepository.summarizeInteractionsByEditor(orgId, people, current.first(), current.last()));
+            CompletableFuture<List<AiUsageUserDay>> userDayF = loads.supply(() -> people.isEmpty() ? List.<AiUsageUserDay>of()
+                    : aiUsageRepository.summarizeByUserAndDay(orgId, people, current.first(), current.last()));
             CompletableFuture<List<AiUsageUserTotals>> previousF = loads.supply(() -> people.isEmpty()
                     ? List.<AiUsageUserTotals>of()
                     : aiUsageRepository.summarizeTotalsByUser(orgId, people, period.previous().first(),
                     period.previous().last()));
-            CompletableFuture<Covered> costsF = loads.supply(
-                    () -> coveredCosts(orgId, join(allocationsF), join(usageF)));
             CompletableFuture<Vcs> vcsF = loads.supply(() -> vcs(orgId, loads, join(bindingsF), projectIds, period));
 
             Map<String, List<Sprint>> sprints = join(sprintsF).stream().filter(s -> s.getProjectId() != null)
@@ -170,7 +170,7 @@ public class OrganizationDashboardData {
                 });
             }
             return new Snapshot(projects, users, people, seesAll, items, itemProject, join(vcsF), join(organizationF),
-                    new Ai(join(usageF), join(previousF), join(allocationsF), join(costsF).costs(), join(costsF).tokens()), join(tokensF),
+                    new Ai(join(dayModelF), join(editorF), join(userDayF), join(previousF), join(allocationsF)), join(tokensF),
                     join(azureF),
                     join(githubF), join(azureBindingsF).stream().filter(b -> projectIds.contains(b.getProjectId())).toList(),
                     join(syncF).stream().filter(c -> c.projectId() == null || projectIds.contains(c.projectId()))
@@ -210,79 +210,15 @@ public class OrganizationDashboardData {
                 .filter(Objects::nonNull).collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
-    private List<AiUsageAllocation> allocations(String orgId, Map<String, CompletableFuture<List<WorkItem>>> itemsF,
+    private List<AllocationCoverage> allocations(String orgId, Map<String, CompletableFuture<List<WorkItem>>> itemsF,
                                                 DayRange range) {
         Set<String> ids = new LinkedHashSet<>();
         itemsF.values().forEach(f -> join(f).forEach(i -> {
             if (i.getId() != null) ids.add(i.getId());
         }));
         if (ids.isEmpty()) return List.of();
-        return allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(orgId, ids,
+        return allocationRepository.summarizeValidatedCoverage(orgId, ids,
                 range.first(), range.last());
-    }
-
-    /**
-     * The people's usage of the range (lean), read in parallel: up to {@value #USAGE_GROUPS} groups
-     * of people, each over up to {@value #USAGE_SLICES} consecutive slices of days.
-     */
-    private List<AIUsage> usage(String orgId, ConcurrentLoads loads, Set<String> people, DayRange range) {
-        if (people.isEmpty()) return List.of();
-        List<String> all = List.copyOf(people);
-        int size = Math.max(1, (all.size() + USAGE_GROUPS - 1) / USAGE_GROUPS);
-        List<DayRange> slices = slices(range, USAGE_SLICES);
-        List<CompletableFuture<List<AIUsage>>> parts = new java.util.ArrayList<>();
-        for (int from = 0; from < all.size(); from += size) {
-            List<String> group = all.subList(from, Math.min(all.size(), from + size));
-            for (DayRange slice : slices) {
-                parts.add(loads.supply(() -> aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(
-                        orgId, group, slice.first(), slice.last())));
-            }
-        }
-        return parts.stream().flatMap(f -> join(f).stream()).toList();
-    }
-
-    /** {@code range} cut into at most {@code count} consecutive, non-overlapping slices covering it. */
-    static List<DayRange> slices(DayRange range, int count) {
-        long days = java.time.temporal.ChronoUnit.DAYS.between(range.first(), range.last()) + 1;
-        long step = Math.max(1, (days + count - 1) / count);
-        List<DayRange> slices = new java.util.ArrayList<>();
-        for (LocalDate start = range.first(); !start.isAfter(range.last()); start = start.plusDays(step)) {
-            LocalDate end = start.plusDays(step - 1);
-            slices.add(new DayRange(start, end.isAfter(range.last()) ? range.last() : end));
-        }
-        return slices;
-    }
-
-    /** Cost and tokens (input + output) of every record the allocations cover, by record id. */
-    public record Covered(Map<String, BigDecimal> costs, Map<String, Long> tokens) {}
-
-    /** Cost and tokens of every record the allocations cover: from the people's usage, the rest read by id. */
-    private Covered coveredCosts(String orgId, List<AiUsageAllocation> allocations, List<AIUsage> usage) {
-        Map<String, AIUsage> known = new HashMap<>();
-        usage.forEach(u -> {
-            if (u.getId() != null) known.put(u.getId(), u);
-        });
-        Map<String, BigDecimal> costs = new HashMap<>();
-        Map<String, Long> tokens = new HashMap<>();
-        Set<String> missing = new LinkedHashSet<>();
-        allocations.stream().filter(a -> a.getAiUsageIds() != null).flatMap(a -> a.getAiUsageIds().stream())
-                .filter(Objects::nonNull).forEach(id -> {
-                    AIUsage record = known.get(id);
-                    if (record != null) remember(costs, tokens, record);
-                    else missing.add(id);
-                });
-        if (!missing.isEmpty()) {
-            aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(orgId, missing)
-                    .forEach(u -> {
-                        if (u.getId() != null) remember(costs, tokens, u);
-                    });
-        }
-        return new Covered(costs, tokens);
-    }
-
-    private static void remember(Map<String, BigDecimal> costs, Map<String, Long> tokens, AIUsage record) {
-        if (record.getCostUsd() != null) costs.put(record.getId(), record.getCostUsd());
-        tokens.put(record.getId(), record.getInputTokens() + record.getOutputTokens());
     }
 
     private Vcs vcs(String orgId, ConcurrentLoads loads, List<VcsRepoBinding> allBindings, Set<String> projectIds,
@@ -374,10 +310,12 @@ public class OrganizationDashboardData {
     }
 
     /**
-     * {@code usage}: the people's records of the current period (lean); {@code previous}: the people's
-     * usage of the previous period summed per person; {@code allocations}: validated allocations
-     * splitting to visible work items, of both periods; {@code coveredCosts}: the cost of every record those allocations cover, by record id.
+     * {@code byDayModel}, {@code byEditor}, {@code byUserDay}: the people's usage of the current period
+     * summed in the database; {@code previous}: the previous period summed per person;
+     * {@code allocations}: validated allocations splitting to visible work items, of both periods, each
+     * with the cost and tokens of the records it covers.
      */
-    public record Ai(List<AIUsage> usage, List<AiUsageUserTotals> previous, List<AiUsageAllocation> allocations,
-                     Map<String, BigDecimal> coveredCosts, Map<String, Long> coveredTokens) {}
+    public record Ai(List<AiUsageDayModel> byDayModel, List<AiUsageEditorTotal> byEditor,
+                     List<AiUsageUserDay> byUserDay, List<AiUsageUserTotals> previous,
+                     List<AllocationCoverage> allocations) {}
 }

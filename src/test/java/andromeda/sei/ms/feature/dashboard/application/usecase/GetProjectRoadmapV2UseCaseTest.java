@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.AllocationCoverageStubs;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBindingRepository;
 import andromeda.sei.ms.feature.azure.domain.FieldMapping;
@@ -246,9 +247,7 @@ class GetProjectRoadmapV2UseCaseTest {
                 List.of("u1"), List.of(new AllocationSplit("c1", "Item", new BigDecimal("0.8")),
                 new AllocationSplit("elsewhere", "Other", new BigDecimal("0.2"))),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(eq(ORG), anyCollection()))
-                .thenReturn(List.of(partial));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(partial), List.of(
                 new AIUsage("u1", ORG, "user-a", "gh", "ds", java.time.LocalDate.parse("2026-09-05"), "claude", "w", "w",
                         "m", "m", 600, 400, 2, "vscode", "al1", new BigDecimal("10.00"), NOW, true, 0L, NOW, NOW)));
 
@@ -274,7 +273,7 @@ class GetProjectRoadmapV2UseCaseTest {
         when(sprintRepository.findAllByOrganizationIdAndProjectId(ORG, PROJECT)).thenReturn(List.of(
                 sprint("s1", Sprint.TimeFrame.PAST, "2026-09-01", "2026-09-14")));
         items.add(inSprint(calibrated("c1", 3.0, 2.0, 10.0, List.of()), "s1"));
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdIn(eq(ORG), anyCollection())).thenReturn(List.of());
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(), List.of());
 
         ProjectRoadmapV2Output out = useCase.execute(ORG, PROJECT, 90);
 

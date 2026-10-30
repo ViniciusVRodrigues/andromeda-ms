@@ -1,0 +1,399 @@
+{
+  "ai": {
+    "adoption": {
+      "activeUsers": 3,
+      "members": 3
+    },
+    "costByBucket": [
+      {
+        "byModel": {
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 3.65583321,
+          "gpt-5": 3.11489623
+        },
+        "label": "21/09",
+        "start": "2026-09-21"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 0.6936953,
+          "claude-sonnet-5": 0,
+          "gpt-5": 5.79463674
+        },
+        "label": "28/09",
+        "start": "2026-09-28"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 5.44899761,
+          "claude-sonnet-5": 5.30346695,
+          "gpt-5": 2.71860276
+        },
+        "label": "05/10",
+        "start": "2026-10-05"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 11.70063658,
+          "claude-sonnet-5": 0,
+          "gpt-5": 0.14577336
+        },
+        "label": "12/10",
+        "start": "2026-10-12"
+      }
+    ],
+    "models": [
+      "claude-opus-5",
+      "gpt-5",
+      "claude-sonnet-5"
+    ],
+    "subscription": {
+      "consumptionUsd": 273.885545,
+      "perUserMonthUsd": null,
+      "subscriptionUsd": null
+    },
+    "tokensPerHour": null,
+    "tokensPerPoint": null
+  },
+  "asOf": "2026-10-15T12:00:00Z",
+  "dataQuality": {
+    "aiDaysAllocatedPct": 60,
+    "itemsWithComplexity": 0,
+    "itemsWithEstimatePct": null,
+    "prsLinkedPct": null,
+    "tasksWithEffort": 0
+  },
+  "dora": {
+    "changeFailureRate": {
+      "estimated": true,
+      "grade": "LOW",
+      "pct": 50
+    },
+    "deployFrequency": {
+      "estimated": true,
+      "grade": "MEDIUM",
+      "perWeek": 0.47
+    },
+    "leadTime": {
+      "grade": null,
+      "hours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    "method": "BOARDS_PROXY"
+  },
+  "doraSeries": [
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "21/09",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-09-21"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "28/09",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-09-28"
+    },
+    {
+      "changeFailurePct": 100,
+      "deployFreqPerWeek": 1,
+      "estimated": true,
+      "label": "05/10",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-10-05"
+    },
+    {
+      "changeFailurePct": 0,
+      "deployFreqPerWeek": 1,
+      "estimated": true,
+      "label": "12/10",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-10-12"
+    }
+  ],
+  "flow": [
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "21/09",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-09-21"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "28/09",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-09-28"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "05/10",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-10-05"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "12/10",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-10-12"
+    }
+  ],
+  "kpis": {
+    "aiCostPerHour": 7.969214,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 55.78450039,
+    "bugSharePct": 50,
+    "cfrPct": 50,
+    "commitsCount": 0,
+    "complexityDelivered": 0,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": 0.47,
+    "effortLogged": 7,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": null,
+    "prsMerged": 0,
+    "stalePrs": 0,
+    "throughput": 2,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "people": {
+    "aiConnected": 0,
+    "azureLinked": 0,
+    "githubLinked": 0,
+    "members": 3
+  },
+  "period": {
+    "days": 30,
+    "end": "2026-10-15",
+    "granularity": "semana",
+    "previousEnd": "2026-09-15",
+    "previousStart": "2026-08-17",
+    "start": "2026-09-16"
+  },
+  "prFlow": [
+    {
+      "label": "21/09",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-09-21",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "28/09",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-09-28",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "05/10",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-10-05",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "12/10",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-10-12",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    }
+  ],
+  "previous": {
+    "aiCostPerHour": null,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 54.57229046,
+    "bugSharePct": null,
+    "cfrPct": null,
+    "commitsCount": 0,
+    "complexityDelivered": 0,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": null,
+    "effortLogged": null,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": null,
+    "prsMerged": 0,
+    "stalePrs": null,
+    "throughput": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "project": {
+    "id": "proj-2",
+    "memberCount": 3,
+    "name": "Bootes",
+    "repos": [],
+    "team": "Time proj-2"
+  },
+  "quality": [
+    {
+      "bugSharePct": null,
+      "label": "21/09",
+      "start": "2026-09-21"
+    },
+    {
+      "bugSharePct": null,
+      "label": "28/09",
+      "start": "2026-09-28"
+    },
+    {
+      "bugSharePct": 100,
+      "label": "05/10",
+      "start": "2026-10-05"
+    },
+    {
+      "bugSharePct": 0,
+      "label": "12/10",
+      "start": "2026-10-12"
+    }
+  ],
+  "repos": [],
+  "sprints": [
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.51605717,
+      "aiTokens": 396069,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.2",
+      "name": "Sprint passada 2.2",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p2"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 25.81013351,
+      "aiTokens": 479795,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.1",
+      "name": "Sprint passada 2.1",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p1"
+    }
+  ],
+  "throughput": [
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "21/09",
+      "start": "2026-09-21"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "28/09",
+      "start": "2026-09-28"
+    },
+    {
+      "BUG": 1,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "05/10",
+      "start": "2026-10-05"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "12/10",
+      "start": "2026-10-12"
+    }
+  ]
+}

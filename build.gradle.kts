@@ -53,6 +53,8 @@ tasks.withType<Test> {
 	testLogging {
 		exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
 	}
+	// PERF2: -Dperf2.parity.record=true grava os golden do DashboardAiParityTest (a propriedade nao chega sozinha ao JVM do teste).
+	System.getProperty("perf2.parity.record")?.let { systemProperty("perf2.parity.record", it) }
 }
 
 // Carrega .env como variáveis de ambiente no bootRun (nunca commitar .env)

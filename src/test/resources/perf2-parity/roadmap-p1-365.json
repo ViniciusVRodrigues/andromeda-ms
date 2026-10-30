@@ -1,0 +1,276 @@
+{
+  "asOf": "2026-10-15T12:00:00Z",
+  "backlog": {
+    "byPriority": [
+      {
+        "count": 1,
+        "priority": 1,
+        "stale": 0
+      },
+      {
+        "count": 0,
+        "priority": 2,
+        "stale": 0
+      },
+      {
+        "count": 0,
+        "priority": 3,
+        "stale": 0
+      },
+      {
+        "count": 0,
+        "priority": 4,
+        "stale": 0
+      }
+    ],
+    "byTag": [],
+    "count": 1,
+    "forgotten": [
+      {
+        "complexity": null,
+        "daysWithoutChange": 1,
+        "effort": 2,
+        "effortRolledUp": null,
+        "externalId": "p1-i6",
+        "priority": 1,
+        "tags": [],
+        "title": "Item p1-i6",
+        "type": "TASK"
+      }
+    ],
+    "points": null,
+    "staleness": [
+      {
+        "count": 1,
+        "label": "até 30 dias",
+        "maxDays": 30,
+        "minDays": 0
+      },
+      {
+        "count": 0,
+        "label": "30–60 dias",
+        "maxDays": 60,
+        "minDays": 30
+      },
+      {
+        "count": 0,
+        "label": "60–90 dias",
+        "maxDays": 90,
+        "minDays": 60
+      },
+      {
+        "count": 0,
+        "label": "mais de 90 dias",
+        "maxDays": null,
+        "minDays": 90
+      }
+    ],
+    "unestimatedPct": 0,
+    "withoutParentPct": 0
+  },
+  "calibration": {
+    "byComplexity": [
+      {
+        "aiCostUsd": 130.39967177,
+        "aiTokens": 1747184,
+        "avgEffort": 6,
+        "complexity": 1,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effortHours": {
+          "n": 1,
+          "p25": 6,
+          "p50": 6,
+          "p75": 6
+        },
+        "itemsWithAi": 1,
+        "label": "1",
+        "unitsWithoutEffort": 0
+      },
+      {
+        "aiCostUsd": 104.74132354,
+        "aiTokens": 1526761,
+        "avgEffort": 4,
+        "complexity": 2,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effortHours": {
+          "n": 1,
+          "p25": 4,
+          "p50": 4,
+          "p75": 4
+        },
+        "itemsWithAi": 1,
+        "label": "2",
+        "unitsWithoutEffort": 0
+      },
+      {
+        "aiCostUsd": 222.03268684,
+        "aiTokens": 3376726,
+        "avgEffort": 5,
+        "complexity": 8,
+        "count": 2,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effortHours": {
+          "n": 2,
+          "p25": 2,
+          "p50": 2,
+          "p75": 8
+        },
+        "itemsWithAi": 2,
+        "label": "8",
+        "unitsWithoutEffort": 0
+      }
+    ],
+    "byEffort": [
+      {
+        "aiCostUsd": 81.70868125,
+        "aiTokens": 1361972,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 1,
+        "itemsWithAi": 1,
+        "label": "1"
+      },
+      {
+        "aiCostUsd": 102.4154056,
+        "aiTokens": 1457732,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 2,
+        "itemsWithAi": 1,
+        "label": "2"
+      },
+      {
+        "aiCostUsd": 196.10461074,
+        "aiTokens": 2741772,
+        "count": 2,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 4,
+        "itemsWithAi": 2,
+        "label": "4"
+      },
+      {
+        "aiCostUsd": 130.39967177,
+        "aiTokens": 1747184,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 6,
+        "itemsWithAi": 1,
+        "label": "6"
+      },
+      {
+        "aiCostUsd": 119.61728124,
+        "aiTokens": 1918995,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 8,
+        "itemsWithAi": 1,
+        "label": "8"
+      }
+    ],
+    "outliers": [
+      {
+        "complexity": 8,
+        "effortHours": 8,
+        "externalId": "p1-i11",
+        "title": "Item p1-i11",
+        "type": "STORY",
+        "url": null
+      }
+    ],
+    "overridePct": 0,
+    "overrides": []
+  },
+  "config": {
+    "complexityField": null,
+    "effortBearingLevel": {
+      "configured": "AUTO",
+      "inferred": "STORY_AND_TASK"
+    },
+    "effortField": null
+  },
+  "deliveredByTag": [],
+  "epics": [
+    {
+      "complexityDone": 19,
+      "complexityDoneInPeriod": 19,
+      "complexityTotal": 27,
+      "effortDone": 40,
+      "effortTotal": 50,
+      "externalId": "p1-e1",
+      "featureCount": 1,
+      "featuresDone": 0,
+      "forecastWeeks": 40,
+      "itemsDone": 9,
+      "itemsTotal": 12,
+      "lastActivityAt": "2026-10-14T12:00:00Z",
+      "pctDone": 80,
+      "pointsPerWeek": 1,
+      "status": "IN_PROGRESS",
+      "tags": [],
+      "title": "Item p1-e1",
+      "unestimated": 0,
+      "weeklyPace": 0.25
+    }
+  ],
+  "features": [
+    {
+      "complexityDone": 19,
+      "complexityDoneInPeriod": 19,
+      "complexityTotal": 27,
+      "effortDone": 40,
+      "effortTotal": 50,
+      "epic": "Item p1-e1",
+      "externalId": "p1-f1",
+      "forecastWeeks": 40,
+      "itemsDone": 9,
+      "itemsTotal": 12,
+      "lastActivityAt": "2026-10-14T12:00:00Z",
+      "parentExternalId": "p1-e1",
+      "pctDone": 80,
+      "pointsPerWeek": 1,
+      "status": "IN_PROGRESS",
+      "title": "Item p1-f1",
+      "unestimated": 0,
+      "weeklyPace": 0.25
+    }
+  ],
+  "period": {
+    "days": 365,
+    "end": "2026-10-15",
+    "start": "2025-10-16"
+  }
+}

@@ -2,9 +2,12 @@ package andromeda.sei.ms.feature.aiusage.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageDayModel;
+import andromeda.sei.ms.feature.aiusage.domain.AiUsageEditorTotal;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.shared.infrastructure.persistence.ParallelChunks;
 import andromeda.sei.ms.shared.infrastructure.persistence.RawDocuments;
+import com.mongodb.MongoCommandException;
 import com.mongodb.client.MongoCollection;
 import org.bson.Document;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageModelOutput;
@@ -354,11 +357,7 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 new Document("$ifNull", Arrays.asList("$allocationId", null)), null));
         Document cost = new Document("$ifNull", Arrays.asList("$costUsd", 0));
         List<Document> pipeline = List.of(
-                new Document("$match", new Document("organizationId", organizationId)
-                        .append("userId", new Document("$in", List.copyOf(userIds)))
-                        .append("active", true)
-                        .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
-                                .append("$lte", RawDocuments.storedDay(mongoTemplate, to)))),
+                dashboardUsageMatch(organizationId, userIds, from, to),
                 new Document("$group", new Document("_id", new Document("userId", "$userId").append("day", "$day"))
                         .append("cost", new Document("$sum", cost))
                         .append("unallocated", new Document("$sum",
@@ -367,11 +366,73 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                         .append("claimed", new Document("$max",
                                 new Document("$cond", Arrays.asList(unclaimed, 0, 1))))));
         List<AiUsageUserDay> rows = new ArrayList<>();
-        for (Document row : usageCollection().aggregate(pipeline)) {
+        for (Document row : aggregateCovered(pipeline)) {
             Document key = row.get("_id", Document.class);
             rows.add(new AiUsageUserDay(key.getString("userId"), RawDocuments.day(mongoTemplate, key.get("day")),
                     RawDocuments.decimal(row.get("cost")), RawDocuments.decimal(row.get("unallocated")),
                     RawDocuments.longValue(row.get("records")), RawDocuments.longValue(row.get("claimed")) > 0));
+        }
+        return rows;
+    }
+
+    /**
+     * The only usage filter of the dashboards: organization, users, active, day within {@code [from, to]}
+     * in the stored form. Every dashboard aggregation starts from it, so a predicate added here applies
+     * to all of them.
+     */
+    private Document dashboardUsageMatch(String organizationId, java.util.Collection<String> userIds,
+                                         LocalDate from, LocalDate to) {
+        return new Document("$match", new Document("organizationId", organizationId)
+                .append("userId", new Document("$in", List.copyOf(userIds)))
+                .append("active", true)
+                .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
+                        .append("$lte", RawDocuments.storedDay(mongoTemplate, to))));
+    }
+
+    /** Raw aggregation: one row per (day, model); a null model is its own group. */
+    @Override
+    public List<AiUsageDayModel> summarizeByDayAndModel(String organizationId, java.util.Collection<String> userIds,
+                                                        LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        List<Document> pipeline = dayAndModelPipeline(organizationId, userIds, from, to);
+        List<AiUsageDayModel> rows = new ArrayList<>();
+        for (Document row : aggregateCovered(pipeline)) {
+            Document key = row.get("_id", Document.class);
+            Object uploaded = row.get("lastUploadedAt");
+            rows.add(new AiUsageDayModel(RawDocuments.day(mongoTemplate, key.get("day")), key.getString("model"),
+                    RawDocuments.longValue(row.get("input")), RawDocuments.longValue(row.get("output")),
+                    RawDocuments.longValue(row.get("interactions")), RawDocuments.decimal(row.get("cost")),
+                    uploaded instanceof java.util.Date date ? date.toInstant() : null));
+        }
+        return rows;
+    }
+
+    List<Document> dayAndModelPipeline(String organizationId, java.util.Collection<String> userIds,
+                                       LocalDate from, LocalDate to) {
+        return List.of(
+                dashboardUsageMatch(organizationId, userIds, from, to),
+                new Document("$group", new Document("_id", new Document("day", "$day").append("model", "$model"))
+                        .append("input", new Document("$sum", "$inputTokens"))
+                        .append("output", new Document("$sum", "$outputTokens"))
+                        .append("interactions", new Document("$sum", "$interactions"))
+                        .append("cost", new Document("$sum", new Document("$ifNull", Arrays.asList("$costUsd", 0))))
+                        .append("lastUploadedAt", new Document("$max", "$uploadedAt"))));
+    }
+
+    /** Raw aggregation: interactions per editor; a null editor is its own group. */
+    @Override
+    public List<AiUsageEditorTotal> summarizeInteractionsByEditor(String organizationId,
+            java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        List<Document> pipeline = List.of(
+                dashboardUsageMatch(organizationId, userIds, from, to),
+                new Document("$group", new Document("_id", "$editor")
+                        .append("interactions", new Document("$sum", "$interactions"))));
+        List<AiUsageEditorTotal> rows = new ArrayList<>();
+        for (Document row : aggregateCovered(pipeline)) {
+            Object editor = row.get("_id");
+            rows.add(new AiUsageEditorTotal(editor == null ? null : editor.toString(),
+                    RawDocuments.longValue(row.get("interactions"))));
         }
         return rows;
     }
@@ -402,6 +463,20 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                 RawDocuments.longValue(document.get("inputTokens")), RawDocuments.longValue(document.get("outputTokens")),
                 (int) RawDocuments.longValue(document.get("interactions")), null, document.getString("allocationId"),
                 RawDocuments.decimal(document.get("costUsd")), null, true, null, null, null);
+    }
+
+    /**
+     * Runs a dashboard sum with the covering index as hint (PERF2 D6). If the index does not exist
+     * (its build failed) the same pipeline runs again without the hint: slower, same numbers.
+     */
+    private List<Document> aggregateCovered(List<Document> pipeline) {
+        try {
+            return usageCollection().aggregate(pipeline).hintString(AiUsageDocument.DASHBOARD_COVER_INDEX)
+                    .into(new ArrayList<>());
+        } catch (MongoCommandException e) {
+            if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("hint")) throw e;
+            return usageCollection().aggregate(pipeline).into(new ArrayList<>());
+        }
     }
 
     private MongoCollection<Document> usageCollection() {
@@ -481,17 +556,13 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
             String organizationId, java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
         if (userIds == null || userIds.isEmpty()) return List.of();
         List<Document> pipeline = List.of(
-                new Document("$match", new Document("organizationId", organizationId)
-                        .append("userId", new Document("$in", List.copyOf(userIds)))
-                        .append("active", true)
-                        .append("day", new Document("$gte", RawDocuments.storedDay(mongoTemplate, from))
-                                .append("$lte", RawDocuments.storedDay(mongoTemplate, to)))),
+                dashboardUsageMatch(organizationId, userIds, from, to),
                 new Document("$group", new Document("_id", "$userId")
                         .append("cost", new Document("$sum", new Document("$ifNull", Arrays.asList("$costUsd", 0))))
                         .append("input", new Document("$sum", "$inputTokens"))
                         .append("output", new Document("$sum", "$outputTokens"))));
         List<andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals> rows = new ArrayList<>();
-        for (Document row : usageCollection().aggregate(pipeline)) {
+        for (Document row : aggregateCovered(pipeline)) {
             rows.add(new andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals(row.getString("_id"),
                     RawDocuments.decimal(row.get("cost")), RawDocuments.longValue(row.get("input")),
                     RawDocuments.longValue(row.get("output"))));

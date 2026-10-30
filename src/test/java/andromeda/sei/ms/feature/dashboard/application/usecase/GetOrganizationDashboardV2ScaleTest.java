@@ -164,16 +164,14 @@ class GetOrganizationDashboardV2ScaleTest {
         }
         when(projectRepository.findAllActiveByOrganizationId(ORG)).thenReturn(projects);
         when(userRepository.findAllByOrganizationId(ORG)).thenReturn(users);
-        when(aiUsageRepository.findDashboardFieldsByOrganizationIdAndUserIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenAnswer(inv -> {
-                    java.util.Collection<String> asked = inv.getArgument(1);
-                    LocalDate from = inv.getArgument(2);
-                    LocalDate to = inv.getArgument(3);
-                    return usage.stream().filter(u -> asked.contains(u.getUserId()) && !u.getDay().isBefore(from)
-                            && !u.getDay().isAfter(to)).toList();
-                });
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenReturn(allocations);
+        when(aiUsageRepository.summarizeByDayAndModel(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byDayAndModel(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
+        when(aiUsageRepository.summarizeInteractionsByEditor(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byEditor(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(), any(), any())).thenAnswer(inv ->
+                OrganizationAiSums.byUserAndDay(usage, inv.getArgument(1), inv.getArgument(2), inv.getArgument(3)));
+        when(allocationRepository.summarizeValidatedCoverage(eq(ORG), anyCollection(), any(), any()))
+                .thenReturn(OrganizationAiSums.coverage(allocations, usage));
         when(sprintRepository.findAllByOrganizationId(ORG)).thenReturn(sprints);
         when(bindingRepository.findAllActiveByOrganizationId(ORG)).thenReturn(bindings);
         when(repositoryRepository.findAllByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(repositories);
@@ -209,7 +207,7 @@ class GetOrganizationDashboardV2ScaleTest {
                 .allSatisfy(p -> assertThat(p.sprints()).hasSize(SPRINTS_PER_PROJECT));
         org.mockito.Mockito.verify(sprintRepository, org.mockito.Mockito.times(2)).findAllByOrganizationId(ORG);
         org.mockito.Mockito.verify(allocationRepository, org.mockito.Mockito.times(2))
-                .findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(), any(), any());
+                .summarizeValidatedCoverage(eq(ORG), anyCollection(), any(), any());
         for (var p : out.sprintHistory().projects()) {
             BigDecimal inSprints = p.sprints().stream().map(s -> s.aiCostUsd()).reduce(BigDecimal.ZERO, BigDecimal::add);
             BigDecimal ofProject = out.ai().costByProject().stream().filter(r -> p.projectId().equals(r.projectId()))

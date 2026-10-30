@@ -17,6 +17,9 @@ import java.time.LocalDate;
 
 @Document(collection = "ai_usages")
 @CompoundIndexes({
+        // Covers the dashboard sums (PERF2 D6): every field they read is in the key, so no document is fetched.
+        @CompoundIndex(name = AiUsageDocument.DASHBOARD_COVER_INDEX,
+                def = "{'organizationId':1,'userId':1,'day':1,'active':1,'model':1,'editor':1,'costUsd':1,'inputTokens':1,'outputTokens':1,'interactions':1,'allocationId':1,'uploadedAt':1,'_id':1}"),
         @CompoundIndex(def = "{'organizationId': 1, 'userId': 1, 'day': 1}"),
         @CompoundIndex(
                 def = "{'organizationId':1,'userId':1,'datasetId':1,'day':1,'model':1,'workspaceId':1,'machineId':1}",
@@ -35,6 +38,8 @@ import java.time.LocalDate;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AiUsageDocument {
+
+    public static final String DASHBOARD_COVER_INDEX = "idx_ai_usage_dashboard_cover";
 
     @Id
     private String id;

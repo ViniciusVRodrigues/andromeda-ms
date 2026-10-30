@@ -1,16 +1,17 @@
 package andromeda.sei.ms.feature.dashboard.application;
 
-import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
-import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverageDetail;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
  * of its split percentages that point to work items of the project. This is the same basis as the
  * developer dashboard's cost per work item, so both dashboards answer the same question the same
  * way — and a member working on two projects is charged to each only for what was allocated there.
+ * The cost and tokens behind each allocation are summed in the database (dashboard-agregado-mongo D2).
  *
  * <p>Cost not allocated yet is reported apart: usage records of the members in the window that no
  * allocation claimed ({@code allocationId == null}).
@@ -38,94 +40,66 @@ public class ProjectAiCostCalculator {
 
     public ProjectAiCost calculate(String organizationId, Set<String> projectWorkItemIds,
                                    Collection<String> memberUserIds, LocalDate from, LocalDate to) {
-        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
-        Map<String, AIUsage> usageById = allocations.isEmpty() ? Map.of() : usageById(organizationId, allocations);
+        List<AllocationCoverage> allocations = projectWorkItemIds.isEmpty() ? List.of()
+                : allocationRepository.summarizeValidatedCoverage(organizationId, projectWorkItemIds, from, to)
+                        .stream()
+                        .filter(a -> projectShare(a.splits(), projectWorkItemIds).signum() > 0)
+                        .toList();
         return new ProjectAiCost(
-                allocatedByUser(allocations, usageById, projectWorkItemIds),
+                allocatedByUser(allocations, projectWorkItemIds),
                 unallocatedByUser(organizationId, memberUserIds, from, to),
-                allocatedTokens(allocations, usageById, projectWorkItemIds));
+                allocatedTokens(allocations, projectWorkItemIds));
     }
 
     /**
      * Tokens (input + output) behind the allocated cost, same allocations and same share weighting;
      * {@code null} when nothing is allocated to the project in the window.
      */
-    private static Long allocatedTokens(List<AiUsageAllocation> allocations, Map<String, AIUsage> usageById,
-                                        Set<String> projectWorkItemIds) {
+    private static Long allocatedTokens(List<AllocationCoverage> allocations, Set<String> projectWorkItemIds) {
         if (allocations.isEmpty()) return null;
         BigDecimal total = BigDecimal.ZERO;
-        for (AiUsageAllocation allocation : allocations) {
-            if (allocation.getAiUsageIds() == null) continue;
-            BigDecimal share = projectShare(allocation, projectWorkItemIds);
-            for (String id : allocation.getAiUsageIds()) {
-                AIUsage usage = usageById.get(id);
-                if (usage == null) continue;
-                total = total.add(share.multiply(BigDecimal.valueOf(usage.getInputTokens() + usage.getOutputTokens())));
-            }
+        for (AllocationCoverage allocation : allocations) {
+            total = total.add(projectShare(allocation.splits(), projectWorkItemIds)
+                    .multiply(BigDecimal.valueOf(allocation.tokens())));
         }
         return total.setScale(0, java.math.RoundingMode.HALF_UP).longValue();
     }
 
     /**
-     * The usage records behind {@link ProjectAiCost#allocatedByUser}, each with the share of it that
-     * the project carries: summing {@code costUsd × share} gives {@link ProjectAiCost#totalAllocated}
-     * for the same window, so per-day and per-model breakdowns reconcile with the headline cost.
+     * The usage behind {@link ProjectAiCost#allocatedByUser}, per (day, model) of the usage record, each
+     * with the share of it that the project carries: summing {@code costUsd × share} gives
+     * {@link ProjectAiCost#totalAllocated} for the same window, so per-day and per-model breakdowns
+     * reconcile with the headline cost.
      */
     public List<AllocatedUsage> allocatedUsage(String organizationId, Set<String> projectWorkItemIds,
                                                LocalDate from, LocalDate to) {
-        List<AiUsageAllocation> allocations = projectAllocations(organizationId, projectWorkItemIds, from, to);
-        if (allocations.isEmpty()) return List.of();
-        Map<String, AIUsage> usageById = usageById(organizationId, allocations);
-        return allocations.stream()
-                .filter(a -> a.getAiUsageIds() != null)
-                .flatMap(a -> a.getAiUsageIds().stream()
-                        .map(usageById::get)
-                        .filter(Objects::nonNull)
-                        .map(usage -> new AllocatedUsage(usage, projectShare(a, projectWorkItemIds))))
-                .toList();
-    }
-
-    private List<AiUsageAllocation> projectAllocations(String organizationId, Set<String> projectWorkItemIds,
-                                                       LocalDate from, LocalDate to) {
         if (projectWorkItemIds.isEmpty()) return List.of();
-        // Scoped by the project's work items in the query (indexed), not the whole organization's
-        // allocations of the window filtered here; the share filter below stays the source of truth.
-        return allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
-                        organizationId, projectWorkItemIds, from, to).stream()
-                .filter(a -> projectShare(a, projectWorkItemIds).signum() > 0)
-                .toList();
+        List<AllocatedUsage> result = new ArrayList<>();
+        for (AllocationCoverageDetail d : allocationRepository.summarizeValidatedCoverageByDayAndModel(
+                organizationId, projectWorkItemIds, from, to)) {
+            BigDecimal share = projectShare(d.splits(), projectWorkItemIds);
+            if (share.signum() <= 0) continue;
+            result.add(new AllocatedUsage(d.day(), d.model(), d.inputTokens(), d.outputTokens(), d.interactions(),
+                    d.costUsd(), share));
+        }
+        return result;
     }
 
-    private Map<String, AIUsage> usageById(String organizationId, List<AiUsageAllocation> allocations) {
-        Set<String> usageIds = allocations.stream()
-                .filter(a -> a.getAiUsageIds() != null)
-                .flatMap(a -> a.getAiUsageIds().stream())
-                .collect(Collectors.toSet());
-        return aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(organizationId, usageIds).stream()
-                .filter(u -> u.getId() != null)
-                .collect(Collectors.toMap(AIUsage::getId, u -> u, (first, second) -> first));
-    }
-
-    private static Map<String, BigDecimal> allocatedByUser(List<AiUsageAllocation> allocations,
-                                                           Map<String, AIUsage> usageById,
+    private static Map<String, BigDecimal> allocatedByUser(List<AllocationCoverage> allocations,
                                                            Set<String> projectWorkItemIds) {
         if (allocations.isEmpty()) return Map.of();
         Map<String, BigDecimal> byUser = new HashMap<>();
-        for (AiUsageAllocation allocation : allocations) {
-            BigDecimal basis = allocation.getAiUsageIds() == null ? BigDecimal.ZERO : allocation.getAiUsageIds()
-                    .stream().map(usageById::get)
-                    .filter(u -> u != null && u.getId() != null && u.getCostUsd() != null)
-                    .map(AIUsage::getCostUsd)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            byUser.merge(allocation.getUserId(), basis.multiply(projectShare(allocation, projectWorkItemIds)),
+        for (AllocationCoverage allocation : allocations) {
+            BigDecimal basis = allocation.costUsd() == null ? BigDecimal.ZERO : allocation.costUsd();
+            byUser.merge(allocation.userId(), basis.multiply(projectShare(allocation.splits(), projectWorkItemIds)),
                     BigDecimal::add);
         }
         return byUser;
     }
 
-    private static BigDecimal projectShare(AiUsageAllocation allocation, Set<String> projectWorkItemIds) {
-        if (allocation.getSplits() == null) return BigDecimal.ZERO;
-        return allocation.getSplits().stream()
+    private static BigDecimal projectShare(List<AllocationSplit> splits, Set<String> projectWorkItemIds) {
+        if (splits == null) return BigDecimal.ZERO;
+        return splits.stream()
                 .filter(split -> split.getPercentage() != null && projectWorkItemIds.contains(split.getWorkItemId()))
                 .map(AllocationSplit::getPercentage)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -139,12 +113,13 @@ public class ProjectAiCostCalculator {
                 .collect(Collectors.toMap(AiUsageUserDay::userId, AiUsageUserDay::unallocatedCostUsd, BigDecimal::add));
     }
 
-    /** A usage record and the fraction of it (sum of the project's split percentages) the project carries. */
-    public record AllocatedUsage(AIUsage usage, BigDecimal share) {
+    /** Usage of one (day, model) and the fraction of it (sum of the project's split percentages) the project carries. */
+    public record AllocatedUsage(LocalDate day, String model, long inputTokens, long outputTokens, long interactions,
+                                 BigDecimal costUsd, BigDecimal share) {
 
-        /** {@code costUsd × share}; zero for a record without cost. */
+        /** {@code costUsd × share}; zero for usage without cost. */
         public BigDecimal allocatedCostUsd() {
-            return usage.getCostUsd() == null ? BigDecimal.ZERO : usage.getCostUsd().multiply(share);
+            return costUsd == null ? BigDecimal.ZERO : costUsd.multiply(share);
         }
     }
 

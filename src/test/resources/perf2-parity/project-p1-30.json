@@ -1,0 +1,374 @@
+{
+  "ai": {
+    "adoption": {
+      "activeUsers": 3,
+      "members": 3
+    },
+    "costByBucket": [
+      {
+        "byModel": {
+          "claude-opus-5": 1.4961825,
+          "claude-sonnet-5": 0.81726921,
+          "gpt-5": 7.49884994
+        },
+        "label": "21/09",
+        "start": "2026-09-21"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 3.80243512,
+          "claude-sonnet-5": 4.19582725,
+          "gpt-5": 6.67546725
+        },
+        "label": "28/09",
+        "start": "2026-09-28"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 0.31085712,
+          "claude-sonnet-5": 1.70817676,
+          "gpt-5": 0.2266206
+        },
+        "label": "05/10",
+        "start": "2026-10-05"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 0,
+          "claude-sonnet-5": 0,
+          "gpt-5": 2.44170378
+        },
+        "label": "12/10",
+        "start": "2026-10-12"
+      }
+    ],
+    "models": [
+      "gpt-5",
+      "claude-sonnet-5",
+      "claude-opus-5"
+    ],
+    "subscription": {
+      "consumptionUsd": 237.380117,
+      "perUserMonthUsd": null,
+      "subscriptionUsd": null
+    },
+    "tokensPerHour": null,
+    "tokensPerPoint": null
+  },
+  "asOf": "2026-10-15T12:00:00Z",
+  "dataQuality": {
+    "aiDaysAllocatedPct": 56.82,
+    "itemsWithComplexity": 0,
+    "itemsWithEstimatePct": null,
+    "prsLinkedPct": null,
+    "tasksWithEffort": 0
+  },
+  "dora": {
+    "changeFailureRate": {
+      "estimated": true,
+      "grade": null,
+      "pct": null
+    },
+    "deployFrequency": {
+      "estimated": true,
+      "grade": null,
+      "perWeek": null
+    },
+    "leadTime": {
+      "grade": null,
+      "hours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    "method": "UNAVAILABLE"
+  },
+  "doraSeries": [
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": null,
+      "estimated": true,
+      "label": "21/09",
+      "leadTimeHoursP50": null,
+      "method": "UNAVAILABLE",
+      "start": "2026-09-21"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": null,
+      "estimated": true,
+      "label": "28/09",
+      "leadTimeHoursP50": null,
+      "method": "UNAVAILABLE",
+      "start": "2026-09-28"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": null,
+      "estimated": true,
+      "label": "05/10",
+      "leadTimeHoursP50": null,
+      "method": "UNAVAILABLE",
+      "start": "2026-10-05"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": null,
+      "estimated": true,
+      "label": "12/10",
+      "leadTimeHoursP50": null,
+      "method": "UNAVAILABLE",
+      "start": "2026-10-12"
+    }
+  ],
+  "flow": [
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "21/09",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-09-21"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "28/09",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-09-28"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "05/10",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-10-05"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "12/10",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-10-12"
+    }
+  ],
+  "kpis": {
+    "aiCostPerHour": null,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 66.81487089,
+    "bugSharePct": null,
+    "cfrPct": null,
+    "commitsCount": 0,
+    "complexityDelivered": 0,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": null,
+    "effortLogged": null,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": null,
+    "prsMerged": 0,
+    "stalePrs": 0,
+    "throughput": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "people": {
+    "aiConnected": 0,
+    "azureLinked": 0,
+    "githubLinked": 0,
+    "members": 3
+  },
+  "period": {
+    "days": 30,
+    "end": "2026-10-15",
+    "granularity": "semana",
+    "previousEnd": "2026-09-15",
+    "previousStart": "2026-08-17",
+    "start": "2026-09-16"
+  },
+  "prFlow": [
+    {
+      "label": "21/09",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-09-21",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "28/09",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-09-28",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "05/10",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-10-05",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "12/10",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-10-12",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    }
+  ],
+  "previous": {
+    "aiCostPerHour": 25.38518,
+    "aiCostPerPoint": 6.346295,
+    "aiCostUsd": 50.77035967,
+    "bugSharePct": 0,
+    "cfrPct": 0,
+    "commitsCount": 0,
+    "complexityDelivered": 8,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": 0.23,
+    "effortLogged": 2,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": 88.88888888888889,
+    "prsMerged": 0,
+    "stalePrs": null,
+    "throughput": 1,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "project": {
+    "id": "proj-1",
+    "memberCount": 3,
+    "name": "Orion",
+    "repos": [],
+    "team": "Time proj-1"
+  },
+  "quality": [
+    {
+      "bugSharePct": null,
+      "label": "21/09",
+      "start": "2026-09-21"
+    },
+    {
+      "bugSharePct": null,
+      "label": "28/09",
+      "start": "2026-09-28"
+    },
+    {
+      "bugSharePct": null,
+      "label": "05/10",
+      "start": "2026-10-05"
+    },
+    {
+      "bugSharePct": null,
+      "label": "12/10",
+      "start": "2026-10-12"
+    }
+  ],
+  "repos": [],
+  "sprints": [],
+  "throughput": [
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "21/09",
+      "start": "2026-09-21"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "28/09",
+      "start": "2026-09-28"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "05/10",
+      "start": "2026-10-05"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "12/10",
+      "start": "2026-10-12"
+    }
+  ]
+}

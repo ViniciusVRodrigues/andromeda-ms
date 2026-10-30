@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.AllocationCoverageStubs;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
 import andromeda.sei.ms.feature.dashboard.application.AiUsageSummaries;
@@ -159,10 +160,7 @@ class GetProjectOverviewV2UseCaseTest {
                 inSprint(done("b1", WorkItem.ResolvedType.STORY, 4.0, "2026-08-20T10:00:00Z"), "s2"),
                 inSprint(done("c1", WorkItem.ResolvedType.STORY, 2.0, "2026-06-20T10:00:00Z"), "s0")));
         AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "10.00", "claude");
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any()))
-                .thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(usage));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")), List.of(usage));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
@@ -200,10 +198,7 @@ class GetProjectOverviewV2UseCaseTest {
         t2.setCompletedAt(Instant.parse("2026-08-10T11:00:00Z"));
         items.addAll(List.of(story, t1, t2, bug));
         AIUsage usage = usage("u1", ME, "2026-08-05", "al1", "6.00", "claude");
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
-                .thenReturn(List.of(usage));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")), List.of(usage));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
@@ -226,11 +221,8 @@ class GetProjectOverviewV2UseCaseTest {
         sprints(sprint("s1", "Sprint 1", Sprint.TimeFrame.PAST, "2026-08-03", "2026-08-14"));
         items.add(inSprint(done("a1", WorkItem.ResolvedType.STORY, 5.0, "2026-08-10T10:00:00Z"), "s1"));
         AIUsage allocated = usageTokens("u1", "2026-08-05", "al1", "10.00", 10000, 5000);
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenReturn(List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(allocation("al1", ME, "2026-08-05", "u1", "a1")), List.of(allocated));
         // u2 (1 day, not allocated) is never claimed by a VALIDATED allocation: it stays out of both bases
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
-                .thenReturn(List.of(allocated));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 
@@ -246,10 +238,7 @@ class GetProjectOverviewV2UseCaseTest {
                 List.of(new AllocationSplit("a1", "Item", new BigDecimal("0.4")),
                         new AllocationSplit("other-project-item", "Other", new BigDecimal("0.6"))),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(eq(ORG), anyCollection(),
-                any(), any())).thenReturn(List.of(half));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection()))
-                .thenReturn(List.of(usageTokens("u1", "2026-08-05", "al1", "10.00", 10000, 5000)));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(half), List.of(usageTokens("u1", "2026-08-05", "al1", "10.00", 10000, 5000)));
 
         ProjectOverviewV2Output out = useCase.execute(ORG, PROJECT, 90);
 

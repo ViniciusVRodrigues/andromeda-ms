@@ -1,0 +1,959 @@
+{
+  "ai": {
+    "adoption": {
+      "activeUsers": 3,
+      "members": 3
+    },
+    "costByBucket": [
+      {
+        "byModel": {
+          "claude-opus-5": 13.6253679,
+          "claude-sonnet-5": 14.75554447,
+          "gpt-5": 14.74922335
+        },
+        "label": "nov/25",
+        "start": "2025-11-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 16.78641239,
+          "claude-sonnet-5": 19.31563337,
+          "gpt-5": 9.90171656
+        },
+        "label": "dez/25",
+        "start": "2025-12-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 23.86016896,
+          "claude-sonnet-5": 16.3059636,
+          "gpt-5": 10.43767315
+        },
+        "label": "jan/26",
+        "start": "2026-01-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 15.65952958,
+          "claude-sonnet-5": 8.41077727,
+          "gpt-5": 4.14599071
+        },
+        "label": "fev/26",
+        "start": "2026-02-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 9.47095441,
+          "claude-sonnet-5": 6.40774186,
+          "gpt-5": 18.82473209
+        },
+        "label": "mar/26",
+        "start": "2026-03-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 17.00943818,
+          "claude-sonnet-5": 12.90571003,
+          "gpt-5": 16.72005668
+        },
+        "label": "abr/26",
+        "start": "2026-04-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 16.120604,
+          "claude-sonnet-5": 25.14860611,
+          "gpt-5": 11.70679647
+        },
+        "label": "mai/26",
+        "start": "2026-05-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 13.25802571,
+          "claude-sonnet-5": 23.24882899,
+          "gpt-5": 13.84644294
+        },
+        "label": "jun/26",
+        "start": "2026-06-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 17.41704124,
+          "claude-sonnet-5": 14.2840914,
+          "gpt-5": 14.46911725
+        },
+        "label": "jul/26",
+        "start": "2026-07-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 21.56943517,
+          "claude-sonnet-5": 14.50897271,
+          "gpt-5": 5.83804751
+        },
+        "label": "ago/26",
+        "start": "2026-08-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 6.62149324,
+          "claude-sonnet-5": 14.14221099,
+          "gpt-5": 7.75064491
+        },
+        "label": "set/26",
+        "start": "2026-09-01"
+      },
+      {
+        "byModel": {
+          "claude-opus-5": 17.14963419,
+          "claude-sonnet-5": 5.30346695,
+          "gpt-5": 5.04151542
+        },
+        "label": "out/26",
+        "start": "2026-10-01"
+      }
+    ],
+    "models": [
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "gpt-5"
+    ],
+    "subscription": {
+      "consumptionUsd": 2967.960124,
+      "perUserMonthUsd": null,
+      "subscriptionUsd": null
+    },
+    "tokensPerHour": null,
+    "tokensPerPoint": null
+  },
+  "asOf": "2026-10-15T12:00:00Z",
+  "dataQuality": {
+    "aiDaysAllocatedPct": 46.93,
+    "itemsWithComplexity": 2,
+    "itemsWithEstimatePct": 100,
+    "prsLinkedPct": null,
+    "tasksWithEffort": 4
+  },
+  "dora": {
+    "changeFailureRate": {
+      "estimated": true,
+      "grade": "LOW",
+      "pct": 33.33
+    },
+    "deployFrequency": {
+      "estimated": true,
+      "grade": "LOW",
+      "perWeek": 0.17
+    },
+    "leadTime": {
+      "grade": null,
+      "hours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    "method": "BOARDS_PROXY"
+  },
+  "doraSeries": [
+    {
+      "changeFailurePct": 0,
+      "deployFreqPerWeek": 0.23,
+      "estimated": true,
+      "label": "nov/25",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2025-11-01"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "dez/25",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2025-12-01"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "jan/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-01-01"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "fev/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-02-01"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "mar/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-03-01"
+    },
+    {
+      "changeFailurePct": 0,
+      "deployFreqPerWeek": 0.23,
+      "estimated": true,
+      "label": "abr/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-04-01"
+    },
+    {
+      "changeFailurePct": 0,
+      "deployFreqPerWeek": 0.23,
+      "estimated": true,
+      "label": "mai/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-05-01"
+    },
+    {
+      "changeFailurePct": 50,
+      "deployFreqPerWeek": 0.47,
+      "estimated": true,
+      "label": "jun/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-06-01"
+    },
+    {
+      "changeFailurePct": 100,
+      "deployFreqPerWeek": 0.23,
+      "estimated": true,
+      "label": "jul/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-07-01"
+    },
+    {
+      "changeFailurePct": 0,
+      "deployFreqPerWeek": 0.23,
+      "estimated": true,
+      "label": "ago/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-08-01"
+    },
+    {
+      "changeFailurePct": null,
+      "deployFreqPerWeek": 0,
+      "estimated": true,
+      "label": "set/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-09-01"
+    },
+    {
+      "changeFailurePct": 50,
+      "deployFreqPerWeek": 0.93,
+      "estimated": true,
+      "label": "out/26",
+      "leadTimeHoursP50": null,
+      "method": "BOARDS_PROXY",
+      "start": "2026-10-01"
+    }
+  ],
+  "flow": [
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "nov/25",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2025-11-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "dez/25",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2025-12-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "jan/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-01-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "fev/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-02-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "mar/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-03-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "abr/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-04-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "mai/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-05-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "jun/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-06-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "jul/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-07-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "ago/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-08-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "set/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-09-01"
+    },
+    {
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "label": "out/26",
+      "leadTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "start": "2026-10-01"
+    }
+  ],
+  "kpis": {
+    "aiCostPerHour": 20.725491,
+    "aiCostPerPoint": 170.985303,
+    "aiCostUsd": 683.94121281,
+    "bugSharePct": 33.33,
+    "cfrPct": 33.33,
+    "commitsCount": 0,
+    "complexityDelivered": 4,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": 0.17,
+    "effortLogged": 33,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": 50,
+    "prsMerged": 0,
+    "stalePrs": 0,
+    "throughput": 9,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "people": {
+    "aiConnected": 0,
+    "azureLinked": 0,
+    "githubLinked": 0,
+    "members": 3
+  },
+  "period": {
+    "days": 365,
+    "end": "2026-10-15",
+    "granularity": "mês",
+    "previousEnd": "2025-10-15",
+    "previousStart": "2024-10-16",
+    "start": "2025-10-16"
+  },
+  "prFlow": [
+    {
+      "label": "nov/25",
+      "merged": 0,
+      "opened": 0,
+      "start": "2025-11-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "dez/25",
+      "merged": 0,
+      "opened": 0,
+      "start": "2025-12-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "jan/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-01-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "fev/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-02-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "mar/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-03-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "abr/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-04-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "mai/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-05-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "jun/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-06-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "jul/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-07-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "ago/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-08-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "set/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-09-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    },
+    {
+      "label": "out/26",
+      "merged": 0,
+      "opened": 0,
+      "start": "2026-10-01",
+      "timeToFirstReviewHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      }
+    }
+  ],
+  "previous": {
+    "aiCostPerHour": null,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 628.05552308,
+    "bugSharePct": null,
+    "cfrPct": null,
+    "commitsCount": 0,
+    "complexityDelivered": 0,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "deployFreqPerWeek": null,
+    "effortLogged": null,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prCycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "predictabilityPct": null,
+    "prsMerged": 0,
+    "stalePrs": null,
+    "throughput": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    }
+  },
+  "project": {
+    "id": "proj-2",
+    "memberCount": 3,
+    "name": "Bootes",
+    "repos": [],
+    "team": "Time proj-2"
+  },
+  "quality": [
+    {
+      "bugSharePct": 0,
+      "label": "nov/25",
+      "start": "2025-11-01"
+    },
+    {
+      "bugSharePct": null,
+      "label": "dez/25",
+      "start": "2025-12-01"
+    },
+    {
+      "bugSharePct": null,
+      "label": "jan/26",
+      "start": "2026-01-01"
+    },
+    {
+      "bugSharePct": null,
+      "label": "fev/26",
+      "start": "2026-02-01"
+    },
+    {
+      "bugSharePct": null,
+      "label": "mar/26",
+      "start": "2026-03-01"
+    },
+    {
+      "bugSharePct": 0,
+      "label": "abr/26",
+      "start": "2026-04-01"
+    },
+    {
+      "bugSharePct": 0,
+      "label": "mai/26",
+      "start": "2026-05-01"
+    },
+    {
+      "bugSharePct": 50,
+      "label": "jun/26",
+      "start": "2026-06-01"
+    },
+    {
+      "bugSharePct": 100,
+      "label": "jul/26",
+      "start": "2026-07-01"
+    },
+    {
+      "bugSharePct": 0,
+      "label": "ago/26",
+      "start": "2026-08-01"
+    },
+    {
+      "bugSharePct": null,
+      "label": "set/26",
+      "start": "2026-09-01"
+    },
+    {
+      "bugSharePct": 50,
+      "label": "out/26",
+      "start": "2026-10-01"
+    }
+  ],
+  "repos": [],
+  "sprints": [
+    {
+      "aiCostPerHour": 9.616781,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 19.23356265,
+      "aiTokens": 250840,
+      "complexityDelivered": 0,
+      "complexityPlanned": 4,
+      "label": "Spassada 2.12",
+      "name": "Sprint passada 2.12",
+      "predictabilityPct": 0,
+      "sprintId": "s-2-p12"
+    },
+    {
+      "aiCostPerHour": 4.267408,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 34.13926795,
+      "aiTokens": 495035,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.11",
+      "name": "Sprint passada 2.11",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p11"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 28.92973962,
+      "aiTokens": 440443,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.10",
+      "name": "Sprint passada 2.10",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p10"
+    },
+    {
+      "aiCostPerHour": 21.602415,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.60241476,
+      "aiTokens": 349872,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.9",
+      "name": "Sprint passada 2.9",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p9"
+    },
+    {
+      "aiCostPerHour": 20.119836,
+      "aiCostPerPoint": 10.059918,
+      "aiCostUsd": 40.23967115,
+      "aiTokens": 631781,
+      "complexityDelivered": 4,
+      "complexityPlanned": 4,
+      "label": "Spassada 2.8",
+      "name": "Sprint passada 2.8",
+      "predictabilityPct": 100,
+      "sprintId": "s-2-p8"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 29.37884638,
+      "aiTokens": 396189,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.7",
+      "name": "Sprint passada 2.7",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p7"
+    },
+    {
+      "aiCostPerHour": 2.862865,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 17.1771882,
+      "aiTokens": 339918,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.6",
+      "name": "Sprint passada 2.6",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p6"
+    },
+    {
+      "aiCostPerHour": 10.576826,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.15365192,
+      "aiTokens": 228496,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.5",
+      "name": "Sprint passada 2.5",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p5"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 45.03659258,
+      "aiTokens": 534024,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.4",
+      "name": "Sprint passada 2.4",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p4"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 9.07361206,
+      "aiTokens": 160737,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.3",
+      "name": "Sprint passada 2.3",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p3"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.51605717,
+      "aiTokens": 396069,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.2",
+      "name": "Sprint passada 2.2",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p2"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 25.81013351,
+      "aiTokens": 479795,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "label": "Spassada 2.1",
+      "name": "Sprint passada 2.1",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p1"
+    }
+  ],
+  "throughput": [
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "nov/25",
+      "start": "2025-11-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "dez/25",
+      "start": "2025-12-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "jan/26",
+      "start": "2026-01-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "fev/26",
+      "start": "2026-02-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "mar/26",
+      "start": "2026-03-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "abr/26",
+      "start": "2026-04-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "mai/26",
+      "start": "2026-05-01"
+    },
+    {
+      "BUG": 1,
+      "STORY": 1,
+      "TASK": 0,
+      "label": "jun/26",
+      "start": "2026-06-01"
+    },
+    {
+      "BUG": 1,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "jul/26",
+      "start": "2026-07-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "ago/26",
+      "start": "2026-08-01"
+    },
+    {
+      "BUG": 0,
+      "STORY": 0,
+      "TASK": 0,
+      "label": "set/26",
+      "start": "2026-09-01"
+    },
+    {
+      "BUG": 1,
+      "STORY": 0,
+      "TASK": 1,
+      "label": "out/26",
+      "start": "2026-10-01"
+    }
+  ]
+}

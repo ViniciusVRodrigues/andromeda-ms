@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.AllocationCoverageStubs;
 import andromeda.sei.ms.feature.allocation.domain.ValidatedUserDay;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
@@ -168,9 +169,7 @@ class GetTeamDashboardV2UseCaseTest {
         AiUsageAllocation a1 = new AiUsageAllocation("a1", ORG, ME, LocalDate.parse("2026-10-02"), List.of("u1"),
                 List.of(new AllocationSplit("st", "Story", BigDecimal.ONE)),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
-                eq(ORG), anyCollection(), eq(S2_START), eq(S2_END))).thenReturn(List.of(a1));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(allocated));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(a1), List.of(allocated));
 
         TeamDashboardV2Output out = useCase.execute(ORG, ME, PROJECT, "s2");
 
@@ -283,11 +282,9 @@ class GetTeamDashboardV2UseCaseTest {
                 List.of(new AllocationSplit("wi-in", "In", new BigDecimal("0.50")),
                         new AllocationSplit("wi-out", "Out", new BigDecimal("0.50"))),
                 AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
-        when(allocationRepository.findValidatedByOrganizationIdAndWorkItemIdInAndDayBetween(
-                eq(ORG), anyCollection(), eq(S2_START), eq(S2_END))).thenReturn(List.of(a1));
         when(allocationRepository.findValidatedUserDays(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
                 .thenReturn(List.of(new ValidatedUserDay(ME, LocalDate.parse("2026-10-02"))));
-        when(aiUsageRepository.findCostFieldsByOrganizationIdAndIdIn(eq(ORG), anyCollection())).thenReturn(List.of(allocated));
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(a1), List.of(allocated));
         when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(), eq(S2_START), eq(S2_END)))
                 .thenReturn(AiUsageSummaries.of(List.of(allocated, unallocated)));
 

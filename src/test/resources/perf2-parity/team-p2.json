@@ -1,0 +1,521 @@
+{
+  "agingItems": [],
+  "ai": {
+    "allocation": {
+      "pendingDays": 2,
+      "unallocatedDays": 1,
+      "validatedDays": 6
+    },
+    "byDay": [
+      {
+        "costUsd": 2.24074102,
+        "date": "2026-10-08",
+        "inputTokens": 4945,
+        "interactions": 140,
+        "label": "08/10",
+        "outputTokens": 1084
+      },
+      {
+        "costUsd": 2.42152464,
+        "date": "2026-10-09",
+        "inputTokens": 32410,
+        "interactions": 186,
+        "label": "09/10",
+        "outputTokens": 13965
+      },
+      {
+        "costUsd": 0,
+        "date": "2026-10-10",
+        "inputTokens": 0,
+        "interactions": 0,
+        "label": "10/10",
+        "outputTokens": 0
+      },
+      {
+        "costUsd": 3.78918001,
+        "date": "2026-10-11",
+        "inputTokens": 125867,
+        "interactions": 293,
+        "label": "11/10",
+        "outputTokens": 46062
+      },
+      {
+        "costUsd": 0,
+        "date": "2026-10-12",
+        "inputTokens": 0,
+        "interactions": 0,
+        "label": "12/10",
+        "outputTokens": 0
+      },
+      {
+        "costUsd": 0.14577336,
+        "date": "2026-10-13",
+        "inputTokens": 1005,
+        "interactions": 10,
+        "label": "13/10",
+        "outputTokens": 490
+      },
+      {
+        "costUsd": 5.25961538,
+        "date": "2026-10-14",
+        "inputTokens": 77808,
+        "interactions": 193,
+        "label": "14/10",
+        "outputTokens": 20643
+      },
+      {
+        "costUsd": 6.4410212,
+        "date": "2026-10-15",
+        "inputTokens": 92346,
+        "interactions": 512,
+        "label": "15/10",
+        "outputTokens": 18722
+      }
+    ],
+    "byModel": [
+      {
+        "costUsd": 17.14963419,
+        "interactions": 995,
+        "model": "claude-opus-5",
+        "tokens": 298472
+      },
+      {
+        "costUsd": 2.86437612,
+        "interactions": 209,
+        "model": "gpt-5",
+        "tokens": 78415
+      }
+    ],
+    "membersWithUsage": 3,
+    "unallocatedCostUsd": 29.136372
+  },
+  "asOf": "2026-10-15T12:00:00Z",
+  "burndown": [
+    {
+      "date": "2026-10-08",
+      "idealPoints": 0,
+      "label": "08/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-09",
+      "idealPoints": 0,
+      "label": "09/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-10",
+      "idealPoints": 0,
+      "label": "10/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-11",
+      "idealPoints": 0,
+      "label": "11/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-12",
+      "idealPoints": 0,
+      "label": "12/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-13",
+      "idealPoints": 0,
+      "label": "13/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-14",
+      "idealPoints": 0,
+      "label": "14/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-15",
+      "idealPoints": 0,
+      "label": "15/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-16",
+      "idealPoints": 0,
+      "label": "16/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-17",
+      "idealPoints": 0,
+      "label": "17/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-18",
+      "idealPoints": 0,
+      "label": "18/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-19",
+      "idealPoints": 0,
+      "label": "19/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-20",
+      "idealPoints": 0,
+      "label": "20/10",
+      "remainingPoints": null
+    },
+    {
+      "date": "2026-10-21",
+      "idealPoints": 0,
+      "label": "21/10",
+      "remainingPoints": null
+    }
+  ],
+  "commitsByDay": [
+    {
+      "commits": 0,
+      "date": "2026-10-08",
+      "label": "08/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-09",
+      "label": "09/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-10",
+      "label": "10/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-11",
+      "label": "11/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-12",
+      "label": "12/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-13",
+      "label": "13/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-14",
+      "label": "14/10"
+    },
+    {
+      "commits": 0,
+      "date": "2026-10-15",
+      "label": "15/10"
+    }
+  ],
+  "history": [
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.15365192,
+      "aiTokens": 228496,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": false,
+      "isSelected": false,
+      "label": "Spassada 2.5",
+      "name": "Sprint passada 2.5",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p5"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 45.03659258,
+      "aiTokens": 534024,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": false,
+      "isSelected": false,
+      "label": "Spassada 2.4",
+      "name": "Sprint passada 2.4",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p4"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 9.07361206,
+      "aiTokens": 160737,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": false,
+      "isSelected": false,
+      "label": "Spassada 2.3",
+      "name": "Sprint passada 2.3",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p3"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 21.51605717,
+      "aiTokens": 396069,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": false,
+      "isSelected": false,
+      "label": "Spassada 2.2",
+      "name": "Sprint passada 2.2",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p2"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 25.81013351,
+      "aiTokens": 479795,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": false,
+      "isSelected": false,
+      "label": "Spassada 2.1",
+      "name": "Sprint passada 2.1",
+      "predictabilityPct": null,
+      "sprintId": "s-2-p1"
+    },
+    {
+      "aiCostPerHour": null,
+      "aiCostPerPoint": null,
+      "aiCostUsd": 20.29785561,
+      "aiTokens": 435348,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "hoursPerPoint": null,
+      "isCurrent": true,
+      "isSelected": true,
+      "label": "Satual 2*",
+      "name": "Sprint atual 2",
+      "predictabilityPct": null,
+      "sprintId": "s-2-cur"
+    }
+  ],
+  "kpis": {
+    "aiCostPerHour": null,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 20.29785561,
+    "complexityDelivered": null,
+    "complexityPlanned": null,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "effortLogged": null,
+    "itemsDone": 0,
+    "itemsTotal": 0,
+    "itemsWithComplexity": 0,
+    "itemsWithPoints": 0,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "openPrs": 0,
+    "prsMerged": 0,
+    "stalePrs": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "unallocatedAiCostUsd": 29.136372,
+    "unassigned": 0
+  },
+  "members": [
+    {
+      "aiCostUsd": null,
+      "avgTokensPerHour": null,
+      "avgTokensPerPoint": null,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "githubLinked": false,
+      "isMe": true,
+      "itemsDone": 0,
+      "itemsTotal": 0,
+      "name": "Pessoa 3",
+      "prsMerged": null,
+      "prsOpened": null,
+      "reviewsGiven": null,
+      "userId": "user-3",
+      "vcsLinked": false,
+      "wip": 0
+    },
+    {
+      "aiCostUsd": null,
+      "avgTokensPerHour": null,
+      "avgTokensPerPoint": null,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "githubLinked": false,
+      "isMe": false,
+      "itemsDone": 0,
+      "itemsTotal": 0,
+      "name": "Pessoa 4",
+      "prsMerged": null,
+      "prsOpened": null,
+      "reviewsGiven": null,
+      "userId": "user-4",
+      "vcsLinked": false,
+      "wip": 0
+    },
+    {
+      "aiCostUsd": null,
+      "avgTokensPerHour": null,
+      "avgTokensPerPoint": null,
+      "complexityDelivered": null,
+      "complexityPlanned": null,
+      "cycleTimeHours": {
+        "n": 0,
+        "p50": null,
+        "p90": null
+      },
+      "effortLogged": null,
+      "githubLinked": false,
+      "isMe": false,
+      "itemsDone": 0,
+      "itemsTotal": 0,
+      "name": "Pessoa 5",
+      "prsMerged": null,
+      "prsOpened": null,
+      "reviewsGiven": null,
+      "userId": "user-5",
+      "vcsLinked": false,
+      "wip": 0
+    }
+  ],
+  "p85CycleHours": null,
+  "previous": {
+    "aiCostPerHour": null,
+    "aiCostPerPoint": null,
+    "aiCostUsd": 25.81013351,
+    "complexityDelivered": null,
+    "complexityPlanned": null,
+    "cycleTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "effortLogged": null,
+    "itemsDone": 0,
+    "itemsTotal": 0,
+    "itemsWithComplexity": 0,
+    "itemsWithPoints": 0,
+    "leadTimeHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "prsMerged": 0,
+    "timeToFirstReviewHours": {
+      "n": 0,
+      "p50": null,
+      "p90": null
+    },
+    "unassigned": 0
+  },
+  "repos": [],
+  "sprint": {
+    "dayCount": 10,
+    "dayIndex": 6,
+    "endDate": "2026-10-21",
+    "id": "s-2-cur",
+    "name": "Sprint atual 2",
+    "startDate": "2026-10-08",
+    "teamName": "Time proj-2",
+    "timeFrame": "CURRENT"
+  },
+  "stalePrs": [],
+  "statusByType": [
+    {
+      "done": 0,
+      "inProgress": 0,
+      "todo": 0,
+      "type": "STORY"
+    },
+    {
+      "done": 0,
+      "inProgress": 0,
+      "todo": 0,
+      "type": "BUG"
+    },
+    {
+      "done": 0,
+      "inProgress": 0,
+      "todo": 0,
+      "type": "TASK"
+    }
+  ],
+  "team": {
+    "memberCount": 3,
+    "name": "Time proj-2"
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "asOf": "2026-10-15T12:00:00Z",
+  "backlog": {
+    "byPriority": [
+      {
+        "count": 0,
+        "priority": 1,
+        "stale": 0
+      },
+      {
+        "count": 2,
+        "priority": 2,
+        "stale": 0
+      },
+      {
+        "count": 0,
+        "priority": 3,
+        "stale": 0
+      },
+      {
+        "count": 0,
+        "priority": 4,
+        "stale": 0
+      }
+    ],
+    "byTag": [],
+    "count": 2,
+    "forgotten": [
+      {
+        "complexity": null,
+        "daysWithoutChange": 1,
+        "effort": 7,
+        "effortRolledUp": null,
+        "externalId": "p3-i3",
+        "priority": 2,
+        "tags": [],
+        "title": "Item p3-i3",
+        "type": "BUG"
+      },
+      {
+        "complexity": null,
+        "daysWithoutChange": 1,
+        "effort": 7,
+        "effortRolledUp": null,
+        "externalId": "p3-i13",
+        "priority": 2,
+        "tags": [],
+        "title": "Item p3-i13",
+        "type": "TASK"
+      }
+    ],
+    "points": null,
+    "staleness": [
+      {
+        "count": 2,
+        "label": "até 30 dias",
+        "maxDays": 30,
+        "minDays": 0
+      },
+      {
+        "count": 0,
+        "label": "30–60 dias",
+        "maxDays": 60,
+        "minDays": 30
+      },
+      {
+        "count": 0,
+        "label": "60–90 dias",
+        "maxDays": 90,
+        "minDays": 60
+      },
+      {
+        "count": 0,
+        "label": "mais de 90 dias",
+        "maxDays": null,
+        "minDays": 90
+      }
+    ],
+    "unestimatedPct": 0,
+    "withoutParentPct": 0
+  },
+  "calibration": {
+    "byComplexity": [],
+    "byEffort": [
+      {
+        "aiCostUsd": 104.00554582,
+        "aiTokens": 1353539,
+        "count": 1,
+        "cycleTimeHours": {
+          "n": 0,
+          "p50": null,
+          "p90": null
+        },
+        "effort": 2,
+        "itemsWithAi": 1,
+        "label": "2"
+      }
+    ],
+    "outliers": [],
+    "overridePct": 0,
+    "overrides": []
+  },
+  "config": {
+    "complexityField": null,
+    "effortBearingLevel": {
+      "configured": "AUTO",
+      "inferred": "STORY_AND_TASK"
+    },
+    "effortField": null
+  },
+  "deliveredByTag": [],
+  "epics": [
+    {
+      "complexityDone": null,
+      "complexityDoneInPeriod": null,
+      "complexityTotal": null,
+      "effortDone": 11,
+      "effortTotal": 39,
+      "externalId": "p3-e1",
+      "featureCount": 1,
+      "featuresDone": 0,
+      "forecastWeeks": null,
+      "itemsDone": 4,
+      "itemsTotal": 11,
+      "lastActivityAt": "2026-10-14T12:00:00Z",
+      "pctDone": 28.205128205128204,
+      "pointsPerWeek": null,
+      "status": "IN_PROGRESS",
+      "tags": [],
+      "title": "Item p3-e1",
+      "unestimated": 0,
+      "weeklyPace": null
+    }
+  ],
+  "features": [
+    {
+      "complexityDone": null,
+      "complexityDoneInPeriod": null,
+      "complexityTotal": null,
+      "effortDone": 11,
+      "effortTotal": 39,
+      "epic": "Item p3-e1",
+      "externalId": "p3-f1",
+      "forecastWeeks": null,
+      "itemsDone": 4,
+      "itemsTotal": 11,
+      "lastActivityAt": "2026-10-14T12:00:00Z",
+      "parentExternalId": "p3-e1",
+      "pctDone": 28.205128205128204,
+      "pointsPerWeek": null,
+      "status": "IN_PROGRESS",
+      "title": "Item p3-f1",
+      "unestimated": 0,
+      "weeklyPace": null
+    }
+  ],
+  "period": {
+    "days": 90,
+    "end": "2026-10-15",
+    "start": "2026-07-18"
+  }
+}
