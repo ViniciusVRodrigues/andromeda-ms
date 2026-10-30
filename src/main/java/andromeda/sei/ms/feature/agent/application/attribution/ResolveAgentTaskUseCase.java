@@ -14,6 +14,7 @@ import andromeda.sei.ms.shared.application.security.EffectivePermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -92,11 +93,18 @@ public class ResolveAgentTaskUseCase {
     }
 
     private boolean activeTaskApplies(AgentTaskQuery q) {
-        ActiveTaskHint hint = q.activeTask();
-        if (hint == null || hint.taskRef() == null || hint.since() == null || q.bucketStart() == null) return false;
-        if (q.bucketStart().isBefore(hint.since())) return false;
+        return activeTaskApplies(q.activeTask(), q.bucketStart(), q.repository());
+    }
+
+    /**
+     * Whether the active task of the device stands for a row of this hour and repository. It is the only
+     * step of {@link #execute} that depends on the hour, so the ingest memoizes the rest per batch (agt9).
+     */
+    public static boolean activeTaskApplies(ActiveTaskHint hint, Instant bucketStart, String repository) {
+        if (hint == null || hint.taskRef() == null || hint.since() == null || bucketStart == null) return false;
+        if (bucketStart.isBefore(hint.since())) return false;
         return hint.repository() == null || hint.repository().isBlank()
-                || sameRepository(hint.repository(), q.repository());
+                || sameRepository(hint.repository(), repository);
     }
 
     private static boolean sameRepository(String a, String b) {

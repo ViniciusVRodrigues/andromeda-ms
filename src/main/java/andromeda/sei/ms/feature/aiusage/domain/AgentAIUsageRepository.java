@@ -18,6 +18,19 @@ public interface AgentAIUsageRepository {
     /** Inserts a new row; empty when the unique key {@code (organizationId, deviceId, agentKey)} already exists. */
     Optional<AIUsage> insert(AIUsage usage);
 
+    /** Outcome of one row of {@link #insertAll}: stored, key already stored, or not written for another reason. */
+    enum InsertOutcome { INSERTED, DUPLICATE, FAILED }
+
+    /** One row of {@link #insertAll}; {@code usage} is the stored row (with its id) when {@code INSERTED}. */
+    record InsertResult(InsertOutcome outcome, AIUsage usage) {
+    }
+
+    /**
+     * Inserts the rows in one unordered write (agt9): a row whose key already exists does not stop the
+     * others. Returns one result per row, in the given order.
+     */
+    List<InsertResult> insertAll(List<AIUsage> usages);
+
     /**
      * Raises, field by field and atomically, input, output, cache read, cache write, thinking and
      * interactions to the given values (never lowers) and writes the cost. {@code allocationId},
