@@ -40,7 +40,8 @@ public final class AgentDtos {
     public record DeviceOutput(String id, String machineName, OsOutput os, String agentVersion,
                                String versionStatus, Instant pairedAt, Instant lastSeenAt, Instant lastUploadAt,
                                String status, long daysWithoutContact, boolean outdated, String minVersion,
-                               ActiveTaskOutput activeTask, Instant revokedAt) {
+                               ActiveTaskOutput activeTask, Instant revokedAt, Instant syncRequestedAt,
+                               Instant syncServedAt, boolean syncNowSupported) {
     }
 
     public record AgentMetaOutput(String packageName, String latestVersion, String recommendedVersion,
@@ -48,9 +49,13 @@ public final class AgentDtos {
                                   boolean aiefIgnored) {
     }
 
-    public record HeartbeatInput(String agentVersion, String timezone, Integer pendingRows) {
+    public record HeartbeatInput(String agentVersion, String timezone, Integer pendingRows, String syncServed) {
     }
 
-    public record HeartbeatOutput(Instant serverTime, String minVersion, ActiveTaskOutput activeTask) {
+    public record HeartbeatOutput(Instant serverTime, String minVersion, ActiveTaskOutput activeTask,
+                                  Instant syncRequestedAt) {
+    }
+
+    public record SyncRequestOutput(String deviceId, Instant syncRequestedAt, Instant syncServedAt) {
     }
 }

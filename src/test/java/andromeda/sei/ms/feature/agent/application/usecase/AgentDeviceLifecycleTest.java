@@ -37,6 +37,7 @@ class AgentDeviceLifecycleTest {
     private RecordHeartbeatUseCase heartbeat;
     private ListOwnDevicesUseCase list;
     private RevokeOwnDeviceUseCase revoke;
+    private RequestDeviceSyncUseCase requestSync;
     private AgentDevice device;
     private String access;
     private String refreshToken;
@@ -56,6 +57,7 @@ class AgentDeviceLifecycleTest {
         heartbeat = new RecordHeartbeatUseCase(store, policy, clock);
         list = new ListOwnDevicesUseCase(store, policy, Duration.ofDays(3), clock);
         revoke = new RevokeOwnDeviceUseCase(store, clock);
+        requestSync = new RequestDeviceSyncUseCase(store, clock);
 
         device = new AgentDevice();
         device.setOrganizationId(ORG);
@@ -149,7 +151,7 @@ class AgentDeviceLifecycleTest {
     @Test
     void should_recordHeartbeatWithTimezoneAndNeverTouchLastUpload() {
         AgentPrincipal principal = new AgentPrincipal(ORG, USER, device.getId());
-        var out = heartbeat.execute(principal, new HeartbeatInput("0.2.1", "Europe/Lisbon", 7));
+        var out = heartbeat.execute(principal, new HeartbeatInput("0.2.1", "Europe/Lisbon", 7, null));
         assertThat(device.getTimezone()).isEqualTo("Europe/Lisbon");
         assertThat(device.getPendingRows()).isEqualTo(7);
         assertThat(device.getAgentVersion()).isEqualTo("0.2.1");
@@ -157,7 +159,7 @@ class AgentDeviceLifecycleTest {
         assertThat(device.getLastUploadAt()).isNull();
         assertThat(store.touchUploadCalls).isZero();
         assertThat(out.minVersion()).isEqualTo("0.1.0");
-        heartbeat.execute(principal, new HeartbeatInput(null, "Not/AZone", null));
+        heartbeat.execute(principal, new HeartbeatInput(null, "Not/AZone", null, null));
         assertThat(device.getTimezone()).isEqualTo("Europe/Lisbon");
     }
 
@@ -218,5 +220,120 @@ class AgentDeviceLifecycleTest {
         assertThat(m.aiefIgnored()).isFalse();
         device.setCutoverDay(LocalDate.parse("2026-10-29"));
         assertThat(meta.execute(ORG, USER).aiefIgnored()).isTrue();
+    }
+
+    // ---- sync now ----
+
+    private AgentPrincipal principal() {
+        return new AgentPrincipal(ORG, USER, device.getId());
+    }
+
+    private HeartbeatInput beat(String syncServed) {
+        return new HeartbeatInput(null, null, null, syncServed);
+    }
+
+    @Test
+    void should_recordASyncRequestAndBeIdempotentWhilePending() {
+        var first = requestSync.execute(ORG, USER, false, device.getId());
+        assertThat(first.deviceId()).isEqualTo(device.getId());
+        assertThat(first.syncRequestedAt()).isEqualTo(clock.instant());
+        assertThat(first.syncServedAt()).isNull();
+        assertThat(device.getSyncRequestedBy()).isEqualTo(USER);
+        clock.advance(Duration.ofSeconds(20));
+        var second = requestSync.execute(ORG, USER, false, device.getId());
+        assertThat(second.syncRequestedAt()).isEqualTo(first.syncRequestedAt());
+        assertThat(device.getSyncRequestedAt()).isEqualTo(first.syncRequestedAt());
+    }
+
+    @Test
+    void should_answer404ForSyncOnUnknownRevokedOtherOrgOrOtherPerson() {
+        assertThatThrownBy(() -> requestSync.execute(ORG, USER, false, "nope"))
+                .isInstanceOf(AgentDeviceNotFoundException.class);
+        assertThatThrownBy(() -> requestSync.execute("org-2", USER, true, device.getId()))
+                .isInstanceOf(AgentDeviceNotFoundException.class);
+        assertThatThrownBy(() -> requestSync.execute(ORG, "user-2", false, device.getId()))
+                .isInstanceOf(AgentDeviceNotFoundException.class);
+        assertThat(device.getSyncRequestedAt()).isNull();
+        revoke.execute(ORG, USER, device.getId());
+        assertThatThrownBy(() -> requestSync.execute(ORG, USER, false, device.getId()))
+                .isInstanceOf(AgentDeviceNotFoundException.class);
+    }
+
+    @Test
+    void should_letWhoManagesAllRequestASyncOnAnotherPersonDevice() {
+        var out = requestSync.execute(ORG, "admin-1", true, device.getId());
+        assertThat(out.syncRequestedAt()).isEqualTo(clock.instant());
+        assertThat(device.getSyncRequestedBy()).isEqualTo("admin-1");
+    }
+
+    @Test
+    void should_returnThePendingRequestInTheHeartbeatAndNullWithoutOne() {
+        assertThat(heartbeat.execute(principal(), beat(null)).syncRequestedAt()).isNull();
+        Instant requested = requestSync.execute(ORG, USER, false, device.getId()).syncRequestedAt();
+        assertThat(heartbeat.execute(principal(), beat(null)).syncRequestedAt()).isEqualTo(requested);
+    }
+
+    @Test
+    void should_clearThePendingRequestWhenTheHeartbeatEchoesIt() {
+        Instant requested = requestSync.execute(ORG, USER, false, device.getId()).syncRequestedAt();
+        clock.advance(Duration.ofSeconds(5));
+        var out = heartbeat.execute(principal(), beat(requested.toString()));
+        assertThat(out.syncRequestedAt()).isNull();
+        assertThat(device.getSyncRequestedAt()).isNull();
+        assertThat(device.getSyncRequestedBy()).isNull();
+        assertThat(device.getSyncServedAt()).isEqualTo(clock.instant());
+    }
+
+    @Test
+    void should_keepANewerRequestWhenTheHeartbeatEchoesAnOlderOne() {
+        Instant old = requestSync.execute(ORG, USER, false, device.getId()).syncRequestedAt();
+        clock.advance(Duration.ofSeconds(5));
+        device.setSyncRequestedAt(clock.instant());
+        var out = heartbeat.execute(principal(), beat(old.toString()));
+        assertThat(out.syncRequestedAt()).isEqualTo(clock.instant());
+        assertThat(device.getSyncServedAt()).isNull();
+    }
+
+    @Test
+    void should_ignoreAnInvalidOrUnmatchedSyncServedWithoutFailing() {
+        Instant requested = requestSync.execute(ORG, USER, false, device.getId()).syncRequestedAt();
+        assertThat(heartbeat.execute(principal(), beat("ontem")).syncRequestedAt()).isEqualTo(requested);
+        assertThat(heartbeat.execute(principal(), beat(requested + " ".repeat(40))).syncRequestedAt())
+                .isEqualTo(requested);
+        assertThat(heartbeat.execute(principal(), beat(requested.plusSeconds(1).toString())).syncRequestedAt())
+                .isEqualTo(requested);
+        assertThat(device.getSyncServedAt()).isNull();
+        device.setSyncRequestedAt(null);
+        assertThat(heartbeat.execute(principal(), beat(requested.toString())).syncRequestedAt()).isNull();
+        assertThat(store.clearServedCalls).isZero();
+    }
+
+    @Test
+    void should_matchTheEchoAtMillisecondPrecision() {
+        device.setSyncRequestedAt(Instant.parse("2026-10-29T18:00:01.123Z"));
+        var out = heartbeat.execute(principal(), beat("2026-10-29T18:00:01.123456Z"));
+        assertThat(out.syncRequestedAt()).isNull();
+    }
+
+    @Test
+    void should_flagSyncNowSupportedFromAgent030AndNotWhenRevoked() {
+        device.setAgentVersion("0.2.0");
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isFalse();
+        device.setAgentVersion("0.3.0");
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isTrue();
+        device.setAgentVersion("1.0.0");
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isTrue();
+        device.setAgentVersion(null);
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isFalse();
+        device.setAgentVersion("abc");
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isFalse();
+        device.setAgentVersion("1.0.0");
+        device.setSyncRequestedAt(Instant.parse("2026-10-29T11:00:00Z"));
+        device.setSyncServedAt(Instant.parse("2026-10-29T10:00:00Z"));
+        DeviceOutput d = list.execute(ORG, USER).get(0);
+        assertThat(d.syncRequestedAt()).isEqualTo(Instant.parse("2026-10-29T11:00:00Z"));
+        assertThat(d.syncServedAt()).isEqualTo(Instant.parse("2026-10-29T10:00:00Z"));
+        revoke.execute(ORG, USER, device.getId());
+        assertThat(list.execute(ORG, USER).get(0).syncNowSupported()).isFalse();
     }
 }
