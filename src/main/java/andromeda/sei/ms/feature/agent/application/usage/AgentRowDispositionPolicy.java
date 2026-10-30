@@ -27,4 +27,12 @@ public interface AgentRowDispositionPolicy {
     /** Hook after a row that counts was stored: the AIEF rows of the same tool and day without allocation go off. */
     default void afterStored(AgentDevice device, String userId, LocalDate day, String tool) {
     }
+
+    /**
+     * The policy for one upload batch (agt9): it may memoize its checks and its {@link #afterStored} per day
+     * and tool while the batch runs. Use a new one per batch.
+     */
+    default AgentRowDispositionPolicy forBatch() {
+        return this;
+    }
 }

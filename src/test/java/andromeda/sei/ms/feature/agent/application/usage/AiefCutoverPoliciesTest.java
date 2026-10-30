@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -49,6 +50,37 @@ class AiefCutoverPoliciesTest {
     }
 
     // ---- CutoverRowDispositionPolicy (per tool) --------------------------------------------------
+
+    @Test
+    void should_checkTheAiefOncePerDayAndTool_andSupersedeOnce_withinABatch() {
+        AgentRowDispositionPolicy batch = policy().forBatch();
+        LocalDate before = LocalDate.of(2026, 10, 28);
+        Instant later = HOUR.plusSeconds(3600);
+
+        batch.classify(device, USER, before, HOUR, "claude-code");
+        batch.classify(device, USER, before, later, "claude-code");
+        batch.classify(device, USER, before, HOUR, "codex");
+        batch.classify(device, USER, CUTOVER, HOUR, "claude-code");
+        batch.classify(device, USER, CUTOVER, later, "claude-code");
+        batch.afterStored(device, USER, CUTOVER, "claude-code");
+        batch.afterStored(device, USER, CUTOVER, "claude-code");
+
+        verify(queries, times(1)).existsActiveAief(ORG, USER, before, claudeEditors);
+        verify(queries, times(1)).existsActiveAief(ORG, USER, before, codexEditors);
+        verify(queries, times(1)).existsAiefInValidatedAllocation(ORG, USER, CUTOVER, claudeEditors);
+        verify(queries, times(1)).supersedeAief(ORG, USER, CUTOVER, claudeEditors);
+    }
+
+    @Test
+    void should_keepThePairingRulePerHour_inTheBatchPolicy() {
+        AgentRowDispositionPolicy batch = policy().forBatch();
+        device.setPairedAt(Instant.parse("2026-10-29T15:00:00Z"));
+
+        assertThat(batch.classify(device, USER, CUTOVER, Instant.parse("2026-10-29T14:00:00Z"), "claude-code"))
+                .isEqualTo(Disposition.HISTORY);
+        assertThat(batch.classify(device, USER, CUTOVER, Instant.parse("2026-10-29T15:00:00Z"), "claude-code"))
+                .isEqualTo(Disposition.LIVE);
+    }
 
     @Test
     void should_supersedeTheRow_when_beforeTheCutoverAndAiefHasTheSameTool() {

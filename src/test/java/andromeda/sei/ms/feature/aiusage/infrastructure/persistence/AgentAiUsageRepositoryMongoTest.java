@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.agent.domain.AgentUploadBatchRepository.Claim;
 import andromeda.sei.ms.feature.agent.domain.UsageUploadResult;
 import andromeda.sei.ms.feature.agent.infrastructure.persistence.AgentUploadBatchRepositoryImpl;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
+import andromeda.sei.ms.feature.aiusage.domain.AgentAIUsageRepository;
 import andromeda.sei.ms.shared.testsupport.MongoIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,6 +59,33 @@ class AgentAiUsageRepositoryMongoTest {
         assertThat(agent.insert(agentRow("k1", "dev-1", 999))).isEmpty();
         assertThat(agent.insert(agentRow("k1", "dev-2", 50))).isPresent(); // same key, other device
         assertThat(agent.findByKeys("org-1", "dev-1", List.of("k1")).get("k1").getOutputTokens()).isEqualTo(100);
+    }
+
+    @Test
+    void should_insertTheBatchInOneWrite_andReportTheKeysAlreadyStored_withoutStoppingTheOthers() {
+        agent.insert(agentRow("k2", "dev-1", 100));
+
+        List<AgentAIUsageRepository.InsertResult> results = agent.insertAll(List.of(
+                agentRow("k1", "dev-1", 1), agentRow("k2", "dev-1", 999), agentRow("k3", "dev-1", 3)));
+
+        assertThat(results).extracting(AgentAIUsageRepository.InsertResult::outcome).containsExactly(
+                AgentAIUsageRepository.InsertOutcome.INSERTED, AgentAIUsageRepository.InsertOutcome.DUPLICATE,
+                AgentAIUsageRepository.InsertOutcome.INSERTED);
+        assertThat(results.get(1).usage()).isNull();
+        Map<String, AIUsage> stored = agent.findByKeys("org-1", "dev-1", List.of("k1", "k2", "k3"));
+        assertThat(stored.get("k2").getOutputTokens()).isEqualTo(100);
+        assertThat(results.get(0).usage().getId()).isEqualTo(stored.get("k1").getId());
+        assertThat(results.get(2).usage().getId()).isEqualTo(stored.get("k3").getId());
+        assertThat(stored.get("k1").getVersion()).isZero();
+
+        // the stored row keeps working with the optimistic-locking writes of the rest of the app
+        agent.raiseToMax("org-1", stored.get("k1").getId(), agentRow("k1", "dev-1", 50));
+        assertThat(agent.findByKeys("org-1", "dev-1", List.of("k1")).get("k1").getOutputTokens()).isEqualTo(50);
+    }
+
+    @Test
+    void should_returnNothing_when_theBatchHasNoNewRow() {
+        assertThat(agent.insertAll(List.of())).isEmpty();
     }
 
     @Test

@@ -22,6 +22,7 @@ import andromeda.sei.ms.feature.agent.domain.exception.AgentTokenInvalidExceptio
 import andromeda.sei.ms.feature.aiusage.application.usecase.CalculateAiCostUseCase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AgentAIUsageRepository;
+import andromeda.sei.ms.feature.aiusage.domain.AgentAIUsageRepository.InsertResult;
 import andromeda.sei.ms.feature.allocation.application.usecase.AutoAssignAllocationUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.RegisterAgentAllocationUseCase;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
@@ -45,6 +46,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -152,6 +154,15 @@ public class IngestAgentUsageUseCase {
                          long input, long output, long cacheRead, long cacheWrite, long thinking, int interactions) {
     }
 
+    /** A new row built for the bulk insert. */
+    private record Pending(Valid valid, AIUsage usage, ResolvedTask task, AttributionSource source,
+                           Disposition disposition) {
+    }
+
+    /** What the task resolution of a row depends on, besides the organization and the person of the batch. */
+    private record TaskKey(String taskRef, String branch, String repository, boolean activeTaskApplies) {
+    }
+
     /** A row written now, waiting for the allocation phase. */
     private record Created(int index, AIUsage usage, ResolvedTask task, AttributionSource source,
                            Disposition disposition) {
@@ -217,15 +228,24 @@ public class IngestAgentUsageUseCase {
                 : usages.findByKeys(org, deviceId, valid.stream().map(v -> v.row().key()).toList());
         List<AiPriceEntry> prices = valid.isEmpty() ? List.of() : prices(org);
 
-        List<Created> created = new ArrayList<>();
+        // Per batch (agt9): the policy memoizes its checks, each distinct task key is resolved once and the
+        // new rows go in one bulk insert.
+        AgentRowDispositionPolicy policy = dispositionPolicy.forBatch();
+        Map<TaskKey, Optional<AgentAttribution>> attributions = new HashMap<>();
+        List<Pending> pending = new ArrayList<>();
         for (Valid v : valid) {
             try {
-                process(principal, device, in, v, existing, prices, now, results, created);
+                AIUsage current = existing.get(v.row().key());
+                if (current != null) {
+                    results[v.index()] = reconcileExisting(principal, device, policy, v, current, prices, now);
+                } else {
+                    pending.add(prepareNew(principal, device, policy, attributions, in, v, prices, now));
+                }
             } catch (RuntimeException e) {
-                log.warn("agent-usage: row failed org={} device={} key={}", org, deviceId, v.row().key(), e);
-                results[v.index()] = RowResult.rejected(v.row().key(), "INTERNAL_ERROR", null, true);
+                rowFailed(principal, v, e, results);
             }
         }
+        List<Created> created = insertPending(principal, device, policy, pending, prices, now, results);
 
         Set<LocalDate> daysToSuggest = allocate(principal, created, results);
         for (LocalDate day : daysToSuggest) {
@@ -384,28 +404,70 @@ public class IngestAgentUsageUseCase {
 
     // ---- one row ----------------------------------------------------------------------------
 
-    private void process(AgentPrincipal principal, AgentDevice device, UsageBatchInput in, Valid v,
-                         Map<String, AIUsage> existing, List<AiPriceEntry> prices, Instant now,
-                         RowResult[] results, List<Created> created) {
-        String key = v.row().key();
-        AIUsage current = existing.get(key);
-        if (current == null) {
-            Created row = insertNew(principal, device, in, v, prices, now);
-            if (row != null) {
-                created.add(row);
-                return; // result is set after the allocation phase
-            }
-            // lost the race for the unique key: treat as existing
-            current = usages.findByKeys(principal.organizationId(), principal.deviceId(), List.of(key)).get(key);
-            if (current == null) {
-                throw new IllegalStateException("row vanished after duplicate key");
+    /** Inserts the new rows at once; a key stored meanwhile by another request is reconciled as existing. */
+    private List<Created> insertPending(AgentPrincipal principal, AgentDevice device, AgentRowDispositionPolicy policy,
+                                        List<Pending> pending, List<AiPriceEntry> prices, Instant now,
+                                        RowResult[] results) {
+        if (pending.isEmpty()) return List.of();
+        List<InsertResult> inserted;
+        try {
+            inserted = usages.insertAll(pending.stream().map(Pending::usage).toList());
+        } catch (RuntimeException e) {
+            pending.forEach(p -> rowFailed(principal, p.valid(), e, results));
+            return List.of();
+        }
+        List<Created> created = new ArrayList<>();
+        List<Pending> lost = new ArrayList<>();
+        for (int i = 0; i < pending.size(); i++) {
+            Pending p = pending.get(i);
+            InsertResult r = inserted.get(i);
+            switch (r.outcome()) {
+                case INSERTED -> {
+                    created.add(new Created(p.valid().index(), r.usage(), p.task(), p.source(), p.disposition()));
+                    afterStored(principal, device, policy, p);
+                }
+                case DUPLICATE -> lost.add(p);
+                case FAILED -> rowFailed(principal, p.valid(),
+                        new IllegalStateException("bulk insert did not write the row"), results);
             }
         }
-        results[v.index()] = reconcileExisting(principal, device, v, current, prices, now);
+        if (!lost.isEmpty()) {
+            // lost the race for the unique key: treat as existing
+            Map<String, AIUsage> current = usages.findByKeys(principal.organizationId(), principal.deviceId(),
+                    lost.stream().map(p -> p.valid().row().key()).toList());
+            for (Pending p : lost) {
+                Valid v = p.valid();
+                try {
+                    AIUsage stored = current.get(v.row().key());
+                    if (stored == null) throw new IllegalStateException("row vanished after duplicate key");
+                    results[v.index()] = reconcileExisting(principal, device, policy, v, stored, prices, now);
+                } catch (RuntimeException e) {
+                    rowFailed(principal, v, e, results);
+                }
+            }
+        }
+        return created;
     }
 
-    private RowResult reconcileExisting(AgentPrincipal principal, AgentDevice device, Valid v, AIUsage current,
-                                        List<AiPriceEntry> prices, Instant now) {
+    private void afterStored(AgentPrincipal principal, AgentDevice device, AgentRowDispositionPolicy policy,
+                             Pending p) {
+        if (p.disposition() == Disposition.SUPERSEDED) return;
+        try {
+            policy.afterStored(device, principal.userId(), p.valid().day(), p.valid().row().tool());
+        } catch (RuntimeException e) {
+            log.warn("agent-usage: after-stored failed org={} user={} day={}", principal.organizationId(),
+                    principal.userId(), p.valid().day(), e);
+        }
+    }
+
+    private void rowFailed(AgentPrincipal principal, Valid v, RuntimeException e, RowResult[] results) {
+        log.warn("agent-usage: row failed org={} device={} key={}", principal.organizationId(), principal.deviceId(),
+                v.row().key(), e);
+        results[v.index()] = RowResult.rejected(v.row().key(), "INTERNAL_ERROR", null, true);
+    }
+
+    private RowResult reconcileExisting(AgentPrincipal principal, AgentDevice device, AgentRowDispositionPolicy policy,
+                                        Valid v, AIUsage current, List<AiPriceEntry> prices, Instant now) {
         long input = Math.max(current.getInputTokens(), v.input());
         long output = Math.max(current.getOutputTokens(), v.output());
         long cacheRead = Math.max(current.getCacheReadTokens(), v.cacheRead());
@@ -428,28 +490,29 @@ public class IngestAgentUsageUseCase {
             usages.raiseToMax(principal.organizationId(), current.getId(), values);
             status = Status.ACCEPTED;
         }
-        return new RowResult(v.row().key(), status, labelOf(device, current), null, null, null, null, null);
+        return new RowResult(v.row().key(), status, labelOf(policy, device, current), null, null, null, null, null);
     }
 
-    private Allocation labelOf(AgentDevice device, AIUsage stored) {
+    private Allocation labelOf(AgentRowDispositionPolicy policy, AgentDevice device, AIUsage stored) {
         if (stored.getAllocationId() != null) return Allocation.ALLOCATED;
         if (!stored.isActive()) return Allocation.SUPERSEDED;
-        Disposition d = dispositionPolicy.classify(device, stored.getUserId(), stored.getDay(), stored.getBucketStart(),
+        Disposition d = policy.classify(device, stored.getUserId(), stored.getDay(), stored.getBucketStart(),
                 stored.getTool());
         return d == Disposition.HISTORY ? Allocation.HISTORY : Allocation.QUEUED;
     }
 
-    /** Returns null when the unique key was taken meanwhile. */
-    private Created insertNew(AgentPrincipal principal, AgentDevice device, UsageBatchInput in, Valid v,
-                              List<AiPriceEntry> prices, Instant now) {
+    private Pending prepareNew(AgentPrincipal principal, AgentDevice device, AgentRowDispositionPolicy policy,
+                               Map<TaskKey, Optional<AgentAttribution>> attributions, UsageBatchInput in, Valid v,
+                               List<AiPriceEntry> prices, Instant now) {
         UsageBatchInput.Row r = v.row();
-        Disposition disposition = dispositionPolicy.classify(device, principal.userId(), v.day(), v.hour(), r.tool());
+        Disposition disposition = policy.classify(device, principal.userId(), v.day(), v.hour(), r.tool());
 
         ResolvedTask task = null;
         AttributionSource source = AttributionSource.NONE;
         String repositoryProjectId = null;
         if (disposition != Disposition.SUPERSEDED) {
-            AgentAttribution attribution = attribute(principal, device, r, v);
+            AgentAttribution attribution = attributions.computeIfAbsent(taskKey(device, r, v),
+                    k -> Optional.ofNullable(attribute(principal, device, r, v))).orElse(null);
             if (attribution != null) {
                 task = attribution.resolvedTask();
                 source = attribution.source();
@@ -485,19 +548,22 @@ public class IngestAgentUsageUseCase {
             usage.setSupersededBy("AIEF");
         }
         usage.setCostUsd(costCalculator.execute(usage, prices));
+        return new Pending(v, usage, task, source, disposition);
+    }
 
-        Optional<AIUsage> inserted = usages.insert(usage);
-        if (inserted.isEmpty()) return null;
-        if (disposition != Disposition.SUPERSEDED) {
-            dispositionPolicy.afterStored(device, principal.userId(), v.day(), r.tool());
-        }
-        return new Created(v.index(), inserted.get(), task, source, disposition);
+    private static TaskKey taskKey(AgentDevice device, UsageBatchInput.Row r, Valid v) {
+        return new TaskKey(r.taskRef(), v.branch(), r.repo(),
+                ResolveAgentTaskUseCase.activeTaskApplies(hintOf(device), v.hour(), r.repo()));
+    }
+
+    private static ActiveTaskHint hintOf(AgentDevice device) {
+        return device.getActiveTask() == null ? null
+                : new ActiveTaskHint(device.getActiveTask().taskRef(), device.getActiveTask().since(),
+                device.getActiveTask().repository());
     }
 
     private AgentAttribution attribute(AgentPrincipal principal, AgentDevice device, UsageBatchInput.Row r, Valid v) {
-        ActiveTaskHint hint = device.getActiveTask() == null ? null
-                : new ActiveTaskHint(device.getActiveTask().taskRef(), device.getActiveTask().since(),
-                device.getActiveTask().repository());
+        ActiveTaskHint hint = hintOf(device);
         try {
             return resolveTask.execute(new AgentTaskQuery(principal.organizationId(), principal.userId(),
                     r.taskRef(), v.branch(), r.repo(), v.hour(), hint));

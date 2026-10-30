@@ -34,6 +34,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -159,6 +160,81 @@ class IngestAgentUsageUseCaseTest {
 
         doNothing().when(devices).touchUpload(eq(DEVICE), eq(ORG), any());
         assertThat(useCase.execute(principal, batch(row("k1", 100, 200))).results()).hasSize(1);
+    }
+
+    // ---- batch ingest (agt9) ------------------------------------------------------------------
+
+    @Test
+    void should_insertTheNewRowsInOneWrite_andResolveEachTaskKeyOnce() {
+        UsageBatchInput.Row a = row("k1", 1, 2);
+        UsageBatchInput.Row b = withHour(row("k2", 1, 2), "2026-10-29T15:00:00Z");
+        UsageBatchInput.Row c = withBranch(withHour(row("k3", 1, 2), "2026-10-29T16:00:00Z"), "feature/y");
+
+        UsageUploadResult result = useCase.execute(principal, batch(a, b, c));
+
+        assertThat(result.accepted()).isEqualTo(3);
+        assertThat(usages.bulkInserts).isEqualTo(1);
+        assertThat(usages.inserts).isEqualTo(3);
+        verify(resolveTask, times(2)).execute(any()); // feature/x once, feature/y once
+    }
+
+    @Test
+    void should_resolveTheActiveTaskPerHour_when_onlyLaterRowsAreAfterItsStart() {
+        device.setActiveTask(new AgentDevice.ActiveTask("wi-1", "AB#1", "Tarefa", Instant.parse("2026-10-29T15:00:00Z"), null, null));
+        UsageBatchInput.Row before = row("k1", 1, 2);
+        UsageBatchInput.Row after = withHour(row("k2", 1, 2), "2026-10-29T15:00:00Z");
+        UsageBatchInput.Row later = withHour(row("k3", 1, 2), "2026-10-29T16:00:00Z");
+
+        useCase.execute(principal, batch(before, after, later));
+
+        verify(resolveTask, times(2)).execute(any());
+    }
+
+    @Test
+    void should_reconcileTheRow_when_anotherRequestStoredItsKeyDuringTheBatch() {
+        usages.storedMeanwhile.put("k1", storedRow("k1", 100, 200));
+
+        UsageUploadResult result = useCase.execute(principal, batch(row("k1", 100, 300), row("k2", 1, 2)));
+
+        assertThat(result.results()).extracting(RowResult::status).containsExactly(Status.ACCEPTED, Status.ACCEPTED);
+        assertThat(usages.byKey.get("k1").getOutputTokens()).isEqualTo(300);
+        assertThat(usages.raises).isEqualTo(1);
+        assertThat(usages.inserts).isEqualTo(1);
+    }
+
+    @Test
+    void should_rejectAsRetryableOnlyTheRowsTheBulkInsertDidNotWrite() {
+        usages.failing.add("k2");
+
+        UsageUploadResult result = useCase.execute(principal, batch(row("k1", 1, 2), row("k2", 1, 2)));
+
+        assertThat(result.accepted()).isEqualTo(1);
+        assertThat(result.results().get(1).reason()).isEqualTo("INTERNAL_ERROR");
+        assertThat(result.results().get(1).retryable()).isTrue();
+    }
+
+    @Test
+    void should_keepCallingAfterStoredPerRow_when_thePolicyHasNoBatchMemo() {
+        java.util.List<String> calls = new java.util.ArrayList<>();
+        AgentRowDispositionPolicy live = new AgentRowDispositionPolicy() {
+            @Override
+            public Disposition classify(AgentDevice d, String u, java.time.LocalDate day, Instant hour) {
+                return Disposition.LIVE;
+            }
+
+            @Override
+            public void afterStored(AgentDevice d, String u, java.time.LocalDate day, String tool) {
+                calls.add(day + "|" + tool);
+            }
+        };
+        useCase = new IngestAgentUsageUseCase(devices, batches, usages, resolveTask, live, registerAllocation,
+                autoAssign, new CalculateAiCostUseCase(), organizations, Duration.ofDays(90), Duration.ofDays(7),
+                false, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        useCase.execute(principal, batch(row("k1", 1, 2), withHour(row("k2", 1, 2), "2026-10-29T15:00:00Z")));
+
+        // the default policy has no batch memo: one call per stored row, as before
+        assertThat(calls).hasSize(2);
     }
 
     @Test
@@ -579,7 +655,12 @@ class IngestAgentUsageUseCaseTest {
     /** Behaves like the Mongo adapter: unique key per device, raise-to-max on update. */
     static class InMemoryUsages implements AgentAIUsageRepository {
         final Map<String, AIUsage> byKey = new LinkedHashMap<>();
+        /** Rows another request stores right before the bulk insert of this one (lost race). */
+        final Map<String, AIUsage> storedMeanwhile = new LinkedHashMap<>();
+        /** Keys the bulk insert does not write for a reason other than the unique key. */
+        final Set<String> failing = new HashSet<>();
         int inserts;
+        int bulkInserts;
         int raises;
         private int seq;
 
@@ -599,6 +680,23 @@ class IngestAgentUsageUseCaseTest {
             byKey.put(usage.getAgentKey(), usage);
             inserts++;
             return Optional.of(usage);
+        }
+
+        @Override
+        public List<InsertResult> insertAll(List<AIUsage> rows) {
+            bulkInserts++;
+            byKey.putAll(storedMeanwhile);
+            storedMeanwhile.clear();
+            List<InsertResult> results = new ArrayList<>();
+            for (AIUsage u : rows) {
+                if (failing.contains(u.getAgentKey())) {
+                    results.add(new InsertResult(InsertOutcome.FAILED, null));
+                } else {
+                    results.add(insert(u).map(x -> new InsertResult(InsertOutcome.INSERTED, x))
+                            .orElse(new InsertResult(InsertOutcome.DUPLICATE, null)));
+                }
+            }
+            return results;
         }
 
         @Override
