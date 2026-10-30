@@ -25,7 +25,7 @@ class GetDailyAiUsageUseCaseTest {
         LocalDate d2 = LocalDate.of(2026, 10, 29);
         when(usages.findDailyUsageByUserIdAndDateRange("org-1", "u1", LocalDate.of(2026, 10, 1),
                 LocalDate.of(2026, 10, 31), null)).thenReturn(List.of(
-                new DailyAiUsage(d1, 1, 2, 1, BigDecimal.ONE), new DailyAiUsage(d2, 1, 2, 1, BigDecimal.ONE)));
+                new DailyAiUsage(d1, 1, 2, 0, 0, 1, BigDecimal.ONE), new DailyAiUsage(d2, 1, 2, 0, 0, 1, BigDecimal.ONE)));
         when(allocations.findAgentDays("org-1", "u1", LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)))
                 .thenReturn(Set.of(d2));
 

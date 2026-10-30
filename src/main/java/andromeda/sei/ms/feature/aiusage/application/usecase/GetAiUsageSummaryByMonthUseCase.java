@@ -26,6 +26,8 @@ public class GetAiUsageSummaryByMonthUseCase {
 
         long totalInputTokens = records.stream().mapToLong(AIUsage::getInputTokens).sum();
         long totalOutputTokens = records.stream().mapToLong(AIUsage::getOutputTokens).sum();
+        long totalCacheReadTokens = records.stream().mapToLong(AIUsage::getCacheReadTokens).sum();
+        long totalCacheWriteTokens = records.stream().mapToLong(AIUsage::getCacheWriteTokens).sum();
         int totalInteractions = records.stream().mapToInt(AIUsage::getInteractions).sum();
         BigDecimal totalCostUsd = records.stream()
                 .map(r -> r.getCostUsd() != null ? r.getCostUsd() : BigDecimal.ZERO)
@@ -34,7 +36,8 @@ public class GetAiUsageSummaryByMonthUseCase {
         List<ModelBreakdownOutput> modelBreakdown = buildModelBreakdown(records, totalInteractions);
 
         return new AiUsageSummaryByMonthOutput(
-                month, totalInputTokens, totalOutputTokens, totalInteractions,
+                month, totalInputTokens, totalOutputTokens, totalCacheReadTokens,
+                totalCacheWriteTokens, totalInteractions,
                 totalCostUsd, modelBreakdown);
     }
 

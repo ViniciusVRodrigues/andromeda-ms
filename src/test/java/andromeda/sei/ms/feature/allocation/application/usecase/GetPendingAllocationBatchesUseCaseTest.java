@@ -140,6 +140,24 @@ class GetPendingAllocationBatchesUseCaseTest {
         assertThat(results.get(0).suggestionAllocationId()).isEqualTo("alloc-1");
     }
 
+    @Test
+    void should_sumCacheTokensPerBatch_andKeepInputAndOutputUntouched() {
+        AIUsage agent = aiUsage("u1", DAY, null);
+        agent.setCacheReadTokens(4000L);
+        agent.setCacheWriteTokens(300L);
+        AIUsage aief = aiUsage("u2", DAY, null); // AIEF: cache stays 0 (no fields)
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserId(ORG, USER)).thenReturn(List.of(agent, aief));
+        when(allocationRepository.findByOrgUserAndStatus(ORG, USER, AiUsageAllocation.Status.PENDING_VALIDATION))
+                .thenReturn(List.of());
+
+        PendingBatchOutput batch = useCase.execute(ORG, USER).get(0);
+
+        assertThat(batch.totalCacheReadTokens()).isEqualTo(4000L);
+        assertThat(batch.totalCacheWriteTokens()).isEqualTo(300L);
+        assertThat(batch.totalInputTokens()).isEqualTo(2000L);
+        assertThat(batch.totalOutputTokens()).isEqualTo(1000L);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private AIUsage aiUsage(String id, LocalDate day, String allocationId) {

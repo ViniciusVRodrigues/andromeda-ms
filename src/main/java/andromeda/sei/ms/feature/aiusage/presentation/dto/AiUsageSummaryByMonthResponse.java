@@ -7,6 +7,8 @@ public record AiUsageSummaryByMonthResponse(
         String month,
         long totalInputTokens,
         long totalOutputTokens,
+        long totalCacheReadTokens,
+        long totalCacheWriteTokens,
         int totalInteractions,
         BigDecimal totalCostUsd,
         List<ModelBreakdownResponse> modelBreakdown

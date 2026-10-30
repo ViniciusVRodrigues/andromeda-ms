@@ -8,6 +8,8 @@ public record PendingBatchResponse(
         LocalDate day,
         long totalInputTokens,
         long totalOutputTokens,
+        long totalCacheReadTokens,
+        long totalCacheWriteTokens,
         int totalInteractions,
         BigDecimal estimatedCostUsd,
         String suggestionAllocationId,

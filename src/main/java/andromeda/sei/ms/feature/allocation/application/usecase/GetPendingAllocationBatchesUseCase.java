@@ -72,6 +72,8 @@ public class GetPendingAllocationBatchesUseCase {
                                           AiUsageAllocation pendingAllocation) {
         long totalInputTokens = records.stream().mapToLong(AIUsage::getInputTokens).sum();
         long totalOutputTokens = records.stream().mapToLong(AIUsage::getOutputTokens).sum();
+        long totalCacheReadTokens = records.stream().mapToLong(AIUsage::getCacheReadTokens).sum();
+        long totalCacheWriteTokens = records.stream().mapToLong(AIUsage::getCacheWriteTokens).sum();
         int totalInteractions = records.stream().mapToInt(AIUsage::getInteractions).sum();
         BigDecimal estimatedCostUsd = records.stream()
                 .map(r -> r.getCostUsd() != null ? r.getCostUsd() : BigDecimal.ZERO)
@@ -90,7 +92,7 @@ public class GetPendingAllocationBatchesUseCase {
         }
 
         return new PendingBatchOutput(
-                day, totalInputTokens, totalOutputTokens, totalInteractions,
+                day, totalInputTokens, totalOutputTokens, totalCacheReadTokens, totalCacheWriteTokens, totalInteractions,
                 estimatedCostUsd, suggestionAllocationId, suggestion);
     }
 }

@@ -214,6 +214,8 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
         GroupOperation group = Aggregation.group("day")
                 .sum("inputTokens").as("inputTokens")
                 .sum("outputTokens").as("outputTokens")
+                .sum(org.springframework.data.mongodb.core.aggregation.ConditionalOperators.ifNull("cacheReadTokens").then(0)).as("cacheReadTokens")
+                .sum(org.springframework.data.mongodb.core.aggregation.ConditionalOperators.ifNull("cacheWriteTokens").then(0)).as("cacheWriteTokens")
                 .sum("interactions").as("interactions")
                 .sum("costUsd").as("costUsd");
         SortOperation sort = Aggregation.sort(Sort.by(Sort.Direction.ASC, "_id"));
@@ -226,6 +228,8 @@ public class AiUsageRepositoryImpl implements AIUsageRepository {
                         toLocalDate(r.get("_id")),
                         toLong(r.get("inputTokens")),
                         toLong(r.get("outputTokens")),
+                        toLong(r.get("cacheReadTokens")),
+                        toLong(r.get("cacheWriteTokens")),
                         toLong(r.get("interactions")),
                         toBigDecimal(r.get("costUsd"))
                 ))
