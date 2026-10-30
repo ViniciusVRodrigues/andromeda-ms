@@ -70,7 +70,16 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            # O ssh-action v1 não tem mais script_stop: sem set -e o passo herdaria o status
+            # do último comando, e um deploy-ms.sh que falha passaria como sucesso.
+            set -e
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u viniciusvrodrigues --password-stdin
             IMAGE=${{ env.IMAGE }}:sha-${{ github.sha }} \
             ENV_FILE=${{ secrets.VPS_MS_ENV_FILE }} \
             ~/scripts/deploy-ms.sh
+            # O deploy-ms.sh roda a cópia que está na VPS, não a do repositório. Garante aqui
+            # que o ms promovido volta sozinho quando a JVM sai (ExitOnOutOfMemoryError):
+            # unless-stopped reinicia depois de uma saída e não traz de volta o que o deploy
+            # parou ou removeu de propósito.
+            docker update --restart unless-stopped andromeda-ms-blue
+            docker inspect -f 'andromeda-ms-blue restart={{.HostConfig.RestartPolicy.Name}} entrypoint={{json .Config.Entrypoint}}' andromeda-ms-blue
