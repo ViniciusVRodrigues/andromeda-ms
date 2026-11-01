@@ -161,15 +161,24 @@
     "costByProject": [
       {
         "costUsd": 154.71950082,
+        "kind": "PROJECT",
         "name": "Bootes",
         "projectId": "proj-2"
       },
       {
         "costUsd": null,
-        "name": "Não alocado a work items",
+        "kind": "OUT_OF_DELIVERY",
+        "name": "Fora de entrega",
+        "projectId": null
+      },
+      {
+        "costUsd": null,
+        "kind": "TO_VALIDATE",
+        "name": "A validar",
         "projectId": null
       }
     ],
+    "destination": null,
     "models": [
       "claude-opus-5",
       "gpt-5",

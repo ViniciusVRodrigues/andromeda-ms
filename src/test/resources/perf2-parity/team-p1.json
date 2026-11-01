@@ -388,6 +388,20 @@
         "tokens": 388873
       }
     ],
+    "destination": {
+      "itemsUsd": 69.768661,
+      "otherProjectsUsd": 75.902397,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 188.815429
+      },
+      "totalUsd": 334.486487
+    },
     "membersWithUsage": 3,
     "unallocatedCostUsd": 196.941534
   },

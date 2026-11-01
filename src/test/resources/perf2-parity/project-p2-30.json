@@ -42,6 +42,20 @@
         "start": "2026-10-12"
       }
     ],
+    "destination": {
+      "itemsUsd": 48.199401,
+      "otherProjectsUsd": 63.061495,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 162.624649
+      },
+      "totalUsd": 273.885545
+    },
     "models": [
       "claude-opus-5",
       "gpt-5",

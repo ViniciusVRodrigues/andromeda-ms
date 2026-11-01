@@ -26,6 +26,8 @@ import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboa
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.OrgStats;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.Period;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.PortfolioRow;
+import andromeda.sei.ms.feature.dashboard.application.AiDestinationCalculator;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectCost;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.ProjectSources;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.OrganizationDashboardV2Output.RepoRow;
@@ -115,7 +117,8 @@ import static andromeda.sei.ms.feature.dashboard.application.v2.ConcurrentLoads.
 @Service
 public class GetOrganizationDashboardV2UseCase {
 
-    static final String UNALLOCATED_NAME = "Não alocado a work items";
+    static final String OUT_OF_DELIVERY_NAME = "Fora de entrega";
+    static final String TO_VALIDATE_NAME = "A validar";
     private static final int MONEY_SCALE = 6;
     private static final int SUBSCRIPTION_SCALE = 2;
     private static final BigDecimal DAYS_PER_MONTH = BigDecimal.valueOf(30);
@@ -482,8 +485,27 @@ public class GetOrganizationDashboardV2UseCase {
                 dayModels.stream().mapToLong(AiUsageDayModel::outputTokens).sum());
         Adoption adoption = new Adoption((int) s.ai().byUserDay().stream().map(AiUsageUserDay::userId)
                 .filter(Objects::nonNull).distinct().count(), s.people().size(), connectedPeople(s));
-        return new Ai(models, costByBucket(ctx, dayModels, models), byModel, costByProject(ctx), byEditor, tokens,
-                adoption, subscription(ctx));
+        AiDestination destination = destination(ctx);
+        return new Ai(models, costByBucket(ctx, dayModels, models), byModel, costByProject(ctx, destination), byEditor,
+                tokens, adoption, subscription(ctx), destination);
+    }
+
+    /**
+     * Where the people's AI cost of the period went; {@code null} for a partial caller, so that no
+     * subtraction isolates what the people spent on projects the caller does not see.
+     */
+    private static AiDestination destination(Context ctx) {
+        Snapshot s = ctx.snapshot();
+        if (!s.seesAll()) return null;
+        Map<String, BigDecimal> totalByUser = new HashMap<>();
+        for (AiUsageUserDay d : s.ai().byUserDay()) {
+            if (d.userId() != null && d.costUsd() != null) totalByUser.merge(d.userId(), d.costUsd(), BigDecimal::add);
+        }
+        Map<String, String> names = new HashMap<>();
+        s.users().forEach(u -> {
+            if (u.getId() != null && u.getName() != null) names.put(u.getId(), u.getName());
+        });
+        return AiDestinationCalculator.compute(s.ai().destination(), s.itemProject().keySet(), totalByUser, names);
     }
 
     /** Cost per model and bucket, in one pass over the day-model sums. */
@@ -508,17 +530,19 @@ public class GetOrganizationDashboardV2UseCase {
     }
 
     /**
-     * Allocated to each visible project, then the people's cost no allocation claimed
-     * ({@code allocationId} absent) — {@code null} for a partial caller, so that no subtraction
-     * isolates what the people spent on projects the caller does not see.
+     * Allocated to each visible project, then "Fora de entrega" and "A validar" (validated-only destination; the
+     * old "Não alocado a work items" row is gone) — both {@code null} for a partial caller.
      */
-    private static List<ProjectCost> costByProject(Context ctx) {
+    private static List<ProjectCost> costByProject(Context ctx, AiDestination destination) {
         Map<String, BigDecimal> allocated = ctx.indexed().allocatedIn(true);
         List<ProjectCost> rows = new ArrayList<>(ctx.snapshot().projects().stream()
-                .map(p -> new ProjectCost(p.getId(), p.getName(), allocated.getOrDefault(p.getId(), BigDecimal.ZERO)))
+                .map(p -> new ProjectCost(p.getId(), p.getName(), allocated.getOrDefault(p.getId(), BigDecimal.ZERO),
+                        ProjectCost.PROJECT))
                 .toList());
-        rows.add(new ProjectCost(null, UNALLOCATED_NAME, ctx.snapshot().seesAll()
-                ? sum(ctx.snapshot().ai().byUserDay().stream().map(AiUsageUserDay::unallocatedCostUsd).toList()) : null));
+        rows.add(new ProjectCost(null, OUT_OF_DELIVERY_NAME,
+                destination == null ? null : destination.outOfDelivery().usd(), ProjectCost.OUT_OF_DELIVERY));
+        rows.add(new ProjectCost(null, TO_VALIDATE_NAME,
+                destination == null ? null : destination.toValidate().usd(), ProjectCost.TO_VALIDATE));
         return rows;
     }
 

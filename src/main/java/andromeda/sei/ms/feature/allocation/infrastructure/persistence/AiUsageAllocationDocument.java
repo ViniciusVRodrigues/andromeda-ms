@@ -19,7 +19,8 @@ import java.util.List;
 @Document(collection = "ai_usage_allocations")
 @CompoundIndexes({
         @CompoundIndex(def = "{'organizationId':1,'userId':1,'status':1}", name = "idx_allocation_org_user_status"),
-        @CompoundIndex(def = "{'organizationId':1,'userId':1,'day':1}", name = "idx_allocation_org_user_day")
+        @CompoundIndex(def = "{'organizationId':1,'userId':1,'day':1}", name = "idx_allocation_org_user_day"),
+        @CompoundIndex(def = "{'organizationId':1,'status':1}", name = "idx_allocation_org_status")
 })
 @Data
 @Builder

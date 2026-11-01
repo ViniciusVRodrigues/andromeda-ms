@@ -86,6 +86,20 @@
         "tokens": 78415
       }
     ],
+    "destination": {
+      "itemsUsd": 17.730558,
+      "otherProjectsUsd": 10.351312,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 28.749366
+      },
+      "totalUsd": 56.831236
+    },
     "membersWithUsage": 3,
     "unallocatedCostUsd": 29.136372
   },

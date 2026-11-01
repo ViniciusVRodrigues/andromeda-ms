@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.dto.v2;
 
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiModel;
 import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 
@@ -122,13 +123,32 @@ public record OrganizationDashboardV2Output(
 
     public record Ai(List<String> models, List<CostBucket> costByBucket, List<AiModel> byModel,
                      List<ProjectCost> costByProject, List<EditorUse> byEditor, Tokens tokens, Adoption adoption,
-                     Subscription subscription) {}
+                     Subscription subscription, AiDestination destination) {
+
+        public Ai(List<String> models, List<CostBucket> costByBucket, List<AiModel> byModel,
+                  List<ProjectCost> costByProject, List<EditorUse> byEditor, Tokens tokens, Adoption adoption,
+                  Subscription subscription) {
+            this(models, costByBucket, byModel, costByProject, byEditor, tokens, adoption, subscription, null);
+        }
+    }
 
     /** The people's AI cost per model in the bucket. */
     public record CostBucket(String start, String label, Map<String, BigDecimal> byModel) {}
 
-    /** {@code projectId null}: "Não alocado a work items" ({@code costUsd null} for a partial caller). */
-    public record ProjectCost(String projectId, String name, BigDecimal costUsd) {}
+    /**
+     * {@code kind}: {@code PROJECT}, {@code OUT_OF_DELIVERY} ("Fora de entrega") or {@code TO_VALIDATE}
+     * ("A validar"), both with {@code projectId null} and {@code costUsd null} for a partial caller.
+     */
+    public record ProjectCost(String projectId, String name, BigDecimal costUsd, String kind) {
+
+        public static final String PROJECT = "PROJECT";
+        public static final String OUT_OF_DELIVERY = "OUT_OF_DELIVERY";
+        public static final String TO_VALIDATE = "TO_VALIDATE";
+
+        public ProjectCost(String projectId, String name, BigDecimal costUsd) {
+            this(projectId, name, costUsd, projectId == null ? null : PROJECT);
+        }
+    }
 
     public record EditorUse(String editor, long interactions) {}
 

@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.dto.v2;
 
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDay;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiModel;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AllocationSummary;
@@ -98,9 +99,18 @@ public record TeamDashboardV2Output(
                              int prsMerged, DurationStat prCycleTimeHours, DurationStat timeToFirstReviewHours,
                              Double reviewedWithinSlaPercent, DeliveryMetrics delivery, int commits) {}
 
+    /**
+     * {@code destination}: where the members' AI cost went in the sprint (items of this project, other projects,
+     * "Fora de entrega", "A validar"); {@code unallocatedCostUsd} stays for one release for the old ui.
+     */
     public record Ai(List<AiDay> byDay, List<AiModel> byModel, AllocationSummary allocation, int membersWithUsage,
-                     BigDecimal unallocatedCostUsd) {
-        public static final Ai EMPTY = new Ai(List.of(), List.of(), new AllocationSummary(0, 0, 0), 0, null);
+                     BigDecimal unallocatedCostUsd, AiDestination destination) {
+        public static final Ai EMPTY = new Ai(List.of(), List.of(), new AllocationSummary(0, 0, 0), 0, null, null);
+
+        public Ai(List<AiDay> byDay, List<AiModel> byModel, AllocationSummary allocation, int membersWithUsage,
+                  BigDecimal unallocatedCostUsd) {
+            this(byDay, byModel, allocation, membersWithUsage, unallocatedCostUsd, null);
+        }
     }
 
     /** {@code predictabilityPct} = delivered / planned complexity × 100 (complexity-effort D1), {@code null} without planned complexity. */

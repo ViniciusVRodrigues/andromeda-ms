@@ -1,5 +1,6 @@
 package andromeda.sei.ms.feature.dashboard.application.dto.v2;
 
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.shared.domain.metrics.DurationStat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -128,7 +129,13 @@ public record ProjectOverviewV2Output(
     public record Subscription(BigDecimal consumptionUsd, BigDecimal subscriptionUsd, BigDecimal perUserMonthUsd) {}
 
     public record Ai(List<String> models, List<CostBucket> costByBucket, Adoption adoption, Subscription subscription,
-                     Double tokensPerPoint, Double tokensPerHour) {}
+                     Double tokensPerPoint, Double tokensPerHour, AiDestination destination) {
+
+        public Ai(List<String> models, List<CostBucket> costByBucket, Adoption adoption, Subscription subscription,
+                  Double tokensPerPoint, Double tokensPerHour) {
+            this(models, costByBucket, adoption, subscription, tokensPerPoint, tokensPerHour, null);
+        }
+    }
 
     public record People(int members, int azureLinked, int githubLinked, int aiConnected) {}
 

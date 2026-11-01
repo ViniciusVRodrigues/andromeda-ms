@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AiUsageEditorTotal;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserTotals;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
+import andromeda.sei.ms.feature.allocation.domain.AllocationDestination;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureConnection;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
@@ -155,6 +156,10 @@ public class OrganizationDashboardData {
                     ? List.<AiUsageUserTotals>of()
                     : aiUsageRepository.summarizeTotalsByUser(orgId, people, period.previous().first(),
                     period.previous().last()));
+            // Only a caller who sees every project gets the destination block, so partial callers skip the read.
+            CompletableFuture<List<AllocationDestination>> destinationF = loads.supply(() ->
+                    !seesAll || people.isEmpty() ? List.<AllocationDestination>of()
+                            : allocationRepository.summarizeDestinationCoverage(orgId, people, current.first(), current.last()));
             CompletableFuture<Vcs> vcsF = loads.supply(() -> vcs(orgId, loads, join(bindingsF), projectIds, period));
 
             Map<String, List<Sprint>> sprints = join(sprintsF).stream().filter(s -> s.getProjectId() != null)
@@ -170,7 +175,7 @@ public class OrganizationDashboardData {
                 });
             }
             return new Snapshot(projects, users, people, seesAll, items, itemProject, join(vcsF), join(organizationF),
-                    new Ai(join(dayModelF), join(editorF), join(userDayF), join(previousF), join(allocationsF)), join(tokensF),
+                    new Ai(join(dayModelF), join(editorF), join(userDayF), join(previousF), join(allocationsF), join(destinationF)), join(tokensF),
                     join(azureF),
                     join(githubF), join(azureBindingsF).stream().filter(b -> projectIds.contains(b.getProjectId())).toList(),
                     join(syncF).stream().filter(c -> c.projectId() == null || projectIds.contains(c.projectId()))
@@ -317,5 +322,12 @@ public class OrganizationDashboardData {
      */
     public record Ai(List<AiUsageDayModel> byDayModel, List<AiUsageEditorTotal> byEditor,
                      List<AiUsageUserDay> byUserDay, List<AiUsageUserTotals> previous,
-                     List<AllocationCoverage> allocations) {}
+                     List<AllocationCoverage> allocations, List<AllocationDestination> destination) {
+
+        public Ai(List<AiUsageDayModel> byDayModel, List<AiUsageEditorTotal> byEditor,
+                  List<AiUsageUserDay> byUserDay, List<AiUsageUserTotals> previous,
+                  List<AllocationCoverage> allocations) {
+            this(byDayModel, byEditor, byUserDay, previous, allocations, List.of());
+        }
+    }
 }

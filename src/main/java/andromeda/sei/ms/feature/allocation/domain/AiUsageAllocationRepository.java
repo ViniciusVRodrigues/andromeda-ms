@@ -47,6 +47,9 @@ public interface AiUsageAllocationRepository {
     List<AiUsageAllocation> findByOrgUserAndDayBetweenAndStatusIn(String organizationId, String userId,
             LocalDate from, LocalDate to, java.util.Collection<AiUsageAllocation.Status> statuses);
 
+    /** Active {@code AWAITING_APPROVAL} allocations of the organization (the approval queue); unordered. */
+    List<AiUsageAllocation> findAwaitingApprovalByOrganizationId(String organizationId);
+
     void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId);
 
     Optional<AiUsageAllocation> findById(String id, String organizationId);
@@ -102,4 +105,13 @@ public interface AiUsageAllocationRepository {
      */
     List<AllocationCoverageDetail> summarizeValidatedCoverageByDayAndModel(String organizationId,
             java.util.Collection<String> workItemIds, LocalDate from, LocalDate to);
+
+    /**
+     * Active {@code VALIDATED} and {@code AWAITING_APPROVAL} allocations of these users with day within
+     * {@code [from, to]}, whatever their splits (items, other projects, "Fora de entrega"), each with the cost and
+     * tokens of the active usage records it cites, summed in the database like {@link #summarizeValidatedCoverage}.
+     * Empty without users.
+     */
+    List<AllocationDestination> summarizeDestinationCoverage(String organizationId,
+            java.util.Collection<String> userIds, LocalDate from, LocalDate to);
 }

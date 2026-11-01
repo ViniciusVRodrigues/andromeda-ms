@@ -62,4 +62,23 @@ public final class DashboardV2Parts {
 
     /** Distinct (person, day) pairs with AI usage, by allocation situation. */
     public record AllocationSummary(int validatedDays, int pendingDays, int unallocatedDays) {}
+
+    /**
+     * Where the AI cost of the people in the cut went (uso-ia-fora-de-entrega, design 4): {@code totalUsd} =
+     * {@code itemsUsd} + {@code otherProjectsUsd} + {@code outOfDelivery.usd} + {@code toValidate.usd}, the
+     * rounding closing on {@code otherProjectsUsd}. Only {@code VALIDATED} allocations count as destination;
+     * everything else (pending, awaiting approval, not allocated) is "A validar".
+     */
+    public record AiDestination(BigDecimal totalUsd, BigDecimal itemsUsd, BigDecimal otherProjectsUsd,
+                                OutOfDelivery outOfDelivery, ToValidate toValidate) {}
+
+    /** "Fora de entrega" (validated only), by category and by person; {@code sharePct} is 0 to 100 of the person's own AI cost. */
+    public record OutOfDelivery(BigDecimal usd, List<CategoryCost> byCategory, List<PersonCost> byPerson) {}
+
+    public record CategoryCost(String category, BigDecimal usd) {}
+
+    public record PersonCost(String userId, String name, BigDecimal usd, BigDecimal totalUsd, Double sharePct) {}
+
+    /** {@code usd}: total minus every validated allocation; {@code awaitingUsd}: the part waiting for approval. */
+    public record ToValidate(BigDecimal usd, BigDecimal awaitingUsd) {}
 }

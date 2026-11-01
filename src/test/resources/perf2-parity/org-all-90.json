@@ -161,25 +161,49 @@
     "costByProject": [
       {
         "costUsd": 154.71950082,
+        "kind": "PROJECT",
         "name": "Bootes",
         "projectId": "proj-2"
       },
       {
         "costUsd": 157.09268982,
+        "kind": "PROJECT",
         "name": "Cygnus",
         "projectId": "proj-3"
       },
       {
         "costUsd": 165.88753521,
+        "kind": "PROJECT",
         "name": "Orion",
         "projectId": "proj-1"
       },
       {
-        "costUsd": 1042.752591,
-        "name": "Não alocado a work items",
+        "costUsd": 0,
+        "kind": "OUT_OF_DELIVERY",
+        "name": "Fora de entrega",
+        "projectId": null
+      },
+      {
+        "costUsd": 1063.434482,
+        "kind": "TO_VALIDATE",
+        "name": "A validar",
         "projectId": null
       }
     ],
+    "destination": {
+      "itemsUsd": 446.98066,
+      "otherProjectsUsd": 142.646465,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 1063.434482
+      },
+      "totalUsd": 1653.061607
+    },
     "models": [
       "claude-opus-5",
       "gpt-5",

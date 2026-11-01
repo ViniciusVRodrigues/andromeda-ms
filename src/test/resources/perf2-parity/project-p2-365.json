@@ -114,6 +114,20 @@
         "start": "2026-10-01"
       }
     ],
+    "destination": {
+      "itemsUsd": 500.95184,
+      "otherProjectsUsd": 553.435004,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 1913.57328
+      },
+      "totalUsd": 2967.960124
+    },
     "models": [
       "claude-opus-5",
       "claude-sonnet-5",
