@@ -359,7 +359,26 @@ public class GetTeamDashboardV2UseCase {
         return new Ai(aiByDay(ctx, allocated), aiByModel(allocated),
                 DashboardV2Views.allocationSummaryOfDays(memberUsage, validated),
                 (int) memberUsage.stream().map(AiUsageUserDay::userId).filter(Objects::nonNull).distinct().count(),
-                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null);
+                current.hasAiUsage() ? current.aiCost().totalUnallocated() : null,
+                aiCostCalculator.destination(ctx.orgId(), ctx.memberIds(), ctx.projectWorkItemIds(),
+                        totalByUser(memberUsage), personNames(ctx.people()), window.startDay(), window.endDay()));
+    }
+
+    /** AI cost of each person over the window, as the dashboard sums it. */
+    static Map<String, BigDecimal> totalByUser(List<AiUsageUserDay> usage) {
+        Map<String, BigDecimal> totals = new HashMap<>();
+        for (AiUsageUserDay d : usage) {
+            if (d.userId() != null && d.costUsd() != null) totals.merge(d.userId(), d.costUsd(), BigDecimal::add);
+        }
+        return totals;
+    }
+
+    static Map<String, String> personNames(Map<String, PersonInfo> people) {
+        Map<String, String> names = new HashMap<>();
+        people.forEach((id, info) -> {
+            if (info != null && info.name() != null) names.put(id, info.name());
+        });
+        return names;
     }
 
     /** Allocated cost and the allocated share of tokens/interactions per day, up to today. */

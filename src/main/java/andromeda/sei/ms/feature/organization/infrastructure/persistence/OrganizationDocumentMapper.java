@@ -1,6 +1,7 @@
 package andromeda.sei.ms.feature.organization.infrastructure.persistence;
 
 import andromeda.sei.ms.feature.organization.domain.AiPriceEntry;
+import andromeda.sei.ms.feature.organization.domain.AllocationPolicy;
 import andromeda.sei.ms.feature.organization.domain.MetricSettings;
 import andromeda.sei.ms.feature.organization.domain.Organization;
 import andromeda.sei.ms.feature.organization.domain.RemediationRules;
@@ -42,6 +43,7 @@ public class OrganizationDocumentMapper {
         organization.setDeletedBy(doc.getDeletedBy());
         organization.setPurgedAt(doc.getPurgedAt());
         organization.setMetricSettings(toMetricSettings(doc.getMetricSettings()));
+        organization.setAllocationPolicy(toAllocationPolicy(doc.getAllocationPolicy()));
         organization.setVcsSettings(toVcsSettings(doc.getVcsSettings()));
         organization.setWorkItemPatterns(toWorkItemPatterns(doc));
         return organization;
@@ -126,6 +128,11 @@ public class OrganizationDocumentMapper {
                         ? rules.getRevertCountsAsRemediation() : defaults.revertCountsAsRemediation()));
     }
 
+    private AllocationPolicy toAllocationPolicy(AllocationPolicyDocument doc) {
+        if (doc == null || doc.getOutOfDeliveryCapPercent() == null) return AllocationPolicy.defaults();
+        return new AllocationPolicy(doc.getOutOfDeliveryCapPercent());
+    }
+
     private MetricSettingsDocument toMetricSettingsDocument(MetricSettings settings) {
         RemediationRules rules = settings.remediationRules();
         return new MetricSettingsDocument(new RemediationRulesDocument(
@@ -164,6 +171,7 @@ public class OrganizationDocumentMapper {
                 .deletedBy(org.getDeletedBy())
                 .purgedAt(org.getPurgedAt())
                 .metricSettings(toMetricSettingsDocument(org.getMetricSettings()))
+                .allocationPolicy(new AllocationPolicyDocument(org.getAllocationPolicy().outOfDeliveryCapPercent()))
                 .vcsSettings(toVcsSettingsDocument(org.getVcsSettings()))
                 .workItemPatterns(toWorkItemPatternsDocument(org.getWorkItemPatterns()))
                 .createdAt(org.getCreatedAt())

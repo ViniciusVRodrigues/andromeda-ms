@@ -5,6 +5,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverageDetail;
+import andromeda.sei.ms.feature.allocation.domain.AllocationDestination;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,6 +35,27 @@ public final class AllocationCoverageStubs {
                 .thenAnswer(inv -> coverage(inWindow(allocations, inv.getArgument(2), inv.getArgument(3)), usages));
         lenient().when(repository.summarizeValidatedCoverageByDayAndModel(eq(orgId), anyCollection(), any(), any()))
                 .thenAnswer(inv -> detail(inWindow(allocations, inv.getArgument(2), inv.getArgument(3)), usages));
+        stubDestination(repository, orgId, allocations, usages);
+    }
+
+    /** The destination read (uso-ia-fora-de-entrega): validated and awaiting allocations of the users, any splits. */
+    public static void stubDestination(AiUsageAllocationRepository repository, String orgId,
+                                       List<AiUsageAllocation> allocations, List<AIUsage> usages) {
+        lenient().when(repository.summarizeDestinationCoverage(eq(orgId), anyCollection(), any(), any()))
+                .thenAnswer(inv -> {
+                    java.util.Collection<String> users = inv.getArgument(1);
+                    List<AiUsageAllocation> scoped = inWindow(allocations, inv.getArgument(2), inv.getArgument(3)).stream()
+                            .filter(a -> users.contains(a.getUserId()))
+                            .filter(a -> a.getStatus() == AiUsageAllocation.Status.VALIDATED
+                                    || a.getStatus() == AiUsageAllocation.Status.AWAITING_APPROVAL).toList();
+                    List<AllocationDestination> rows = new ArrayList<>();
+                    for (AllocationCoverage c : coverage(scoped, usages)) {
+                        AiUsageAllocation a = scoped.stream().filter(x -> x.getId().equals(c.id())).findFirst().orElseThrow();
+                        rows.add(new AllocationDestination(c.id(), c.userId(), c.day(), a.getStatus(), c.splits(),
+                                c.costUsd(), c.tokens()));
+                    }
+                    return rows;
+                });
     }
 
     public static void stub(AiUsageAllocationRepository repository, String orgId, AiUsageAllocation allocation,

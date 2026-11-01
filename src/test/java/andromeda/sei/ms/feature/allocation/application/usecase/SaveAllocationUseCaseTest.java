@@ -43,6 +43,13 @@ class SaveAllocationUseCaseTest {
 
     @Mock private andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility typeEligibility;
 
+    @Mock private andromeda.sei.ms.feature.allocation.application.AllocationApprovalService approvalService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void approvalIsFree() {
+        andromeda.sei.ms.feature.allocation.application.AllocationApprovalTestSupport.stubFree(approvalService);
+    }
+
     @InjectMocks
     private SaveAllocationUseCase useCase;
 

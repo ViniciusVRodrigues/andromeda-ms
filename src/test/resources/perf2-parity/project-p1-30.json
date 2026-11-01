@@ -42,6 +42,20 @@
         "start": "2026-10-12"
       }
     ],
+    "destination": {
+      "itemsUsd": 50.68585,
+      "otherProjectsUsd": 59.760629,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 126.933638
+      },
+      "totalUsd": 237.380117
+    },
     "models": [
       "gpt-5",
       "claude-sonnet-5",

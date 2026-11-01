@@ -51,7 +51,8 @@ class MoveAgentUsageUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new MoveAgentUsageUseCase(allocations, resolveTask, queries, ratios, workItems);
+        useCase = new MoveAgentUsageUseCase(allocations, resolveTask, queries, ratios, workItems,
+                andromeda.sei.ms.feature.allocation.application.AllocationApprovalTestSupport.freeService());
         when(allocations.save(any())).thenAnswer(inv -> {
             AiUsageAllocation a = inv.getArgument(0);
             if (a.getId() == null) a.setId("alloc-new");

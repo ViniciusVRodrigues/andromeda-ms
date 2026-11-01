@@ -23,7 +23,7 @@ public class RoleSeeder implements ApplicationRunner {
             "USER_MANAGE", "ROLE_MANAGE",
             "AZURE_CONFIGURE", "AZURE_READ",
             "REPOS_CONFIGURE", "REPOS_READ",
-            "AI_READ_OWN", "AI_READ_ALL",
+            "AI_READ_OWN", "AI_READ_ALL", "AI_ALLOCATION_APPROVE",
             "DASHBOARD_INDIVIDUAL", "DASHBOARD_TEAM", "DASHBOARD_STRATEGIC",
             "PRICE_TABLE_MANAGE",
             "CONNECTOR_TOKEN_MANAGE_OWN", "CONNECTOR_TOKEN_MANAGE_ALL",
@@ -39,12 +39,12 @@ public class RoleSeeder implements ApplicationRunner {
             new RoleSeed("TECH_LEAD", "Líder Técnico", List.of(
                     "AZURE_READ", "REPOS_READ", "AI_READ_ALL",
                     "DASHBOARD_TEAM", "DASHBOARD_INDIVIDUAL", "CONNECTOR_TOKEN_MANAGE_OWN",
-                    "PROJECT_MANAGE", "WORK_ITEM_MANAGE"
+                    "PROJECT_MANAGE", "WORK_ITEM_MANAGE", "AI_ALLOCATION_APPROVE"
             )),
             new RoleSeed("MANAGER", "Gerente", List.of(
                     "AZURE_READ", "REPOS_READ", "AI_READ_ALL",
                     "DASHBOARD_INDIVIDUAL", "DASHBOARD_STRATEGIC",
-                    "AI_READ_OWN", "CONNECTOR_TOKEN_MANAGE_OWN",
+                    "AI_READ_OWN", "CONNECTOR_TOKEN_MANAGE_OWN", "AI_ALLOCATION_APPROVE",
                     // Managers read every project, as before project-scoped-permissions.
                     "PROJECT_ACCESS_ALL"
             )),

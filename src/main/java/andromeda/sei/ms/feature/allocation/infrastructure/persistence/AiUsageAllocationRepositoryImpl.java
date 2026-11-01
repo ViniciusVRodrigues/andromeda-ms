@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.allocation.infrastructure.persistence;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
+import andromeda.sei.ms.feature.allocation.domain.AllocationDestination;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverageDetail;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.ValidatedUserDay;
@@ -126,6 +127,15 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     }
 
     @Override
+    public List<AiUsageAllocation> findByOrgUserAndDayBetweenAndStatusIn(String organizationId, String userId,
+            LocalDate from, LocalDate to, java.util.Collection<AiUsageAllocation.Status> statuses) {
+        if (statuses == null || statuses.isEmpty()) return List.of();
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and(USER_ID).is(userId)
+                .and(ACTIVE).is(true).and(DAY).gte(from).lte(to).and(STATUS).in(statuses));
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId) {
         if (aiUsageIds == null || aiUsageIds.isEmpty()) {
             return;
@@ -154,6 +164,14 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         Query query = Query.query(criteria);
         return mongoTemplate.find(query, AiUsageAllocationDocument.class)
                 .stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
+    public List<AiUsageAllocation> findAwaitingApprovalByOrganizationId(String organizationId) {
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId)
+                .and(STATUS).is(AiUsageAllocation.Status.AWAITING_APPROVAL)
+                .and(ACTIVE).is(true));
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream().map(mapper::toDomain).toList();
     }
 
     @Override
@@ -191,7 +209,7 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
                 .append(STATUS, AiUsageAllocation.Status.VALIDATED.name())
                 .append(ACTIVE, true);
         Document projection = new Document(USER_ID, 1).append(DAY, 1).append(AI_USAGE_IDS, 1)
-                .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1);
+                .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1).append("splits.kind", 1);
         List<AiUsageAllocation> allocations = new ArrayList<>();
         for (Document document : collection().find(filter).projection(projection)) {
             allocations.add(leanAllocation(document, organizationId, RawDocuments.day(mongoTemplate, document.get(DAY))));
@@ -199,10 +217,15 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return allocations;
     }
 
+    private static AllocationSplit.Kind storedKind(Document split) {
+        return "OUT_OF_DELIVERY".equals(split.getString("kind")) ? AllocationSplit.Kind.OUT_OF_DELIVERY
+                : AllocationSplit.Kind.ITEM;
+    }
+
     static AiUsageAllocation leanAllocation(Document document, String organizationId, LocalDate day) {
         List<AllocationSplit> splits = RawDocuments.documents(document.get("splits")).stream()
-                .map(split -> new AllocationSplit(split.getString("workItemId"), null,
-                        RawDocuments.decimal(split.get("percentage"))))
+                .map(split -> new AllocationSplit(storedKind(split), split.getString("workItemId"), null,
+                        RawDocuments.decimal(split.get("percentage")), null, null))
                 .toList();
         return new AiUsageAllocation(RawDocuments.id(document), organizationId, document.getString(USER_ID), day,
                 RawDocuments.strings(document.get(AI_USAGE_IDS)), splits, AiUsageAllocation.Status.VALIDATED, null,
@@ -423,7 +446,8 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return List.of(
                 new Document("$match", allocationMatch(organizationId, workItemIds, from, to)),
                 new Document("$project", new Document(USER_ID, 1).append(DAY, 1).append(SPLIT_WORK_ITEM_ID, 1)
-                        .append(SPLIT_PERCENTAGE, 1).append(SIG, citedSignature())));
+                        .append(SPLIT_PERCENTAGE, 1).append("splits.kind", 1)
+                        .append(SIG, citedSignature())));
     }
 
     /** Usage of the allocations' stamp, grouped by (allocation, day, model), with the signature of the ids. */
@@ -456,6 +480,58 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
             if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("hint")) throw e;
             return usages.aggregate(pipeline).into(new ArrayList<>());
         }
+    }
+
+    @Override
+    public List<AllocationDestination> summarizeDestinationCoverage(String organizationId,
+            java.util.Collection<String> userIds, LocalDate from, LocalDate to) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        Map<String, AiUsageAllocation.Status> statuses = new java.util.concurrent.ConcurrentHashMap<>();
+        List<AllocationSig> sigs = ParallelChunks.read(userIds, chunk -> {
+            List<AllocationSig> rows = new ArrayList<>();
+            for (Document row : collection().aggregate(destinationSignaturePipeline(organizationId, chunk, from, to))) {
+                Document sig = row.get(SIG, Document.class);
+                rows.add(new AllocationSig(RawDocuments.id(row), row.getString(USER_ID),
+                        RawDocuments.day(mongoTemplate, row.get(DAY)), splitsOf(row.get("splits")),
+                        RawDocuments.longValue(sig.get(NUM)), RawDocuments.longValue(sig.get(H1)),
+                        RawDocuments.longValue(sig.get(H2))));
+                statuses.put(RawDocuments.id(row), AiUsageAllocation.Status.valueOf(row.getString(STATUS)));
+            }
+            return rows;
+        });
+        Map<String, AllocationSig> byId = new LinkedHashMap<>();
+        sigs.forEach(a -> byId.putIfAbsent(a.id(), a));
+        List<AllocationDestination> result = new ArrayList<>();
+        for (StampedAllocation a : covered(organizationId, List.copyOf(byId.values()))) {
+            BigDecimal cost = BigDecimal.ZERO;
+            long tokens = 0;
+            for (UsageRow u : a.usage()) {
+                cost = cost.add(u.cost());
+                tokens += u.input() + u.output();
+            }
+            result.add(new AllocationDestination(a.id(), a.userId(), a.day(), statuses.get(a.id()),
+                    a.splits(), cost, tokens));
+        }
+        return result;
+    }
+
+    /** Match of the destination read: the index {@code organizationId, userId, day} serves it, status filters the rest. */
+    Document destinationMatch(String organizationId, List<String> userIds, LocalDate from, LocalDate to) {
+        return new Document(ORGANIZATION_ID, organizationId)
+                .append(USER_ID, new Document("$in", userIds))
+                .append(DAY, dayRange(from, to))
+                .append(STATUS, new Document("$in", List.of(AiUsageAllocation.Status.VALIDATED.name(),
+                        AiUsageAllocation.Status.AWAITING_APPROVAL.name())))
+                .append(ACTIVE, true);
+    }
+
+    List<Document> destinationSignaturePipeline(String organizationId, List<String> userIds,
+                                                LocalDate from, LocalDate to) {
+        return List.of(
+                new Document("$match", destinationMatch(organizationId, userIds, from, to)),
+                new Document("$project", new Document(USER_ID, 1).append(DAY, 1).append(STATUS, 1)
+                        .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1).append("splits.kind", 1)
+                        .append("splits.category", 1).append(SIG, citedSignature())));
     }
 
     /** Signatures of the allocations, per chunk of work items; an allocation in two chunks keeps its first row. */
@@ -529,9 +605,19 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
 
     private static List<AllocationSplit> splitsOf(Object splits) {
         return RawDocuments.documents(splits).stream()
-                .map(split -> new AllocationSplit(split.getString("workItemId"), null,
-                        RawDocuments.decimal(split.get("percentage"))))
+                .map(split -> new AllocationSplit(storedKind(split), split.getString("workItemId"), null,
+                        RawDocuments.decimal(split.get("percentage")), storedCategory(split), null))
                 .toList();
+    }
+
+    private static AllocationSplit.Category storedCategory(Document split) {
+        String name = split.getString("category");
+        if (name == null) return null;
+        try {
+            return AllocationSplit.Category.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private Document dayRange(LocalDate from, LocalDate to) {

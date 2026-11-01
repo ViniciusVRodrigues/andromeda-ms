@@ -28,6 +28,7 @@ public class Organization {
     private String deletedBy;
     private Instant purgedAt;
     private MetricSettings metricSettings = MetricSettings.defaults();
+    private AllocationPolicy allocationPolicy = AllocationPolicy.defaults();
     private VcsSettings vcsSettings = VcsSettings.defaults();
     private WorkItemPatterns workItemPatterns = WorkItemPatterns.defaults();
 
@@ -106,6 +107,12 @@ public class Organization {
     public MetricSettings getMetricSettings() { return metricSettings; }
     public void setMetricSettings(MetricSettings metricSettings) {
         this.metricSettings = metricSettings != null ? metricSettings : MetricSettings.defaults();
+    }
+
+    /** Nunca nulo: ausente no documento le o padrao (teto de 15%). */
+    public AllocationPolicy getAllocationPolicy() { return allocationPolicy; }
+    public void setAllocationPolicy(AllocationPolicy allocationPolicy) {
+        this.allocationPolicy = allocationPolicy != null ? allocationPolicy : AllocationPolicy.defaults();
     }
 
     /** Nunca nulo: documentos sem a configuracao leem "nunca configurado" (defaults na leitura). */

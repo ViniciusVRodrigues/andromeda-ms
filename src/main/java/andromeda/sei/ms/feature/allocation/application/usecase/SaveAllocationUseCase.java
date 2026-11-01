@@ -3,6 +3,9 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryInput;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalPolicy;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalService;
+import andromeda.sei.ms.feature.allocation.application.AllocationSplitsValidator;
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -43,6 +46,7 @@ public class SaveAllocationUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final WorkItemRepository workItemRepository;
     private final AllocationTypeEligibility typeEligibility;
+    private final AllocationApprovalService approvalService;
 
     public void execute(String organizationId, String userId, LocalDate day, List<AllocationEntryInput> entries) {
         validate(entries);
@@ -53,6 +57,7 @@ public class SaveAllocationUseCase {
                 .map(e -> new AllocationSplit(e.workItemId(), e.workItemTitle(),
                         e.percentage().setScale(PERCENTAGE_SCALE, RoundingMode.HALF_UP)))
                 .toList();
+        AllocationSplitsValidator.validate(splits);
         // Rows already allocated by the agent (AGENT allocations) are outside the per-day flow: never
         // swept into this allocation, never unlinked, and the AGENT allocation itself is never deleted.
         List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
@@ -74,7 +79,12 @@ public class SaveAllocationUseCase {
                 .collect(Collectors.toSet());
 
         AiUsageAllocation allocation = new AiUsageAllocation(null, organizationId, userId, day, dayUsageIds, splits,
-                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, null, now, now);
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.MANUAL, true, null, now, now);
+        // This path replaces every non-agent allocation of the day: none of them counts in the month's budget.
+        List<String> replacedIds = ofTheDay.stream().filter(a -> !a.isAgent()).map(AiUsageAllocation::getId).toList();
+        AllocationApprovalPolicy.Decision decision = approvalService.evaluate(organizationId, userId, day,
+                dayUsageIds, splits, replacedIds);
+        decision.applyTo(allocation, now);
 
         allocationRepository.deleteByOrganizationIdAndUserIdAndDay(organizationId, userId, day);
         AiUsageAllocation saved = allocationRepository.save(allocation);

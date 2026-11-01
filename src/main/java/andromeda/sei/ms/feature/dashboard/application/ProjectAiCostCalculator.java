@@ -6,6 +6,7 @@ import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
 import andromeda.sei.ms.feature.allocation.domain.AllocationCoverageDetail;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -95,6 +96,18 @@ public class ProjectAiCostCalculator {
                     BigDecimal::add);
         }
         return byUser;
+    }
+
+    /**
+     * Where the cost of {@code userIds} went in the window (design 4): items of the project, other projects,
+     * "Fora de entrega" and "A validar"; the total is the people's own AI cost.
+     */
+    public AiDestination destination(String organizationId, Collection<String> userIds, Set<String> projectWorkItemIds,
+                                     Map<String, BigDecimal> totalByUser, Map<String, String> names,
+                                     LocalDate from, LocalDate to) {
+        return AiDestinationCalculator.compute(
+                allocationRepository.summarizeDestinationCoverage(organizationId, userIds, from, to),
+                projectWorkItemIds, totalByUser, names);
     }
 
     private static BigDecimal projectShare(List<AllocationSplit> splits, Set<String> projectWorkItemIds) {

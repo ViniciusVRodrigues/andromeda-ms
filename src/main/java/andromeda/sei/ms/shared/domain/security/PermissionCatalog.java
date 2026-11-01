@@ -29,6 +29,7 @@ public final class PermissionCatalog {
     public static final String DASHBOARD_STRATEGIC = "DASHBOARD_STRATEGIC";
     public static final String AI_READ_ALL = "AI_READ_ALL";
     public static final String WORK_ITEM_MANAGE = "WORK_ITEM_MANAGE";
+    public static final String AI_ALLOCATION_APPROVE = "AI_ALLOCATION_APPROVE";
 
     /** Codes only the global ADMIN preset holds: never assignable to (or cloned into) organization roles. */
     public static final java.util.Set<String> NON_ASSIGNABLE_TO_ROLES = java.util.Set.of(ORGANIZATION_DELETE);
@@ -49,7 +50,7 @@ public final class PermissionCatalog {
             scopes.put(code, PermissionScope.ORG_ONLY);
         }
         for (String code : new String[]{AZURE_READ, REPOS_READ, DASHBOARD_TEAM, DASHBOARD_STRATEGIC, AI_READ_ALL,
-                WORK_ITEM_MANAGE}) {
+                WORK_ITEM_MANAGE, AI_ALLOCATION_APPROVE}) {
             scopes.put(code, PermissionScope.PROJECT_SCOPABLE);
         }
         return Collections.unmodifiableMap(scopes);

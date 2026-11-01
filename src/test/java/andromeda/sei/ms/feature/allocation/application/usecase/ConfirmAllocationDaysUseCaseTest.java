@@ -38,7 +38,8 @@ class ConfirmAllocationDaysUseCaseTest {
     final AiUsageAllocationRepository repo = mock(AiUsageAllocationRepository.class);
     final WorkItemRepository items = mock(WorkItemRepository.class);
     final CalculateAiRatiosUseCase ratios = mock(CalculateAiRatiosUseCase.class);
-    final ConfirmAllocationDaysUseCase useCase = new ConfirmAllocationDaysUseCase(repo, items, ratios);
+    final ConfirmAllocationDaysUseCase useCase = new ConfirmAllocationDaysUseCase(repo, items, ratios,
+            andromeda.sei.ms.feature.allocation.application.AllocationApprovalTestSupport.freeService());
 
     AiUsageAllocation pending(String id, LocalDate day, AiUsageAllocation.AssignedBy by, String wi, List<ReviewReason> reasons) {
         AiUsageAllocation a = new AiUsageAllocation(id, ORG, USER, day, List.of("u-" + id),

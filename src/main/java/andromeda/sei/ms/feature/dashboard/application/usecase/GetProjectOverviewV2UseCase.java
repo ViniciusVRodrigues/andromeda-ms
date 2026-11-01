@@ -4,6 +4,7 @@ import andromeda.sei.ms.feature.aiusage.domain.AiUsageUserDay;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator.AllocatedUsage;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AllocationSummary;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output;
@@ -210,6 +211,11 @@ public class GetProjectOverviewV2UseCase {
                     v -> vcsActivity.commitCounts(orgId, v.repositories(), previous.from(), previous.to()));
             CompletableFuture<List<AiUsageUserDay>> memberUsage = loads.supply(
                     () -> aiUsageRepository.summarizeByUserAndDay(orgId, memberIds, current.first(), current.last()));
+            CompletableFuture<AiDestination> destination = loads.then(itemIds.thenCombine(memberUsage, IdsAndUsage::new),
+                    in -> aiCostCalculator.destination(orgId, memberIds, in.ids(),
+                            GetTeamDashboardV2UseCase.totalByUser(in.usage()),
+                            GetTeamDashboardV2UseCase.personNames(peopleDirectory.people(orgId)),
+                            current.first(), current.last()));
             CompletableFuture<Set<String>> validatedDays = loads.supply(() -> validatedPersonDays(orgId, memberIds, current));
             CompletableFuture<PeopleCoverage> people = loads.supply(() -> peopleDirectory.coverage(orgId, memberIds));
             CompletableFuture<Map<String, VcsRepoBinding>> bindings = loads.supply(() -> bindings(orgId, project.getId()));
@@ -218,7 +224,7 @@ public class GetProjectOverviewV2UseCase {
                     () -> organizationRepository.findById(orgId).orElse(null));
             return new Context(orgId, project, period, now, join(items), join(vcs), join(allocated), join(memberUsage),
                     join(changes), join(rules), join(organization), join(currentCommits), join(previousCommits),
-                    join(validatedDays), join(people), join(bindings));
+                    join(validatedDays), join(people), join(bindings), join(destination));
         }
     }
 
@@ -228,6 +234,8 @@ public class GetProjectOverviewV2UseCase {
                 .filter(day -> day.isBefore(period.previous().first()))
                 .orElse(period.previous().first());
     }
+
+    private record IdsAndUsage(Set<String> ids, List<AiUsageUserDay> usage) {}
 
     private record IdsAndSprints(Set<String> ids, List<Sprint> sprints) {}
 
@@ -428,7 +436,8 @@ public class GetProjectOverviewV2UseCase {
                         : f.summary().complexityUnits()).stream()).toList();
         return new Ai(models, costByBucket, adoption, subscription(ctx),
                 DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerPoint).toList()),
-                DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerHour).toList()));
+                DashboardV2Views.averageOrNull(pool.stream().map(WorkItem::getTokensPerHour).toList()),
+                ctx.destination());
     }
 
     private static CostBucket costBucket(AllocatedCost allocated, List<String> models, Bucket bucket) {
@@ -547,5 +556,5 @@ public class GetProjectOverviewV2UseCase {
                            List<AiUsageUserDay> memberUsage, List<MergedChange> changes, RemediationRules rules,
                            Organization organization, Map<String, Long> currentCommits,
                            Map<String, Long> previousCommits, Set<String> validatedPersonDays, PeopleCoverage people,
-                           Map<String, VcsRepoBinding> bindings) {}
+                           Map<String, VcsRepoBinding> bindings, AiDestination destination) {}
 }

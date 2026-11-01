@@ -12,7 +12,8 @@ public class AiUsageAllocationDocumentMapper {
     public AiUsageAllocation toDomain(AiUsageAllocationDocument doc) {
         List<AllocationSplit> splits = doc.getSplits() == null ? List.of() :
                 doc.getSplits().stream()
-                        .map(s -> new AllocationSplit(s.getWorkItemId(), s.getWorkItemTitle(), s.getPercentage()))
+                        .map(s -> new AllocationSplit(s.getKind(), s.getWorkItemId(), s.getWorkItemTitle(), s.getPercentage(),
+                                s.getCategory(), s.getNote()))
                         .toList();
 
         AiUsageAllocation allocation = new AiUsageAllocation(
@@ -36,17 +37,43 @@ public class AiUsageAllocationDocumentMapper {
                     doc.getAgent().getBranches() == null ? List.of() : doc.getAgent().getBranches(), doc.getAgent().getOverriddenTaskRef()));
         }
         allocation.setReviewReasons(doc.getReviewReasons() == null ? List.of() : doc.getReviewReasons().stream()
-                .map(r -> new AiUsageAllocation.ReviewReason(r.getCode(), r.getWorkItemId(), r.getDisplayId(), r.getRatio()))
+                .map(r -> new AiUsageAllocation.ReviewReason(r.getCode(), r.getWorkItemId(), r.getDisplayId(), r.getRatio(), r.getNote()))
                 .toList());
         allocation.setReviewAcknowledgedAt(doc.getReviewAcknowledgedAt());
         allocation.setMovedFromAgent(doc.isMovedFromAgent());
+        allocation.setApproval(toApproval(doc.getApproval()));
         return allocation;
+    }
+
+    private AiUsageAllocation.Approval toApproval(AiUsageAllocationDocument.ApprovalDocument a) {
+        if (a == null) return null;
+        List<AiUsageAllocation.ApprovalReason> reasons = a.getReasons() == null ? List.of() : a.getReasons().stream()
+                .map(r -> new AiUsageAllocation.ApprovalReason(r.getCode(), r.getRepository(), r.getProjectId(),
+                        r.getProjectName(), r.getWorkItemId(), r.getDisplayId(), r.getCapPercent(), r.getBaseUsd(),
+                        r.getBaseMonth(), r.getUsedUsd(), r.getThisUsd(), r.getAfterPercent()))
+                .toList();
+        return new AiUsageAllocation.Approval(reasons, a.getApproverProjectIds(), a.getRequestedAt(),
+                a.getDecision(), a.getDecidedBy(), a.getDecidedAt(), a.getNote());
+    }
+
+    private AiUsageAllocationDocument.ApprovalDocument toApprovalDocument(AiUsageAllocation.Approval a) {
+        if (a == null) return null;
+        List<AiUsageAllocationDocument.ApprovalReasonDocument> reasons = a.reasons().stream()
+                .map(r -> new AiUsageAllocationDocument.ApprovalReasonDocument(r.code(), r.repository(),
+                        r.projectId(), r.projectName(), r.workItemId(), r.displayId(), r.capPercent(), r.baseUsd(),
+                        r.baseMonth(), r.usedUsd(), r.thisUsd(), r.afterPercent()))
+                .toList();
+        return new AiUsageAllocationDocument.ApprovalDocument(reasons, a.approverProjectIds(), a.requestedAt(),
+                a.decision(), a.decidedBy(), a.decidedAt(), a.note());
     }
 
     public AiUsageAllocationDocument toDocument(AiUsageAllocation allocation) {
         List<AllocationSplitDocument> splitDocs = allocation.getSplits() == null ? List.of() :
                 allocation.getSplits().stream()
                         .map(s -> AllocationSplitDocument.builder()
+                                .kind(s.isOutOfDelivery() ? s.getKind() : null)
+                                .category(s.isOutOfDelivery() ? s.getCategory() : null)
+                                .note(s.isOutOfDelivery() ? s.getNote() : null)
                                 .workItemId(s.getWorkItemId())
                                 .workItemTitle(s.getWorkItemTitle())
                                 .percentage(s.getPercentage())
@@ -68,10 +95,11 @@ public class AiUsageAllocationDocumentMapper {
                         allocation.getAgent().branches(), allocation.getAgent().overriddenTaskRef()))
                 .reviewReasons(allocation.getReviewReasons() == null ? List.of() : allocation.getReviewReasons().stream()
                         .map(r -> new AiUsageAllocationDocument.ReviewReasonDocument(r.code(), r.workItemId(),
-                                r.displayId(), r.ratio()))
+                                r.displayId(), r.ratio(), r.note()))
                         .toList())
                 .reviewAcknowledgedAt(allocation.getReviewAcknowledgedAt())
                 .movedFromAgent(allocation.isMovedFromAgent())
+                .approval(toApprovalDocument(allocation.getApproval()))
                 .active(allocation.isActive())
                 .version(allocation.getVersion())
                 .createdAt(allocation.getCreatedAt())

@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.allocation.application.usecase;
 
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalPolicy;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalService;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
@@ -32,16 +34,22 @@ public class ConfirmAllocationDaysUseCase {
     public record Skipped(LocalDate day, SkipReason reason) {
     }
 
-    public record Result(List<LocalDate> confirmed, List<Skipped> skipped) {
+    /** {@code awaitingApproval}: days whose confirmation fell in the approval policy (they are not in {@code confirmed}). */
+    public record Result(List<LocalDate> confirmed, List<Skipped> skipped, List<LocalDate> awaitingApproval) {
+        public Result(List<LocalDate> confirmed, List<Skipped> skipped) {
+            this(confirmed, skipped, List.of());
+        }
     }
 
     private final AiUsageAllocationRepository allocationRepository;
     private final WorkItemRepository workItemRepository;
     private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
+    private final AllocationApprovalService approvalService;
 
     public Result execute(String organizationId, String userId, List<LocalDate> days, boolean includeReview) {
         List<LocalDate> confirmed = new ArrayList<>();
         List<Skipped> skipped = new ArrayList<>();
+        List<LocalDate> awaiting = new ArrayList<>();
         for (LocalDate day : days) {
             List<AiUsageAllocation> pending = allocationRepository.findByOrgUserAndDay(organizationId, userId, day)
                     .stream()
@@ -58,27 +66,45 @@ public class ConfirmAllocationDaysUseCase {
                 continue;
             }
             try {
-                confirmDay(organizationId, pending);
-                confirmed.add(day);
+                if (confirmDay(organizationId, userId, day, pending)) {
+                    awaiting.add(day);
+                } else {
+                    confirmed.add(day);
+                }
             } catch (OptimisticLockingFailureException e) {
                 skipped.add(new Skipped(day, SkipReason.CONFLICT));
             }
         }
-        return new Result(confirmed, skipped);
+        return new Result(confirmed, skipped, awaiting);
     }
 
-    private void confirmDay(String organizationId, List<AiUsageAllocation> pending) {
+    /**
+     * Validates each pending allocation of the day, or sends it to approval when the policy asks for it.
+     * Each one is saved before the next is evaluated, so the month budget sees the earlier ones.
+     *
+     * @return whether any allocation of the day went to approval
+     */
+    private boolean confirmDay(String organizationId, String userId, LocalDate day, List<AiUsageAllocation> pending) {
         Instant now = Instant.now();
         Set<String> projectIds = new LinkedHashSet<>();
+        boolean anyAwaiting = false;
         for (AiUsageAllocation allocation : pending) {
-            allocation.setStatus(AiUsageAllocation.Status.VALIDATED);
+            AllocationApprovalPolicy.Decision decision = approvalService.evaluate(organizationId, userId, day,
+                    allocation.getAiUsageIds(), allocation.getSplits() == null ? List.of() : allocation.getSplits(),
+                    List.of());
+            decision.applyTo(allocation, now);
             if (allocation.hasReviewReasons()) allocation.setReviewAcknowledgedAt(now);
             allocation.setUpdatedAt(now);
             AiUsageAllocation saved = allocationRepository.save(allocation);
             allocationRepository.updateAllocationIdOnUsageRecords(saved.getAiUsageIds(), saved.getId());
-            projectIds.addAll(projectIdsOf(organizationId, saved));
+            if (saved.getStatus() == AiUsageAllocation.Status.VALIDATED) {
+                projectIds.addAll(projectIdsOf(organizationId, saved));
+            } else {
+                anyAwaiting = true;
+            }
         }
         projectIds.forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
+        return anyAwaiting;
     }
 
     private Set<String> projectIdsOf(String organizationId, AiUsageAllocation allocation) {

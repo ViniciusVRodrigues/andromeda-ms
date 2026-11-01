@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.allocation.application.usecase;
 
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalPolicy;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalService;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
@@ -20,6 +22,7 @@ public class AcceptAllocationUseCase {
     private final AiUsageAllocationRepository allocationRepository;
     private final WorkItemRepository workItemRepository;
     private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
+    private final AllocationApprovalService approvalService;
 
     public void execute(String organizationId, String userId, String allocationId) {
         AiUsageAllocation allocation = allocationRepository.findById(allocationId, organizationId)
@@ -34,7 +37,11 @@ public class AcceptAllocationUseCase {
             throw new AllocationAlreadyValidatedException(allocationId);
         }
 
-        allocation.setStatus(AiUsageAllocation.Status.VALIDATED);
+        // Validated, or awaiting approval when the policy asks for it (uso-ia-fora-de-entrega, T4).
+        AllocationApprovalPolicy.Decision decision = approvalService.evaluate(organizationId, userId,
+                allocation.getDay(), allocation.getAiUsageIds(),
+                allocation.getSplits() == null ? java.util.List.of() : allocation.getSplits(), java.util.List.of());
+        decision.applyTo(allocation, Instant.now());
         // assignedBy stays: an AUTO suggestion stays AUTO, an AGENT one stays AGENT ("suggested and confirmed").
         if (allocation.hasReviewReasons()) allocation.setReviewAcknowledgedAt(Instant.now());
         allocation.setUpdatedAt(Instant.now());
@@ -42,6 +49,7 @@ public class AcceptAllocationUseCase {
         allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(allocation.getAiUsageIds(), allocationId);
 
+        if (allocation.getStatus() != AiUsageAllocation.Status.VALIDATED) return;
         resolveProjectIds(organizationId, allocation)
                 .forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
     }

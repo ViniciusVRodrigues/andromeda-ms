@@ -80,25 +80,49 @@
     "costByProject": [
       {
         "costUsd": 55.78450039,
+        "kind": "PROJECT",
         "name": "Bootes",
         "projectId": "proj-2"
       },
       {
         "costUsd": 49.4638622,
+        "kind": "PROJECT",
         "name": "Cygnus",
         "projectId": "proj-3"
       },
       {
         "costUsd": 66.81487089,
+        "kind": "PROJECT",
         "name": "Orion",
         "projectId": "proj-1"
       },
       {
-        "costUsd": 380.511148,
-        "name": "Não alocado a work items",
+        "costUsd": 0,
+        "kind": "OUT_OF_DELIVERY",
+        "name": "Fora de entrega",
+        "projectId": null
+      },
+      {
+        "costUsd": 379.739629,
+        "kind": "TO_VALIDATE",
+        "name": "A validar",
         "projectId": null
       }
     ],
+    "destination": {
+      "itemsUsd": 163.283526,
+      "otherProjectsUsd": 61.800418,
+      "outOfDelivery": {
+        "byCategory": [],
+        "byPerson": [],
+        "usd": 0
+      },
+      "toValidate": {
+        "awaitingUsd": 0,
+        "usd": 379.739629
+      },
+      "totalUsd": 604.823573
+    },
     "models": [
       "claude-sonnet-5",
       "claude-opus-5",

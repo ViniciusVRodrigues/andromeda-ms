@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.dashboard.application.AllocationCoverageStubs;
 import andromeda.sei.ms.feature.connector.domain.ConnectorToken;
 import andromeda.sei.ms.feature.connector.domain.ConnectorTokenRepository;
 import andromeda.sei.ms.feature.dashboard.application.AiUsageSummaries;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts;
 import andromeda.sei.ms.feature.dashboard.application.ProjectAiCostCalculator;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output;
 import andromeda.sei.ms.feature.dashboard.application.dto.v2.ProjectOverviewV2Output.ThroughputRow;
@@ -288,6 +289,40 @@ class GetProjectOverviewV2UseCaseTest {
             assertThat(r.changeFailurePct()).isNull();
             assertThat(r.leadTimeHoursP50()).isNull();
         });
+    }
+
+    @Test
+    void should_reportWhereTheMembersCostWent_withTheTotalClosing() {
+        items.add(done("a1", WorkItem.ResolvedType.STORY, 3.0, "2026-08-10T10:00:00Z"));
+        AIUsage validated = usage("u1", ME, "2026-08-05", "al1", "10.00", "claude");
+        AIUsage awaitingUsage = usage("u2", OTHER, "2026-08-06", "al2", "5.00", "claude");
+        AIUsage pending = usage("u3", OTHER, "2026-08-07", null, "2.00", "claude");
+        AiUsageAllocation al1 = new AiUsageAllocation("al1", ORG, ME, LocalDate.parse("2026-08-05"), List.of("u1"),
+                List.of(new AllocationSplit("a1", "Item", new BigDecimal("0.60")),
+                        AllocationSplit.outOfDelivery(new BigDecimal("0.30"), AllocationSplit.Category.DOCS_MEETING, null),
+                        new AllocationSplit("elsewhere", "X", new BigDecimal("0.10"))),
+                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        AiUsageAllocation al2 = new AiUsageAllocation("al2", ORG, OTHER, LocalDate.parse("2026-08-06"), List.of("u2"),
+                List.of(AllocationSplit.outOfDelivery(BigDecimal.ONE, AllocationSplit.Category.STUDY, null)),
+                AiUsageAllocation.Status.AWAITING_APPROVAL, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        AllocationCoverageStubs.stub(allocationRepository, ORG, List.of(al1, al2),
+                List.of(validated, awaitingUsage, pending));
+        when(aiUsageRepository.summarizeByUserAndDay(eq(ORG), anyCollection(),
+                eq(LocalDate.parse("2026-07-14")), eq(LocalDate.parse("2026-10-11"))))
+                .thenReturn(AiUsageSummaries.of(List.of(validated, awaitingUsage, pending)));
+
+        DashboardV2Parts.AiDestination d = useCase.execute(ORG, PROJECT, 90).ai().destination();
+
+        assertThat(d.totalUsd()).isEqualByComparingTo("17.00");
+        assertThat(d.itemsUsd()).isEqualByComparingTo("6.00");
+        assertThat(d.otherProjectsUsd()).isEqualByComparingTo("1.00");
+        assertThat(d.outOfDelivery().usd()).isEqualByComparingTo("3.00");
+        assertThat(d.outOfDelivery().byCategory()).hasSize(1);
+        assertThat(d.outOfDelivery().byCategory().get(0).category()).isEqualTo("DOCS_MEETING");
+        assertThat(d.toValidate().usd()).isEqualByComparingTo("7.00");
+        assertThat(d.toValidate().awaitingUsd()).isEqualByComparingTo("5.00");
+        assertThat(d.itemsUsd().add(d.otherProjectsUsd()).add(d.outOfDelivery().usd()).add(d.toValidate().usd()))
+                .isEqualByComparingTo(d.totalUsd());
     }
 
     @Test

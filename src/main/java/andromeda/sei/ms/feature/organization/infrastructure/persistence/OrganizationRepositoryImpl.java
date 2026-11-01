@@ -84,6 +84,7 @@ public class OrganizationRepositoryImpl implements OrganizationRepository {
             doc.setSyncSettings(null);
             doc.setLastScheduledSyncAt(null);
             doc.setMetricSettings(null);
+            doc.setAllocationPolicy(null);
             doc.setVcsSettings(null);
             doc.setWorkItemPatterns(null);
             doc.setPurgedAt(purgedAt);

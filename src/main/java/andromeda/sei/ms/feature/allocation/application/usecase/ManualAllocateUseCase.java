@@ -3,6 +3,9 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.aiusage.domain.AgentUsageQueries;
 import andromeda.sei.ms.feature.allocation.application.AgentReviewReasonCalculator;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalPolicy;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalService;
+import andromeda.sei.ms.feature.allocation.application.AllocationSplitsValidator;
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -10,7 +13,6 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
-import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
@@ -20,8 +22,6 @@ import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundExcept
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -37,8 +37,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ManualAllocateUseCase {
 
-    private static final BigDecimal ONE_SCALED = BigDecimal.ONE.setScale(4, RoundingMode.HALF_UP);
-
     /** Value of {@code attributionSource} stamped on agent rows the person reallocated by hand. */
     static final String MANUAL_SOURCE = "MANUAL";
 
@@ -48,10 +46,20 @@ public class ManualAllocateUseCase {
     private final AllocationTypeEligibility typeEligibility;
     private final CalculateAiRatiosUseCase calculateAiRatiosUseCase;
     private final AgentUsageQueries agentUsageQueries;
+    private final AllocationApprovalService approvalService;
 
-    public void execute(String organizationId, String userId, String allocationId,
-                        LocalDate day, List<AllocationSplit> splits) {
-        validateSplits(splits);
+    /** {@code approval} is null when the allocation went straight to {@code VALIDATED}. */
+    public record Result(String allocationId, AiUsageAllocation.Status status, AiUsageAllocation.Approval approval) {
+    }
+
+    /** What a manual allocation of a day replaces: the person's unconfirmed allocations plus rows with none. */
+    record DayRows(List<AiUsageAllocation> replaced, Set<String> agentRowIds, Set<String> usageIds) {
+    }
+
+    public Result execute(String organizationId, String userId, String allocationId,
+                        LocalDate day, List<AllocationSplit> rawSplits) {
+        List<AllocationSplit> splits = AllocationSplitsValidator.normalize(rawSplits);
+        AllocationSplitsValidator.validate(splits);
 
         if (allocationId != null) {
             AiUsageAllocation allocation = allocationRepository.findById(allocationId, organizationId)
@@ -63,23 +71,13 @@ public class ManualAllocateUseCase {
             if (allocation.getStatus() == AiUsageAllocation.Status.VALIDATED) {
                 throw new AllocationAlreadyValidatedException(allocationId);
             }
-            absorbDay(organizationId, userId, allocation.getDay(), splits);
+            return absorbDay(organizationId, userId, allocation.getDay(), splits);
         } else {
             List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
             if (ofTheDay.stream().anyMatch(a -> a.isActive() && a.closesTheDay())) {
                 throw new AllocationAlreadyValidatedException(day.toString());
             }
-            absorbDay(organizationId, userId, day, splits);
-        }
-    }
-
-    private void validateSplits(List<AllocationSplit> splits) {
-        BigDecimal sum = splits.stream()
-                .map(AllocationSplit::getPercentage)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(4, RoundingMode.HALF_UP);
-        if (sum.compareTo(ONE_SCALED) != 0) {
-            throw new AllocationSplitsInvalidException();
+            return absorbDay(organizationId, userId, day, splits);
         }
     }
 
@@ -90,26 +88,17 @@ public class ManualAllocateUseCase {
      * and the rows that came from the agent are stamped {@code MANUAL}, so the manual correction wins over a
      * resend. {@code VALIDATED} allocations stay as they are.
      */
-    private void absorbDay(String organizationId, String userId, LocalDate day, List<AllocationSplit> splits) {
-        List<AiUsageAllocation> pending = allocationRepository.findByOrgUserAndDay(organizationId, userId, day).stream()
-                .filter(AiUsageAllocation::isActive)
-                .filter(a -> a.getStatus() == AiUsageAllocation.Status.PENDING_VALIDATION)
-                .filter(a -> userId.equals(a.getUserId()))
-                .toList();
-
-        Set<String> agentRowIds = new LinkedHashSet<>();
-        Set<String> usageIds = new LinkedHashSet<>();
-        for (AiUsageAllocation a : pending) {
-            if (a.getAiUsageIds() == null) continue;
-            usageIds.addAll(a.getAiUsageIds());
-            if (a.isAgent()) agentRowIds.addAll(a.getAiUsageIds());
-        }
-        aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(organizationId, userId, day)
-                .forEach(u -> usageIds.add(u.getId()));
+    private Result absorbDay(String organizationId, String userId, LocalDate day, List<AllocationSplit> splits) {
+        DayRows dayRows = collectDayRows(allocationRepository, aiUsageRepository, organizationId, userId, day);
+        List<AiUsageAllocation> pending = dayRows.replaced();
+        Set<String> agentRowIds = dayRows.agentRowIds();
+        Set<String> usageIds = dayRows.usageIds();
         Map<String, WorkItem> items = requireOrganizationWorkItems(organizationId, splits);
         if (usageIds.isEmpty()) {
             throw new AllocationNothingToAllocateException(day);
         }
+        AllocationApprovalPolicy.Decision decision = approvalService.evaluate(organizationId, userId, day,
+                new ArrayList<>(usageIds), splits, pending.stream().map(AiUsageAllocation::getId).toList());
 
         Instant now = Instant.now();
         for (AiUsageAllocation a : pending) {
@@ -125,16 +114,45 @@ public class ManualAllocateUseCase {
         AiUsageAllocation allocation = new AiUsageAllocation(
                 null, organizationId, userId, day,
                 new ArrayList<>(usageIds), splits,
-                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL,
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.MANUAL,
                 true, null, now, now);
+        decision.applyTo(allocation, now);
         // A correction of the agent's rows does not close the day, like the one made by moving rows.
         allocation.setMovedFromAgent(!agentRowIds.isEmpty());
 
         AiUsageAllocation saved = allocationRepository.save(allocation);
         allocationRepository.updateAllocationIdOnUsageRecords(new ArrayList<>(usageIds), saved.getId());
         stampManual(organizationId, agentRowIds, splits, items);
-        items.values().stream().map(WorkItem::getProjectId).filter(Objects::nonNull).distinct()
-                .forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
+        // Ratios count validated allocations only: an allocation awaiting approval waits for its approval.
+        if (allocation.getStatus() == AiUsageAllocation.Status.VALIDATED) {
+            items.values().stream().map(WorkItem::getProjectId).filter(Objects::nonNull).distinct()
+                    .forEach(projectId -> calculateAiRatiosUseCase.execute(organizationId, projectId));
+        }
+        return new Result(saved.getId(), allocation.getStatus(), allocation.getApproval());
+    }
+
+    /**
+     * Everything not yet confirmed on the day: the person's pending and awaiting-approval allocations (agent's
+     * and automatic) and the rows with no allocation. {@code VALIDATED} allocations stay out.
+     */
+    static DayRows collectDayRows(AiUsageAllocationRepository allocationRepository, AIUsageRepository aiUsageRepository,
+                                  String organizationId, String userId, LocalDate day) {
+        List<AiUsageAllocation> pending = allocationRepository.findByOrgUserAndDay(organizationId, userId, day).stream()
+                .filter(AiUsageAllocation::isActive)
+                .filter(a -> a.getStatus() == AiUsageAllocation.Status.PENDING_VALIDATION
+                        || a.getStatus() == AiUsageAllocation.Status.AWAITING_APPROVAL)
+                .filter(a -> userId.equals(a.getUserId()))
+                .toList();
+        Set<String> agentRowIds = new LinkedHashSet<>();
+        Set<String> usageIds = new LinkedHashSet<>();
+        for (AiUsageAllocation a : pending) {
+            if (a.getAiUsageIds() == null) continue;
+            usageIds.addAll(a.getAiUsageIds());
+            if (a.isAgent()) agentRowIds.addAll(a.getAiUsageIds());
+        }
+        aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(organizationId, userId, day)
+                .forEach(u -> usageIds.add(u.getId()));
+        return new DayRows(pending, agentRowIds, usageIds);
     }
 
     /** The manual correction wins: stamps MANUAL on the agent rows, with the item that got the biggest share. */

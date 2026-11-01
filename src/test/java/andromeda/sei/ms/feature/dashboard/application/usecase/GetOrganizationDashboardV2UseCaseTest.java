@@ -4,6 +4,9 @@ import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.allocation.domain.AllocationCoverage;
+import andromeda.sei.ms.feature.allocation.domain.AllocationDestination;
+import andromeda.sei.ms.feature.dashboard.application.dto.v2.DashboardV2Parts.AiDestination;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.azure.domain.AzureConnectionRepository;
 import andromeda.sei.ms.feature.azure.domain.AzureProjectBinding;
@@ -194,7 +197,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
         assertThat(out.ai().subscription().consumptionUsd()).isEqualByComparingTo("2.00");
         assertThat(out.delivery().throughputByProject().get(2).byProject()).containsOnlyKeys(A, B);
-        assertThat(out.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, null);
+        assertThat(out.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, null, null);
         assertThat(out.integrations().projects()).extracting("projectId").containsExactly(A, B);
         verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(ORG, C);
         verify(workItemRepository, never()).findActiveIdsByOrganizationIdAndProjectId(ORG, C);
@@ -225,7 +228,7 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(out.kpis().aiCostUsd()).isEqualByComparingTo("0");
         assertThat(out.kpis().aiCostPerPoint()).isNull();
         assertThat(out.delivery().flow()).hasSize(12);
-        assertThat(out.ai().costByProject()).singleElement().extracting(ProjectCost::projectId).isNull();
+        assertThat(out.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(null, null);
         verify(workItemRepository, never()).findMetricFieldsByOrganizationIdAndProjectId(anyString(), anyString());
         verify(aiUsageRepository, never()).summarizeByUserAndDay(any(), anyCollection(), any(), any());
     }
@@ -358,12 +361,46 @@ class GetOrganizationDashboardV2UseCaseTest {
 
         assertThat(out.ai().costByProject()).extracting(ProjectCost::costUsd).usingComparatorForType(
                 BigDecimal::compareTo, BigDecimal.class).containsExactly(new BigDecimal("7.50"), new BigDecimal("2.50"),
-                BigDecimal.ZERO, new BigDecimal("3.00"));
+                BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("3.00"));
+        assertThat(out.ai().costByProject()).extracting(ProjectCost::kind).containsExactly("PROJECT", "PROJECT",
+                "PROJECT", "OUT_OF_DELIVERY", "TO_VALIDATE");
         assertThat(out.kpis().aiCostUsd()).as("allocated to the visible projects").isEqualByComparingTo("10.00");
         assertThat(out.ai().subscription().consumptionUsd()).as("the people's whole usage").isEqualByComparingTo("13.00");
         assertThat(out.portfolio().getFirst().aiCostPerPoint()).isEqualByComparingTo("1.875");
-        assertThat(out.ai().costByProject().getLast().name()).isEqualTo("Não alocado a work items");
+        assertThat(out.ai().costByProject().get(3).name()).isEqualTo("Fora de entrega");
+        assertThat(out.ai().costByProject().getLast().name()).isEqualTo("A validar");
         assertThat(out.integrations().coverage().aiDaysAllocatedPct()).isEqualTo(50.0);
+    }
+
+    @Test
+    void should_closeTheDestinationOfTheOrganization_withOutOfDeliveryAndToValidate() {
+        itemsByProject.get(A).add(done("a1", A, WorkItem.ResolvedType.STORY, 4.0, "2026-08-04T10:00:00Z"));
+        usage.add(usage("au1", "u-a", "2026-08-04", "al1", "10.00", "claude"));
+        usage.add(usage("au2", "u-a", "2026-08-05", "al2", "4.00", "claude"));
+        usage.add(usage("au3", "u-b", "2026-08-05", null, "3.00", "claude"));
+        AiUsageAllocation validated = allocation("al1", "u-a", "2026-08-04", "au1", split("a1", "0.60"),
+                split("other-project-item", "0.10"),
+                AllocationSplit.outOfDelivery(new BigDecimal("0.30"), AllocationSplit.Category.SUPPORT, null));
+        AiUsageAllocation awaiting = new AiUsageAllocation("al2", ORG, "u-a", LocalDate.parse("2026-08-05"),
+                List.of("au2"), List.of(AllocationSplit.outOfDelivery(BigDecimal.ONE, AllocationSplit.Category.STUDY, null)),
+                AiUsageAllocation.Status.AWAITING_APPROVAL, AiUsageAllocation.AssignedBy.MANUAL, true, 0L, NOW, NOW);
+        allocations(validated, awaiting);
+
+        OrganizationDashboardV2Output out = useCase.execute(ORG, Set.of(A, B, C), 90);
+
+        AiDestination d = out.ai().destination();
+        assertThat(d.totalUsd()).isEqualByComparingTo("17.00");
+        assertThat(d.itemsUsd()).isEqualByComparingTo("6.00");
+        assertThat(d.otherProjectsUsd()).isEqualByComparingTo("1.00");
+        assertThat(d.outOfDelivery().usd()).isEqualByComparingTo("3.00");
+        assertThat(d.outOfDelivery().byCategory()).hasSize(1);
+        assertThat(d.outOfDelivery().byCategory().get(0).category()).isEqualTo("SUPPORT");
+        assertThat(d.toValidate().usd()).isEqualByComparingTo("7.00");
+        assertThat(d.toValidate().awaitingUsd()).isEqualByComparingTo("4.00");
+        assertThat(d.itemsUsd().add(d.otherProjectsUsd()).add(d.outOfDelivery().usd()).add(d.toValidate().usd()))
+                .isEqualByComparingTo(d.totalUsd());
+        assertThat(out.ai().costByProject().get(3).costUsd()).isEqualByComparingTo(d.outOfDelivery().usd());
+        assertThat(out.ai().costByProject().get(4).costUsd()).isEqualByComparingTo(d.toValidate().usd());
     }
 
     /**
@@ -391,6 +428,8 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(partial.kpis().aiCostPerPoint()).isEqualByComparingTo("5.00");
         assertThat(partial.ai().costByProject().getLast().projectId()).isNull();
         assertThat(partial.ai().costByProject().getLast().costUsd()).isNull();
+        assertThat(partial.ai().costByProject().get(partial.ai().costByProject().size() - 2).costUsd()).isNull();
+        assertThat(partial.ai().destination()).as("partial viewer: no destination block").isNull();
         BigDecimal visibleRows = partial.ai().costByProject().stream().map(ProjectCost::costUsd)
                 .filter(java.util.Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         assertThat(partial.kpis().aiCostUsd()).isEqualByComparingTo(visibleRows);
@@ -401,7 +440,7 @@ class GetOrganizationDashboardV2UseCaseTest {
 
         assertThat(full.kpis().aiCostUsd()).as("allocated to A and C").isEqualByComparingTo("50.00");
         assertThat(full.previous().aiCostUsd()).isEqualByComparingTo("8.00");
-        assertThat(full.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, C, null);
+        assertThat(full.ai().costByProject()).extracting(ProjectCost::projectId).containsExactly(A, B, C, null, null);
         assertThat(full.ai().costByProject().getLast().costUsd()).isEqualByComparingTo("5.00");
     }
 
@@ -441,8 +480,8 @@ class GetOrganizationDashboardV2UseCaseTest {
         assertThat(partial.previous().aiCostUsd()).isEqualByComparingTo("8.00")
                 .isEqualByComparingTo(full.previous().aiCostUsd());
         assertThat(partial.kpis().aiCostPerPoint()).isEqualByComparingTo(full.kpis().aiCostPerPoint());
-        assertThat(partial.ai().costByProject().getLast().costUsd()).as("partial: unallocated hidden").isNull();
-        assertThat(full.ai().costByProject().getLast().costUsd()).as("full: unallocated shown").isEqualByComparingTo("5.00");
+        assertThat(partial.ai().costByProject().getLast().costUsd()).as("partial: to validate hidden").isNull();
+        assertThat(full.ai().costByProject().getLast().costUsd()).as("full: to validate shown").isEqualByComparingTo("5.00");
     }
 
     @Test
@@ -595,6 +634,23 @@ class GetOrganizationDashboardV2UseCaseTest {
     private void allocations(AiUsageAllocation... allocations) {
         when(allocationRepository.summarizeValidatedCoverage(eq(ORG), anyCollection(),
                 any(), any())).thenAnswer(inv -> OrganizationAiSums.coverage(List.of(allocations), usage));
+        when(allocationRepository.summarizeDestinationCoverage(eq(ORG), anyCollection(), any(), any()))
+                .thenAnswer(inv -> {
+                    Collection<String> users = inv.getArgument(1);
+                    LocalDate from = inv.getArgument(2);
+                    LocalDate to = inv.getArgument(3);
+                    List<AiUsageAllocation> scoped = List.of(allocations).stream()
+                            .filter(a -> users.contains(a.getUserId()) && !a.getDay().isBefore(from)
+                                    && !a.getDay().isAfter(to)).toList();
+                    List<AllocationCoverage> covered = OrganizationAiSums.coverage(scoped, usage);
+                    List<AllocationDestination> rows = new java.util.ArrayList<>();
+                    for (int i = 0; i < scoped.size(); i++) {
+                        AllocationCoverage c = covered.get(i);
+                        rows.add(new AllocationDestination(c.id(), c.userId(), c.day(), scoped.get(i).getStatus(),
+                                c.splits(), c.costUsd(), c.tokens()));
+                    }
+                    return rows;
+                });
     }
 
     private static AiUsageAllocation allocation(String id, String userId, String day, String usageId,
