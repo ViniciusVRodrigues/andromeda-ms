@@ -126,6 +126,15 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
     }
 
     @Override
+    public List<AiUsageAllocation> findByOrgUserAndDayBetweenAndStatusIn(String organizationId, String userId,
+            LocalDate from, LocalDate to, java.util.Collection<AiUsageAllocation.Status> statuses) {
+        if (statuses == null || statuses.isEmpty()) return List.of();
+        Query query = Query.query(Criteria.where(ORGANIZATION_ID).is(organizationId).and(USER_ID).is(userId)
+                .and(ACTIVE).is(true).and(DAY).gte(from).lte(to).and(STATUS).in(statuses));
+        return mongoTemplate.find(query, AiUsageAllocationDocument.class).stream().map(mapper::toDomain).toList();
+    }
+
+    @Override
     public void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId) {
         if (aiUsageIds == null || aiUsageIds.isEmpty()) {
             return;

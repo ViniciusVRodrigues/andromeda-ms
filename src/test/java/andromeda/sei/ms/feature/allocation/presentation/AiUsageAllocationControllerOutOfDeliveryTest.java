@@ -11,6 +11,7 @@ import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocat
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationsUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.ManualAllocateUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.SaveAllocationUseCase;
+import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.shared.infrastructure.security.AndromedaUserDetails;
@@ -58,6 +59,8 @@ class AiUsageAllocationControllerOutOfDeliveryTest {
     @Mock ConfirmAllocationDaysUseCase confirmAllocationDays;
     @Mock ManualAllocateUseCase manualAllocate;
     @Mock GetAllocationHistoryUseCase getAllocationHistory;
+    @Mock andromeda.sei.ms.feature.allocation.application.usecase.PreviewAllocationApprovalUseCase previewApproval;
+    @Mock andromeda.sei.ms.feature.allocation.application.usecase.GetOutOfDeliveryBudgetUseCase getOutOfDeliveryBudget;
     @Mock andromeda.sei.ms.shared.infrastructure.security.CurrentUserPermissions currentUserPermissions;
 
     MockMvc mockMvc;
@@ -67,7 +70,7 @@ class AiUsageAllocationControllerOutOfDeliveryTest {
         AiUsageAllocationController controller = new AiUsageAllocationController(
                 getPendingAllocations, getAllocationCandidates, saveAllocation,
                 getPendingAllocationBatches, acceptAllocation, confirmAllocationDays, manualAllocate, getAllocationHistory,
-                currentUserPermissions);
+                previewApproval, getOutOfDeliveryBudget, currentUserPermissions);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
@@ -94,9 +97,11 @@ class AiUsageAllocationControllerOutOfDeliveryTest {
                   {"workItemId":"wi-1","workItemTitle":"Fix","percentage":0.7},
                   {"kind":"OUT_OF_DELIVERY","category":"STUDY","note":"curso","percentage":0.3}]}
                 """;
+        when(manualAllocate.execute(any(), any(), any(), any(), any())).thenReturn(
+                new ManualAllocateUseCase.Result("alloc-1", AiUsageAllocation.Status.VALIDATED, null));
 
         mockMvc.perform(post("/api/v1/ai/allocations/manual").contentType(MediaType.APPLICATION_JSON).content(body))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isOk());
 
         ArgumentCaptor<List<AllocationSplit>> captor = ArgumentCaptor.forClass(List.class);
         verify(manualAllocate).execute(eq("org-1"), eq("user-1"), any(), eq(LocalDate.of(2026, 6, 3)), captor.capture());

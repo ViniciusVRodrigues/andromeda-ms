@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.agent.domain.exception.AiAllocationNotAgentExcep
 import andromeda.sei.ms.feature.agent.domain.exception.AiAllocationNotFoundException;
 import andromeda.sei.ms.feature.agent.domain.exception.AiUsageNotInAllocationException;
 import andromeda.sei.ms.feature.aiusage.domain.AgentUsageQueries;
+import andromeda.sei.ms.feature.allocation.application.AllocationApprovalService;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
@@ -51,15 +52,17 @@ public class MoveAgentUsageUseCase {
     private final AgentUsageQueries usageQueries;
     private final CalculateAiRatiosUseCase calculateRatios;
     private final WorkItemRepository workItems;
+    private final AllocationApprovalService approvalService;
 
     public MoveAgentUsageUseCase(AiUsageAllocationRepository allocations, ResolveAgentTaskUseCase resolveTask,
                                  AgentUsageQueries usageQueries, CalculateAiRatiosUseCase calculateRatios,
-                                 WorkItemRepository workItems) {
+                                 WorkItemRepository workItems, AllocationApprovalService approvalService) {
         this.allocations = allocations;
         this.resolveTask = resolveTask;
         this.usageQueries = usageQueries;
         this.calculateRatios = calculateRatios;
         this.workItems = workItems;
+        this.approvalService = approvalService;
     }
 
     public MoveResult execute(String organizationId, String userId, String allocationId,
@@ -77,9 +80,13 @@ public class MoveAgentUsageUseCase {
                 .orElseThrow(AgentTaskNotFoundException::new);
 
         Instant now = Instant.now();
+        List<AllocationSplit> targetSplits = List.of(new AllocationSplit(target.workItemId(), target.title(), WHOLE));
         AiUsageAllocation created = new AiUsageAllocation(null, organizationId, userId, source.getDay(),
-                new ArrayList<>(ids), List.of(new AllocationSplit(target.workItemId(), target.title(), WHOLE)),
-                AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL, true, null, now, now);
+                new ArrayList<>(ids), targetSplits,
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.MANUAL, true, null, now, now);
+        // Moving rows of a repository of another project to this task asks for approval like any other path.
+        approvalService.evaluate(organizationId, userId, source.getDay(), new ArrayList<>(ids), targetSplits, List.of())
+                .applyTo(created, now);
         created.setMovedFromAgent(true);
         AiUsageAllocation savedTarget = allocations.save(created);
         allocations.updateAllocationIdOnUsageRecords(new ArrayList<>(ids), savedTarget.getId());
@@ -92,6 +99,7 @@ public class MoveAgentUsageUseCase {
         source.setUpdatedAt(now);
         AiUsageAllocation savedSource = allocations.save(source);
 
+        // Also when the target awaits approval: the rows left the source, whose projects change.
         recalculateRatios(organizationId, source, target);
         return new MoveResult(view(savedSource), view(savedTarget));
     }

@@ -5,12 +5,20 @@ import andromeda.sei.ms.feature.allocation.application.usecase.AcceptAllocationU
 import andromeda.sei.ms.feature.allocation.application.usecase.ConfirmAllocationDaysUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationCandidatesUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetAllocationHistoryUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.GetOutOfDeliveryBudgetUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationBatchesUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.GetPendingAllocationsUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.ManualAllocateUseCase;
+import andromeda.sei.ms.feature.allocation.application.usecase.PreviewAllocationApprovalUseCase;
 import andromeda.sei.ms.feature.allocation.application.usecase.SaveAllocationUseCase;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationEntryRequest;
+import andromeda.sei.ms.feature.allocation.presentation.dto.ApprovalReasonResponse;
+import andromeda.sei.ms.feature.allocation.presentation.dto.ApprovalResponse;
+import andromeda.sei.ms.feature.allocation.presentation.dto.ManualAllocationResultResponse;
+import andromeda.sei.ms.feature.allocation.presentation.dto.OutOfDeliveryBudgetResponse;
+import andromeda.sei.ms.feature.allocation.presentation.dto.PreviewAllocationRequest;
+import andromeda.sei.ms.feature.allocation.presentation.dto.PreviewAllocationResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationEntryResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.AllocationHistoryResponse;
 import andromeda.sei.ms.feature.allocation.presentation.dto.ConfirmAllocationDaysRequest;
@@ -63,6 +71,8 @@ public class AiUsageAllocationController {
     private final ConfirmAllocationDaysUseCase confirmAllocationDays;
     private final ManualAllocateUseCase manualAllocate;
     private final GetAllocationHistoryUseCase getAllocationHistory;
+    private final PreviewAllocationApprovalUseCase previewApproval;
+    private final GetOutOfDeliveryBudgetUseCase getOutOfDeliveryBudget;
     private final CurrentUserPermissions currentUserPermissions;
 
     /** Own allocations (AI_READ_OWN) or, with AI_READ_ALL on some project, those of its members. */
@@ -118,8 +128,14 @@ public class AiUsageAllocationController {
                         new PendingBatchResponse.Review(b.review().state(), b.review().reasons(),
                                 b.review().details().stream()
                                         .map(d -> new PendingBatchResponse.Detail(d.code(), d.workItemId(),
-                                                d.displayId(), d.ratio()))
-                                        .toList())))
+                                                d.displayId(), d.ratio(), d.note(), d.decidedByName()))
+                                        .toList(),
+                                b.review().approval() == null ? null
+                                        : new ApprovalResponse(
+                                                b.review().approval().reasons().stream()
+                                                        .map(ApprovalReasonResponse::from).toList(),
+                                                b.review().approval().approverProjectIds(),
+                                                b.review().approval().requestedAt()))))
                 .toList();
         return ResponseEntity.ok(response);
     }
@@ -152,38 +168,74 @@ public class AiUsageAllocationController {
                 .execute(orgId, user.getUserId(), request.parsedDays(), request.reviewIncluded());
         return ResponseEntity.ok(new ConfirmAllocationDaysResponse(result.confirmed(),
                 result.skipped().stream()
-                        .map(s -> new ConfirmAllocationDaysResponse.Skipped(s.day(), s.reason().name())).toList()));
+                        .map(s -> new ConfirmAllocationDaysResponse.Skipped(s.day(), s.reason().name())).toList(),
+                result.awaitingApproval()));
     }
 
-    @Operation(summary = "Manually allocate an existing suggestion", description = "Replaces splits on a PENDING_VALIDATION allocation and validates it")
-    @ApiResponse(responseCode = "204", description = "Allocation saved")
+    @Operation(summary = "Manually allocate an existing suggestion", description = "Replaces splits on a pending (or awaiting-approval) allocation and validates it, or sends it to approval when the policy asks")
+    @ApiResponse(responseCode = "200", description = "Allocation saved: VALIDATED or AWAITING_APPROVAL (with the approval request)")
     @ApiResponse(responseCode = "404", description = "Allocation not found")
     @ApiResponse(responseCode = "409", description = "Allocation already validated")
     @ApiResponse(responseCode = "422", description = "Splits do not sum to 1.0")
     @PostMapping("/{id}/manual")
     @PreAuthorize("hasAuthority('AI_READ_OWN')")
-    public ResponseEntity<Void> manualAllocateById(
+    public ResponseEntity<ManualAllocationResultResponse> manualAllocateById(
             @PathVariable String id,
             @RequestBody @Valid ManualAllocationRequest request,
             @AuthenticationPrincipal AndromedaUserDetails user) {
         String orgId = TenantContextHolder.get();
         List<AllocationSplit> splits = mapSplits(request.splits());
-        manualAllocate.execute(orgId, user.getUserId(), id, null, splits);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(manualResult(manualAllocate.execute(orgId, user.getUserId(), id, null, splits)));
     }
 
-    @Operation(summary = "Manually allocate for a day without a suggestion", description = "Creates a new VALIDATED allocation for unallocated records on the given day")
-    @ApiResponse(responseCode = "204", description = "Allocation created")
+    @Operation(summary = "Manually allocate for a day without a suggestion", description = "Creates a new allocation for the unconfirmed records on the given day: VALIDATED, or AWAITING_APPROVAL when the policy asks")
+    @ApiResponse(responseCode = "200", description = "Allocation created: VALIDATED or AWAITING_APPROVAL (with the approval request)")
     @ApiResponse(responseCode = "422", description = "Splits do not sum to 1.0")
     @PostMapping("/manual")
     @PreAuthorize("hasAuthority('AI_READ_OWN')")
-    public ResponseEntity<Void> manualAllocateForDay(
+    public ResponseEntity<ManualAllocationResultResponse> manualAllocateForDay(
             @RequestBody @Valid ManualAllocationForDayRequest request,
             @AuthenticationPrincipal AndromedaUserDetails user) {
         String orgId = TenantContextHolder.get();
         List<AllocationSplit> splits = mapSplits(request.splits());
-        manualAllocate.execute(orgId, user.getUserId(), null, request.day(), splits);
-        return ResponseEntity.noContent().build();
+        return ResponseEntity.ok(manualResult(
+                manualAllocate.execute(orgId, user.getUserId(), null, request.day(), splits)));
+    }
+
+    @Operation(summary = "Preview the approval policy", description = "Tells whether saving these splits would need approval, and why; writes nothing")
+    @ApiResponse(responseCode = "200", description = "Preview returned")
+    @ApiResponse(responseCode = "422", description = "Splits invalid")
+    @PostMapping("/preview")
+    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    public ResponseEntity<PreviewAllocationResponse> preview(
+            @RequestBody @Valid PreviewAllocationRequest request,
+            @AuthenticationPrincipal AndromedaUserDetails user) {
+        String orgId = TenantContextHolder.get();
+        var decision = previewApproval.execute(orgId, user.getUserId(), request.day(), request.allocationId(),
+                mapSplits(request.splits()));
+        return ResponseEntity.ok(new PreviewAllocationResponse(decision.needsApproval(),
+                decision.reasons().stream().map(ApprovalReasonResponse::from).toList()));
+    }
+
+    @Operation(summary = "Out-of-delivery budget of a month", description = "Cap, base, used and awaiting cost of the caller's out-of-delivery use in the month")
+    @ApiResponse(responseCode = "200", description = "Budget returned")
+    @ApiResponse(responseCode = "400", description = "month is not yyyy-MM")
+    @GetMapping("/out-of-delivery-budget")
+    @PreAuthorize("hasAuthority('AI_READ_OWN')")
+    public ResponseEntity<OutOfDeliveryBudgetResponse> outOfDeliveryBudget(
+            @RequestParam @DateTimeFormat(pattern = "yyyy-MM") YearMonth month,
+            @AuthenticationPrincipal AndromedaUserDetails user) {
+        String orgId = TenantContextHolder.get();
+        var b = getOutOfDeliveryBudget.execute(orgId, user.getUserId(), month);
+        String monthText = b.month().toString();
+        return ResponseEntity.ok(new OutOfDeliveryBudgetResponse(monthText, b.capPercent(), b.baseUsd(),
+                OutOfDeliveryBudgetResponse.baseKindOf(monthText, b.baseMonth()), b.baseMonth(), b.capUsd(),
+                b.usedUsd(), b.awaitingUsd()));
+    }
+
+    private static ManualAllocationResultResponse manualResult(ManualAllocateUseCase.Result r) {
+        return new ManualAllocationResultResponse(r.allocationId(), r.status().name(),
+                ApprovalResponse.from(r.approval()));
     }
 
     @Operation(summary = "Get allocation history", description = "Returns paginated validated allocations, optionally filtered by month")

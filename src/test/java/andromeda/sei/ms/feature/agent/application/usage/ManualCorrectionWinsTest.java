@@ -163,7 +163,8 @@ class ManualCorrectionWinsTest {
         when(mover.resolveItem(ORG, USER, "wi-200")).thenReturn(Optional.of(
                 new ResolvedTask("wi-200", "proj-1", "Task 200", "AB#200", AttributionSource.TASK_REF)));
         MoveAgentUsageUseCase move = new MoveAgentUsageUseCase(allocations, mover, queries,
-                mock(CalculateAiRatiosUseCase.class), mock(WorkItemRepository.class));
+                mock(CalculateAiRatiosUseCase.class), mock(WorkItemRepository.class),
+                andromeda.sei.ms.feature.allocation.application.AllocationApprovalTestSupport.freeService());
 
         // 1. the person moves the row to #200
         MoveAgentUsageUseCase.MoveResult moved = move.execute(ORG, USER, "alloc-agent", List.of(stored.getId()), "wi-200");

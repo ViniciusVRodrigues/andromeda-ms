@@ -39,6 +39,14 @@ public interface AiUsageAllocationRepository {
     List<AiUsageAllocation> findByOrgUserAndDay(
             String organizationId, String userId, LocalDate day);
 
+    /**
+     * Active allocations of the user with day within {@code [from, to]} and any of the statuses
+     * (the monthly "Fora de entrega" budget reads {@code VALIDATED} and {@code AWAITING_APPROVAL}).
+     * Index {@code {organizationId, userId, day}}.
+     */
+    List<AiUsageAllocation> findByOrgUserAndDayBetweenAndStatusIn(String organizationId, String userId,
+            LocalDate from, LocalDate to, java.util.Collection<AiUsageAllocation.Status> statuses);
+
     void updateAllocationIdOnUsageRecords(List<String> aiUsageIds, String allocationId);
 
     Optional<AiUsageAllocation> findById(String id, String organizationId);

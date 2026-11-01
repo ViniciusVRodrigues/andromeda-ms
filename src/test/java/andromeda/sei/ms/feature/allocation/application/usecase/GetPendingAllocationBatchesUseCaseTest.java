@@ -35,6 +35,8 @@ class GetPendingAllocationBatchesUseCaseTest {
     private AiUsageAllocationRepository allocationRepository;
     @Mock
     private WorkItemRepository workItemRepository;
+    @Mock
+    private andromeda.sei.ms.feature.user.domain.UserRepository userRepository;
 
     private GetPendingAllocationBatchesUseCase useCase;
 
@@ -44,7 +46,8 @@ class GetPendingAllocationBatchesUseCaseTest {
 
     @BeforeEach
     void setUp() {
-        useCase = new GetPendingAllocationBatchesUseCase(aiUsageRepository, allocationRepository, workItemRepository);
+        useCase = new GetPendingAllocationBatchesUseCase(aiUsageRepository, allocationRepository, workItemRepository,
+                userRepository);
     }
 
     /**

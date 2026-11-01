@@ -161,6 +161,14 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("MALFORMED_REQUEST", "Corpo da requisição inválido"));
     }
 
+    /** A query or path value that does not convert (a month that is not yyyy-MM, a malformed date): 400, not 500. */
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleArgumentTypeMismatch(
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("MALFORMED_REQUEST", "Parâmetro inválido: " + ex.getName()));
+    }
+
     @ExceptionHandler(org.springframework.web.HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ErrorResponse> handleUnsupportedMediaType(
             org.springframework.web.HttpMediaTypeNotSupportedException ex) {

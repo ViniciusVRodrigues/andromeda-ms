@@ -31,7 +31,17 @@ public record PendingBatchResponse(
 
     public record OverriddenMark(String displayId) {}
 
-    public record Review(String state, List<String> reasons, List<Detail> details) {}
+    public record Review(String state, List<String> reasons, List<Detail> details, ApprovalResponse approval) {
+        public Review(String state, List<String> reasons, List<Detail> details) {
+            this(state, reasons, details, null);
+        }
+    }
 
-    public record Detail(String code, String workItemId, String displayId, Long ratio) {}
+    public record Detail(String code, String workItemId, String displayId, Long ratio, String note,
+                         String decidedByName) {
+        public Detail(String code, String workItemId, String displayId, Long ratio) {
+            this(code, workItemId, displayId, ratio, null, null);
+        }
+    }
+
 }

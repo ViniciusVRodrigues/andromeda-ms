@@ -43,6 +43,13 @@ class ManualAllocateOutOfDeliveryTest {
     @Mock private CalculateAiRatiosUseCase calculateAiRatiosUseCase;
     @Mock private AgentUsageQueries agentUsageQueries;
 
+    @Mock private andromeda.sei.ms.feature.allocation.application.AllocationApprovalService approvalService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void approvalIsFree() {
+        andromeda.sei.ms.feature.allocation.application.AllocationApprovalTestSupport.stubFree(approvalService);
+    }
+
     @InjectMocks private ManualAllocateUseCase useCase;
 
     @Test

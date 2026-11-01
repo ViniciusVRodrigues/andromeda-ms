@@ -9,6 +9,7 @@ import andromeda.sei.ms.feature.allocation.application.dto.SuggestionItemOutput;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
+import andromeda.sei.ms.feature.user.domain.UserRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,13 +31,19 @@ public class GetPendingAllocationBatchesUseCase {
     private final AIUsageRepository aiUsageRepository;
     private final AiUsageAllocationRepository allocationRepository;
     private final WorkItemRepository workItemRepository;
+    private final UserRepository userRepository;
 
     public List<PendingBatchOutput> execute(String organizationId, String userId) {
         // Primary source: days that have a PENDING_VALIDATION allocation (inactive ones were absorbed)
-        List<AiUsageAllocation> pendingAllocations = allocationRepository
-                .findByOrgUserAndStatus(organizationId, userId, AiUsageAllocation.Status.PENDING_VALIDATION).stream()
-                .filter(AiUsageAllocation::isActive)
-                .toList();
+        // The days awaiting approval are shown too: their rows already carry the allocationId, so the
+        // allocation is the only way they reach the list (uso-ia-fora-de-entrega, design 2.2).
+        List<AiUsageAllocation> pendingAllocations = new ArrayList<>();
+        for (AiUsageAllocation.Status status : List.of(AiUsageAllocation.Status.PENDING_VALIDATION,
+                AiUsageAllocation.Status.AWAITING_APPROVAL)) {
+            allocationRepository.findByOrgUserAndStatus(organizationId, userId, status).stream()
+                    .filter(AiUsageAllocation::isActive)
+                    .forEach(pendingAllocations::add);
+        }
 
         // One entry per day with every pending allocation of the day (the agent's and the automatic one).
         Map<LocalDate, List<AiUsageAllocation>> pendingByDay = pendingAllocations.stream()
@@ -97,7 +104,7 @@ public class GetPendingAllocationBatchesUseCase {
             allocationIds = pendingAllocations.stream().map(AiUsageAllocation::getId).toList();
             suggestionAllocationId = allocationIds.get(0);
             suggestion = suggestionOf(organizationId, pendingAllocations, records);
-            review = reviewOf(pendingAllocations);
+            review = reviewOf(organizationId, pendingAllocations);
         }
 
         return new PendingBatchOutput(
@@ -195,20 +202,45 @@ public class GetPendingAllocationBatchesUseCase {
         return a.suggestionSourceOrDefault().name();
     }
 
-    private static ReviewOutput reviewOf(List<AiUsageAllocation> pending) {
+    private ReviewOutput reviewOf(String organizationId, List<AiUsageAllocation> pending) {
         Map<String, ReviewOutput.Detail> details = new LinkedHashMap<>();
         for (AiUsageAllocation a : pending) {
             if (a.getReviewReasons() == null) continue;
             for (var r : a.getReviewReasons()) {
                 String key = r.code() + "|" + r.workItemId();
                 ReviewOutput.Detail old = details.get(key);
-                if (old == null || (r.ratio() != null && (old.ratio() == null || r.ratio() > old.ratio()))) {
+                if (r.code() == AiUsageAllocation.ReviewCode.RETURNED) {
+                    details.put(key, new ReviewOutput.Detail(r.code().name(), null, null, null, r.note(),
+                            decidedByName(organizationId, a)));
+                } else if (old == null || (r.ratio() != null && (old.ratio() == null || r.ratio() > old.ratio()))) {
                     details.put(key, new ReviewOutput.Detail(r.code().name(), r.workItemId(), r.displayId(), r.ratio()));
                 }
             }
         }
+        List<AiUsageAllocation> awaiting = pending.stream()
+                .filter(a -> a.getStatus() == AiUsageAllocation.Status.AWAITING_APPROVAL && a.getApproval() != null)
+                .toList();
+        if (!awaiting.isEmpty()) {
+            List<AiUsageAllocation.ApprovalReason> approvalReasons = awaiting.stream()
+                    .flatMap(a -> a.getApproval().reasons().stream()).toList();
+            List<String> approvers = awaiting.stream().flatMap(a -> a.getApproval().approverProjectIds().stream())
+                    .distinct().toList();
+            java.time.Instant requestedAt = awaiting.stream().map(a -> a.getApproval().requestedAt())
+                    .filter(java.util.Objects::nonNull).min(java.util.Comparator.naturalOrder()).orElse(null);
+            return new ReviewOutput("AWAITING_APPROVAL",
+                    approvalReasons.stream().map(r -> r.code().name()).distinct().toList(),
+                    new ArrayList<>(details.values()),
+                    new ReviewOutput.Approval(approvalReasons, approvers, requestedAt));
+        }
         List<String> reasons = details.values().stream().map(ReviewOutput.Detail::code).distinct().toList();
         return new ReviewOutput(reasons.isEmpty() ? "SUGGESTED" : "NEEDS_REVIEW", reasons,
                 new ArrayList<>(details.values()));
+    }
+
+    /** Who returned the allocation (the approval keeps the decision after it goes back to the person). */
+    private String decidedByName(String organizationId, AiUsageAllocation a) {
+        if (a.getApproval() == null || a.getApproval().decidedBy() == null) return null;
+        return userRepository.findByIdAndOrganizationId(a.getApproval().decidedBy(), organizationId)
+                .map(u -> u.getName()).orElse(null);
     }
 }
