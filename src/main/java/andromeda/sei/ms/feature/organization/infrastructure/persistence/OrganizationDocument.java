@@ -45,6 +45,9 @@ public class OrganizationDocument {
     /** Ausente em documentos anteriores a metrics-correctness; o mapper le os defaults. */
     private MetricSettingsDocument metricSettings;
 
+    /** Ausente em documentos anteriores a uso-ia-fora-de-entrega; o mapper le o padrao (15). */
+    private AllocationPolicyDocument allocationPolicy;
+
     /** Ausente em documentos anteriores a vcs-core-refactor; a migracao copia o de github_configs. */
     private VcsSettingsDocument vcsSettings;
 

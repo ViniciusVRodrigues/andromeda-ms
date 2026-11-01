@@ -24,6 +24,7 @@ import java.util.Map;
 public class PermissionController {
 
     private static final Map<String, String> LABELS = Map.ofEntries(
+            Map.entry("AI_ALLOCATION_APPROVE", "Aprovar uso de IA fora da regra"),
             Map.entry("AI_READ_ALL", "Visualizar IA de todos"),
             Map.entry("AI_READ_OWN", "Visualizar uso de IA próprio"),
             Map.entry("AZURE_CONFIGURE", "Configurar Azure DevOps"),

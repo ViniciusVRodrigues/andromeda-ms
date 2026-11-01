@@ -7,6 +7,7 @@ import andromeda.sei.ms.feature.allocation.application.dto.PendingBatchOutput;
 import andromeda.sei.ms.feature.allocation.application.dto.ReviewOutput;
 import andromeda.sei.ms.feature.allocation.application.dto.SuggestionItemOutput;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
 import andromeda.sei.ms.feature.workitem.domain.WorkItemRepository;
 import lombok.RequiredArgsConstructor;
@@ -109,6 +110,8 @@ public class GetPendingAllocationBatchesUseCase {
      * the tokens (input plus output) of the rows of the allocation it comes from, sums 1.0000, and the last
      * entry takes the rounding.
      */
+    private static final String OUT_PREFIX = "__OUT_OF_DELIVERY__:";
+
     private List<SuggestionItemOutput> suggestionOf(String organizationId, List<AiUsageAllocation> pending,
                                                     List<AIUsage> dayRecords) {
         Map<String, Long> tokensById = new HashMap<>();
@@ -127,13 +130,23 @@ public class GetPendingAllocationBatchesUseCase {
         Map<String, String> titles = new HashMap<>();
         Map<String, String> sources = new HashMap<>();
         Map<String, String> overridden = new HashMap<>();
+        Map<String, AllocationSplit> outOfDelivery = new HashMap<>();
         for (AiUsageAllocation a : pending) {
             // Without tokens to weigh by, the allocations count the same.
             BigDecimal weight = totalTokens == 0 ? BigDecimal.ONE : BigDecimal.valueOf(tokensOf.get(a));
             if (a.getSplits() == null) continue;
             for (var s : a.getSplits()) {
-                if (s.getWorkItemId() == null) continue;
                 BigDecimal share = s.getPercentage() == null ? BigDecimal.ZERO : s.getPercentage();
+                if (s.isOutOfDelivery()) {
+                    // The out-of-delivery bucket has no work item: keyed apart from the item ids.
+                    String key = OUT_PREFIX + s.getCategory();
+                    weights.merge(key, weight.multiply(share), BigDecimal::add);
+                    outOfDelivery.putIfAbsent(key, s);
+                    String bucketSource = sourceOf(a);
+                    if (bucketSource != null) sources.putIfAbsent(key, bucketSource);
+                    continue;
+                }
+                if (s.getWorkItemId() == null) continue;
                 weights.merge(s.getWorkItemId(), weight.multiply(share), BigDecimal::add);
                 titles.putIfAbsent(s.getWorkItemId(), s.getWorkItemTitle());
                 String source = sourceOf(a);
@@ -160,6 +173,12 @@ public class GetPendingAllocationBatchesUseCase {
             }
             given = given.add(pct);
             String id = e.getKey();
+            AllocationSplit bucket = outOfDelivery.get(id);
+            if (bucket != null) {
+                out.add(new SuggestionItemOutput(null, null, pct, null, sources.get(id), null,
+                        AllocationSplit.Kind.OUT_OF_DELIVERY, bucket.getCategory(), bucket.getNote()));
+                continue;
+            }
             String displayId = workItemRepository.findByIdAndOrganizationIdAndActiveTrue(id, organizationId)
                     .map(AgentReviewReasonCalculator::displayId).orElse(null);
             String mark = overridden.get(id);

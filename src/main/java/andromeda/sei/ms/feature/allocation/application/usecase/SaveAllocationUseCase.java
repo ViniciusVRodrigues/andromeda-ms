@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsage;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.allocation.application.dto.AllocationEntryInput;
+import andromeda.sei.ms.feature.allocation.application.AllocationSplitsValidator;
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -53,6 +54,7 @@ public class SaveAllocationUseCase {
                 .map(e -> new AllocationSplit(e.workItemId(), e.workItemTitle(),
                         e.percentage().setScale(PERCENTAGE_SCALE, RoundingMode.HALF_UP)))
                 .toList();
+        AllocationSplitsValidator.validate(splits);
         // Rows already allocated by the agent (AGENT allocations) are outside the per-day flow: never
         // swept into this allocation, never unlinked, and the AGENT allocation itself is never deleted.
         List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);

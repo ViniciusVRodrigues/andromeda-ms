@@ -191,7 +191,7 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
                 .append(STATUS, AiUsageAllocation.Status.VALIDATED.name())
                 .append(ACTIVE, true);
         Document projection = new Document(USER_ID, 1).append(DAY, 1).append(AI_USAGE_IDS, 1)
-                .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1);
+                .append(SPLIT_WORK_ITEM_ID, 1).append(SPLIT_PERCENTAGE, 1).append("splits.kind", 1);
         List<AiUsageAllocation> allocations = new ArrayList<>();
         for (Document document : collection().find(filter).projection(projection)) {
             allocations.add(leanAllocation(document, organizationId, RawDocuments.day(mongoTemplate, document.get(DAY))));
@@ -199,10 +199,15 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return allocations;
     }
 
+    private static AllocationSplit.Kind storedKind(Document split) {
+        return "OUT_OF_DELIVERY".equals(split.getString("kind")) ? AllocationSplit.Kind.OUT_OF_DELIVERY
+                : AllocationSplit.Kind.ITEM;
+    }
+
     static AiUsageAllocation leanAllocation(Document document, String organizationId, LocalDate day) {
         List<AllocationSplit> splits = RawDocuments.documents(document.get("splits")).stream()
-                .map(split -> new AllocationSplit(split.getString("workItemId"), null,
-                        RawDocuments.decimal(split.get("percentage"))))
+                .map(split -> new AllocationSplit(storedKind(split), split.getString("workItemId"), null,
+                        RawDocuments.decimal(split.get("percentage")), null, null))
                 .toList();
         return new AiUsageAllocation(RawDocuments.id(document), organizationId, document.getString(USER_ID), day,
                 RawDocuments.strings(document.get(AI_USAGE_IDS)), splits, AiUsageAllocation.Status.VALIDATED, null,
@@ -423,7 +428,8 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
         return List.of(
                 new Document("$match", allocationMatch(organizationId, workItemIds, from, to)),
                 new Document("$project", new Document(USER_ID, 1).append(DAY, 1).append(SPLIT_WORK_ITEM_ID, 1)
-                        .append(SPLIT_PERCENTAGE, 1).append(SIG, citedSignature())));
+                        .append(SPLIT_PERCENTAGE, 1).append("splits.kind", 1)
+                        .append(SIG, citedSignature())));
     }
 
     /** Usage of the allocations' stamp, grouped by (allocation, day, model), with the signature of the ids. */
@@ -529,8 +535,8 @@ public class AiUsageAllocationRepositoryImpl implements AiUsageAllocationReposit
 
     private static List<AllocationSplit> splitsOf(Object splits) {
         return RawDocuments.documents(splits).stream()
-                .map(split -> new AllocationSplit(split.getString("workItemId"), null,
-                        RawDocuments.decimal(split.get("percentage"))))
+                .map(split -> new AllocationSplit(storedKind(split), split.getString("workItemId"), null,
+                        RawDocuments.decimal(split.get("percentage")), null, null))
                 .toList();
     }
 

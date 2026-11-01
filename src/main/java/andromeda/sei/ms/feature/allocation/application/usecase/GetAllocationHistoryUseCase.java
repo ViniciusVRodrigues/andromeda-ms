@@ -24,8 +24,8 @@ public class GetAllocationHistoryUseCase {
                         allocation.getId(),
                         allocation.getDay(),
                         allocation.getSplits().stream()
-                                .map(s -> new SplitOutput(
-                                        s.getWorkItemId(), s.getWorkItemTitle(), s.getPercentage()))
+                                .map(s -> new SplitOutput(s.getKind(), s.getWorkItemId(), s.getWorkItemTitle(),
+                                        s.getPercentage(), s.getCategory(), s.getNote()))
                                 .toList(),
                         allocation.getAssignedBy(),
                         allocation.getAgent(),

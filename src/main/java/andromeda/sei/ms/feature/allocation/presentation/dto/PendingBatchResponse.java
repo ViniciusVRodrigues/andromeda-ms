@@ -1,5 +1,7 @@
 package andromeda.sei.ms.feature.allocation.presentation.dto;
 
+import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -18,7 +20,14 @@ public record PendingBatchResponse(
         Review review
 ) {
     public record SuggestionItem(String workItemId, String workItemTitle, BigDecimal percentage,
-                                 String displayId, String source, OverriddenMark overriddenMark) {}
+                                 String displayId, String source, OverriddenMark overriddenMark,
+                                 AllocationSplit.Kind kind, AllocationSplit.Category category, String note) {
+        public SuggestionItem(String workItemId, String workItemTitle, BigDecimal percentage,
+                              String displayId, String source, OverriddenMark overriddenMark) {
+            this(workItemId, workItemTitle, percentage, displayId, source, overriddenMark,
+                    AllocationSplit.Kind.ITEM, null, null);
+        }
+    }
 
     public record OverriddenMark(String displayId) {}
 

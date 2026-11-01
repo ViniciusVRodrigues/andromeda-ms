@@ -112,7 +112,8 @@ public class AiUsageAllocationController {
                                 .map(s -> new PendingBatchResponse.SuggestionItem(s.workItemId(), s.workItemTitle(),
                                         s.percentage(), s.displayId(), s.source(),
                                         s.overriddenMark() == null ? null
-                                                : new PendingBatchResponse.OverriddenMark(s.overriddenMark().displayId())))
+                                                : new PendingBatchResponse.OverriddenMark(s.overriddenMark().displayId()),
+                                        s.kind(), s.category(), s.note()))
                                 .toList(),
                         new PendingBatchResponse.Review(b.review().state(), b.review().reasons(),
                                 b.review().details().stream()
@@ -204,7 +205,8 @@ public class AiUsageAllocationController {
                 .map(h -> new AllocationHistoryResponse(
                         h.id(), h.day(),
                         h.splits().stream()
-                                .map(s -> new SplitResponse(s.workItemId(), s.workItemTitle(), s.percentage()))
+                                .map(s -> new SplitResponse(s.kind(), s.workItemId(), s.workItemTitle(), s.percentage(),
+                                        s.category(), s.note()))
                                 .toList(),
                         h.assignedBy(), h.agent(), h.movedFromAgent(), h.updatedAt()));
         return ResponseEntity.ok(response);
@@ -259,7 +261,8 @@ public class AiUsageAllocationController {
     private List<AllocationSplit> mapSplits(
             List<andromeda.sei.ms.feature.allocation.presentation.dto.AllocationSplitRequest> splitRequests) {
         return splitRequests.stream()
-                .map(r -> new AllocationSplit(r.workItemId(), r.workItemTitle(), r.percentage()))
+                .map(r -> new AllocationSplit(r.kind(), r.workItemId(), r.workItemTitle(), r.percentage(),
+                        r.category(), r.note()))
                 .toList();
     }
 }

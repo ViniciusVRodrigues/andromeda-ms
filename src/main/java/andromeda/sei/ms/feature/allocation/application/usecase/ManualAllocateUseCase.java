@@ -3,6 +3,7 @@ package andromeda.sei.ms.feature.allocation.application.usecase;
 import andromeda.sei.ms.feature.aiusage.domain.AIUsageRepository;
 import andromeda.sei.ms.feature.aiusage.domain.AgentUsageQueries;
 import andromeda.sei.ms.feature.allocation.application.AgentReviewReasonCalculator;
+import andromeda.sei.ms.feature.allocation.application.AllocationSplitsValidator;
 import andromeda.sei.ms.feature.allocation.application.AllocationTypeEligibility;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocation;
 import andromeda.sei.ms.feature.allocation.domain.AiUsageAllocationRepository;
@@ -10,7 +11,6 @@ import andromeda.sei.ms.feature.allocation.domain.AllocationSplit;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNotFoundException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationNothingToAllocateException;
-import andromeda.sei.ms.feature.allocation.domain.exception.AllocationSplitsInvalidException;
 import andromeda.sei.ms.feature.allocation.domain.exception.AllocationWorkItemTypeNotEligibleException;
 import andromeda.sei.ms.shared.domain.exception.ForbiddenOperationException;
 import andromeda.sei.ms.feature.workitem.application.usecase.CalculateAiRatiosUseCase;
@@ -20,8 +20,6 @@ import andromeda.sei.ms.feature.workitem.domain.exception.WorkItemNotFoundExcept
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -37,8 +35,6 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class ManualAllocateUseCase {
 
-    private static final BigDecimal ONE_SCALED = BigDecimal.ONE.setScale(4, RoundingMode.HALF_UP);
-
     /** Value of {@code attributionSource} stamped on agent rows the person reallocated by hand. */
     static final String MANUAL_SOURCE = "MANUAL";
 
@@ -50,8 +46,9 @@ public class ManualAllocateUseCase {
     private final AgentUsageQueries agentUsageQueries;
 
     public void execute(String organizationId, String userId, String allocationId,
-                        LocalDate day, List<AllocationSplit> splits) {
-        validateSplits(splits);
+                        LocalDate day, List<AllocationSplit> rawSplits) {
+        List<AllocationSplit> splits = AllocationSplitsValidator.normalize(rawSplits);
+        AllocationSplitsValidator.validate(splits);
 
         if (allocationId != null) {
             AiUsageAllocation allocation = allocationRepository.findById(allocationId, organizationId)
@@ -70,16 +67,6 @@ public class ManualAllocateUseCase {
                 throw new AllocationAlreadyValidatedException(day.toString());
             }
             absorbDay(organizationId, userId, day, splits);
-        }
-    }
-
-    private void validateSplits(List<AllocationSplit> splits) {
-        BigDecimal sum = splits.stream()
-                .map(AllocationSplit::getPercentage)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(4, RoundingMode.HALF_UP);
-        if (sum.compareTo(ONE_SCALED) != 0) {
-            throw new AllocationSplitsInvalidException();
         }
     }
 
