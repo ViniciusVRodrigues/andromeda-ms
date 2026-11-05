@@ -334,16 +334,19 @@ class AutoAssignAllocationUseCaseTest {
     }
 
     @Test
-    void should_neverTouchValidatedDay() {
+    void should_suggestForNewRowsOfAClosedDay_withoutTouchingTheValidated() {
         when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG, USER, DAY))
                 .thenReturn(List.of(aiUsage("usage-9")));
         AiUsageAllocation validated = savedAllocation("alloc-v", List.of("usage-1"));
         validated.setStatus(AiUsageAllocation.Status.VALIDATED);
         when(allocationRepository.findByOrgUserAndDay(ORG, USER, DAY)).thenReturn(List.of(validated));
+        givenActivityOn("wi-1");
+        when(allocationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
         useCase.execute(ORG, USER, DAY, true);
 
-        verify(allocationRepository, never()).save(any());
+        assertThat(savedOne().getAiUsageIds()).containsExactly("usage-9");
+        assertThat(savedOne().getStatus()).isEqualTo(AiUsageAllocation.Status.PENDING_VALIDATION);
         verify(allocationRepository, never()).deleteById(anyString());
     }
 

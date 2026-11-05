@@ -37,7 +37,8 @@ import java.util.Set;
  * in progress in the sprint covering the day. A source with more than {@link #MAX_SUGGESTED_ITEMS}
  * items is no signal (a bulk edit in Azure, a crowded sprint) and is skipped: an even split over
  * hundreds of items gave each a fraction of a percent. The result is a {@code PENDING_VALIDATION}
- * allocation; a {@code VALIDATED} day is never touched.
+ * allocation; a {@code VALIDATED} allocation is never touched (the rows that reach a closed day later
+ * get their own suggestion).
  */
 @Slf4j
 @Service
@@ -75,10 +76,8 @@ public class AutoAssignAllocationUseCase {
         }
 
         List<AiUsageAllocation> existing = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
-        if (existing.stream().anyMatch(a -> a.closesTheDay())) {
-            log.debug("AutoAssign: day={} of user={} is already validated — skipping", day, userId);
-            return;
-        }
+        // A closed day still suggests for the rows that arrived after it closed: the unallocated rows
+        // are the only input, and the VALIDATED allocations are never read as pending nor replaced.
         AiUsageAllocation pending = existing.stream()
                 .filter(AiUsageAllocation::isActive)
                 .filter(a -> !a.isAgent())
