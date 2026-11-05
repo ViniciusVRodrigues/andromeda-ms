@@ -414,4 +414,67 @@ class ManualAllocateUseCaseTest {
                 .isInstanceOf(andromeda.sei.ms.feature.allocation.domain.exception.AllocationAlreadyValidatedException.class);
         verify(allocationRepository, never()).save(any());
     }
+
+    private AiUsageAllocation closedDay() {
+        return new AiUsageAllocation("v-1", ORG_ID, USER_ID, DAY, List.of("usage-1"),
+                validSplits, AiUsageAllocation.Status.VALIDATED, AiUsageAllocation.AssignedBy.MANUAL,
+                true, 0L, Instant.now(), Instant.now());
+    }
+
+    @Test
+    void should_allocateTheNewUsage_andKeepTheValidated_whenClosedDayReceivesUnallocatedRows() {
+        AiUsageAllocation validated = closedDay();
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(validated));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of(mockAiUsage("usage-new")));
+        when(allocationRepository.save(any())).thenAnswer(inv -> {
+            AiUsageAllocation a = inv.getArgument(0);
+            a.setId("alloc-new");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        ArgumentCaptor<AiUsageAllocation> captor = ArgumentCaptor.forClass(AiUsageAllocation.class);
+        verify(allocationRepository).save(captor.capture());
+        assertThat(captor.getValue().getAiUsageIds()).containsExactly("usage-new");
+        assertThat(captor.getValue().getStatus()).isEqualTo(AiUsageAllocation.Status.VALIDATED);
+        verify(allocationRepository, never()).deleteById("v-1");
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(eq(List.of("usage-new")), eq("alloc-new"));
+        assertThat(validated.isActive()).isTrue();
+        assertThat(validated.getAiUsageIds()).containsExactly("usage-1");
+    }
+
+    @Test
+    void should_absorbTheAgentPending_andKeepTheValidated_whenAgentAllocationReachesAClosedDay() {
+        AiUsageAllocation validated = closedDay();
+        AiUsageAllocation agent = agentPending("agent-1", "wi-1", List.of("usage-agent"));
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(validated, agent));
+        when(allocationRepository.save(any())).thenAnswer(inv -> {
+            AiUsageAllocation a = inv.getArgument(0);
+            if (a.getId() == null) a.setId("alloc-new");
+            return a;
+        });
+
+        useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits);
+
+        assertThat(agent.isActive()).isFalse();
+        assertThat(validated.isActive()).isTrue();
+        verify(allocationRepository, never()).deleteById("v-1");
+        verify(allocationRepository).updateAllocationIdOnUsageRecords(eq(List.of("usage-agent")), eq("alloc-new"));
+    }
+
+    @Test
+    void should_stillReject409_andWriteNothing_whenClosedDayHasNothingToAllocate() {
+        when(allocationRepository.findByOrgUserAndDay(ORG_ID, USER_ID, DAY)).thenReturn(List.of(closedDay()));
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserIdAndDay(ORG_ID, USER_ID, DAY))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> useCase.execute(ORG_ID, USER_ID, null, DAY, validSplits))
+                .isInstanceOf(AllocationAlreadyValidatedException.class);
+
+        verify(allocationRepository, never()).save(any());
+        verify(allocationRepository, never()).deleteById(any());
+        verify(allocationRepository, never()).updateAllocationIdOnUsageRecords(any(), any());
+    }
 }

@@ -71,13 +71,14 @@ public class ManualAllocateUseCase {
             if (allocation.getStatus() == AiUsageAllocation.Status.VALIDATED) {
                 throw new AllocationAlreadyValidatedException(allocationId);
             }
-            return absorbDay(organizationId, userId, allocation.getDay(), splits);
+            return absorbDay(organizationId, userId, allocation.getDay(), splits, false);
         } else {
             List<AiUsageAllocation> ofTheDay = allocationRepository.findByOrgUserAndDay(organizationId, userId, day);
-            if (ofTheDay.stream().anyMatch(a -> a.isActive() && a.closesTheDay())) {
-                throw new AllocationAlreadyValidatedException(day.toString());
-            }
-            return absorbDay(organizationId, userId, day, splits);
+            // A closed day still takes what arrived after it closed (rows with no allocation, an agent's
+            // pending allocation): only a day with nothing left to absorb answers 409. The VALIDATED
+            // allocations are never touched; absorbDay leaves them as they are.
+            boolean dayClosed = ofTheDay.stream().anyMatch(a -> a.isActive() && a.closesTheDay());
+            return absorbDay(organizationId, userId, day, splits, dayClosed);
         }
     }
 
@@ -88,13 +89,16 @@ public class ManualAllocateUseCase {
      * and the rows that came from the agent are stamped {@code MANUAL}, so the manual correction wins over a
      * resend. {@code VALIDATED} allocations stay as they are.
      */
-    private Result absorbDay(String organizationId, String userId, LocalDate day, List<AllocationSplit> splits) {
+    private Result absorbDay(String organizationId, String userId, LocalDate day, List<AllocationSplit> splits,
+                             boolean dayClosed) {
         DayRows dayRows = collectDayRows(allocationRepository, aiUsageRepository, organizationId, userId, day);
         List<AiUsageAllocation> pending = dayRows.replaced();
         Set<String> agentRowIds = dayRows.agentRowIds();
         Set<String> usageIds = dayRows.usageIds();
         Map<String, WorkItem> items = requireOrganizationWorkItems(organizationId, splits);
         if (usageIds.isEmpty()) {
+            // Nothing left to absorb on a closed day is a stale screen or a double click: 409, nothing written.
+            if (dayClosed) throw new AllocationAlreadyValidatedException(day.toString());
             throw new AllocationNothingToAllocateException(day);
         }
         AllocationApprovalPolicy.Decision decision = approvalService.evaluate(organizationId, userId, day,
