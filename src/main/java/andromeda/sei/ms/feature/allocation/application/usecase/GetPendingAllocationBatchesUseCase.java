@@ -63,8 +63,14 @@ public class GetPendingAllocationBatchesUseCase {
             boolean anyCovered = pendingByDay.get(day).stream()
                     .anyMatch(p -> p.getAiUsageIds() != null && !p.getAiUsageIds().isEmpty());
             if (anyCovered) {
+                // Only the rows of the pending allocations: a closed day keeps its VALIDATED rows out of the batch.
+                java.util.Set<String> pendingRowIds = pendingByDay.get(day).stream()
+                        .filter(p -> p.getAiUsageIds() != null)
+                        .flatMap(p -> p.getAiUsageIds().stream()).collect(Collectors.toSet());
                 List<AIUsage> coveredUsage = aiUsageRepository
-                        .findByOrganizationIdAndUserIdAndDayIn(organizationId, userId, List.of(day));
+                        .findByOrganizationIdAndUserIdAndDayIn(organizationId, userId, List.of(day)).stream()
+                        .filter(u -> pendingRowIds.contains(u.getId()))
+                        .toList();
                 usageByDay.put(day, coveredUsage);
             } else {
                 usageByDay.put(day, List.of());

@@ -272,6 +272,26 @@ class GetPendingAllocationBatchesUseCaseTest {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    @Test
+    void should_countOnlyThePendingRows_whenAClosedDayReceivedNewUsage() {
+        when(aiUsageRepository.findUnallocatedByOrganizationIdAndUserId(ORG, USER)).thenReturn(List.of());
+        AiUsageAllocation pending = new AiUsageAllocation(
+                "alloc-p", ORG, USER, DAY, List.of("usage-new"),
+                List.of(new AllocationSplit("wi-1", "Fix login", new BigDecimal("1.0000"))),
+                AiUsageAllocation.Status.PENDING_VALIDATION, AiUsageAllocation.AssignedBy.AUTO,
+                true, 0L, Instant.now(), Instant.now());
+        when(allocationRepository.findByOrgUserAndStatus(ORG, USER, AiUsageAllocation.Status.PENDING_VALIDATION))
+                .thenReturn(List.of(pending));
+        // The day also has rows already covered by a VALIDATED allocation: they are not pending.
+        when(aiUsageRepository.findByOrganizationIdAndUserIdAndDayIn(ORG, USER, List.of(DAY)))
+                .thenReturn(List.of(aiUsage("usage-old", DAY, "alloc-v"), aiUsage("usage-new", DAY, "alloc-p")));
+
+        PendingBatchOutput batch = useCase.execute(ORG, USER).get(0);
+
+        assertThat(batch.totalInteractions()).isEqualTo(10);
+        assertThat(batch.estimatedCostUsd()).isEqualByComparingTo("0.05");
+    }
+
     private AIUsage aiUsage(String id, LocalDate day, String allocationId) {
         return new AIUsage(
                 id, ORG, USER, "gh-login", "dataset-1", day, "gpt-4o",
